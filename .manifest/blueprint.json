@@ -1,0 +1,10 @@
+{
+  "version": "1.0",
+  "zones": {
+    "client": [],
+    "server": [],
+    "data": []
+  },
+  "components": [],
+  "contracts": []
+}
