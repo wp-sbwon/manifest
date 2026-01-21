@@ -41,10 +41,10 @@ def test_omoc_bridge_initialization(omoc_bridge):
 
 def test_is_omoc_available(omoc_bridge):
     """Test OMOC availability check."""
-    # echo should be available on most systems
-    available = omoc_bridge.is_omoc_available()
-    # This may be True or False depending on system, but should not crash
-    assert isinstance(available, bool)
+    # OMOCBridge no longer has is_omoc_available method
+    # Instead, it uses direct integration
+    # Just verify the bridge initializes correctly
+    assert omoc_bridge.is_connected is False  # Not started yet
 
 
 @pytest.mark.asyncio
