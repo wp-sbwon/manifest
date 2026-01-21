@@ -204,6 +204,68 @@ class OMOCBridge:
         """Get agent output for a channel."""
         return self.state_manager.get_chat_history(channel)
     
+    async def start_agent_mission(
+        self,
+        task_id: str,
+        agent_type: str,
+        context: Dict[str, Any],
+        model_config: Dict[str, Any]
+    ) -> bool:
+        """Start an agent mission with scoped context and model config."""
+        result = {"success": False}
+        
+        async def callback(response: Dict[str, Any]):
+            result["success"] = response.get("status") == "ok"
+            result["data"] = response.get("data", {})
+        
+        await self.send_message({
+            "type": "agent_start",
+            "command": "start_agent_mission",
+            "payload": {
+                "task_id": task_id,
+                "agent_type": agent_type,
+                "context": context,
+                "model_config": model_config
+            }
+        }, callback)
+        
+        # Wait for response
+        await asyncio.sleep(0.2)  # Give more time for agent start
+        return result["success"]
+    
+    async def get_agent_status(self, task_id: str) -> Dict[str, Any]:
+        """Get status of agent working on task."""
+        result = {"status": "unknown", "data": {}}
+        
+        async def callback(response: Dict[str, Any]):
+            result["status"] = response.get("status", "unknown")
+            result["data"] = response.get("data", {})
+        
+        await self.send_message({
+            "type": "agent_status",
+            "command": "get_agent_status",
+            "payload": {"task_id": task_id}
+        }, callback)
+        
+        await asyncio.sleep(0.1)
+        return result
+    
+    async def stop_agent(self, task_id: str) -> bool:
+        """Stop agent working on task."""
+        result = {"success": False}
+        
+        async def callback(response: Dict[str, Any]):
+            result["success"] = response.get("status") == "ok"
+        
+        await self.send_message({
+            "type": "agent_stop",
+            "command": "stop_agent",
+            "payload": {"task_id": task_id}
+        }, callback)
+        
+        await asyncio.sleep(0.1)
+        return result["success"]
+    
     def is_omoc_available(self) -> bool:
         """Check if OMOC command is available."""
         try:

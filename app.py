@@ -17,6 +17,9 @@ from omoc_bridge import OMOCBridge
 from drift_auditor import DriftAuditor
 from widgets import RequirementMap, ArchitectureGraph, FeatureTree, TaskTree, GateController
 from bootstrap_ui import run_bootstrap
+from task_scoper import TaskScoper
+from context_provider import ContextProvider
+from agent_coordinator import AgentCoordinator
 
 try:
     import git
@@ -166,6 +169,12 @@ class ManifestApp(App):
         self.project_data = {}
         self.current_view = "architect"
         self.inspector_mode = "visual"
+        
+        # Initialize agent coordination components
+        self.task_scoper = TaskScoper(self.manifest_dir)
+        self.context_provider = ContextProvider(self.manifest_dir, self.task_scoper)
+        self.agent_coordinator: Optional[AgentCoordinator] = None
+        self.squad_channels: Dict[str, str] = {}  # channel_name -> tab_id
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -203,7 +212,14 @@ class ManifestApp(App):
                                 yield RichLog(id="history-log", markup=True)
                                 yield Static("", id="history-timeline")
                         
-                        # View 6: Project Info (NEW)
+                        # View 6: Feature Explorer (NEW)
+                        with TabPane("Feature Explorer", id="tab-features"):
+                            with VerticalScroll(id="feature-scroll"):
+                                yield Label("FEATURE EXPLORER", classes="side-title")
+                                yield FeatureTree("Features", id="feature-tree")
+                                yield Static("", id="feature-details")
+                        
+                        # View 7: Project Info (NEW)
                         with TabPane("Project Info", id="tab-project"):
                             with VerticalScroll(id="project-scroll"):
                                 yield Label("PROJECT MANIFEST", classes="side-title")
@@ -271,14 +287,28 @@ class ManifestApp(App):
             else:
                 self.query_one("#log-main", RichLog).write("[bold yellow]OMOC not available. Running in standalone mode.[/]")
         
+        # Initialize agent coordinator
+        if self.omoc_bridge and self.omoc_bridge.is_connected:
+            self.agent_coordinator = AgentCoordinator(
+                self.omoc_bridge,
+                self.context_provider,
+                self.task_scoper,
+                self.config,
+                self.state_manager
+            )
+        
         # Load state
         state = self.state_manager.get_state()
         if state.get("last_action"):
             self.query_one("#log-main", RichLog).write(f"[bold blue]Resuming: {state.get('last_action')}[/]")
         
+        # Update squad channels based on active tasks
+        await self.update_squad_channels()
+        
         # Initialize views
         await self.update_architect_view()
         await self.update_blueprint_view()
+        await self.update_feature_explorer()
         await self.update_project_view()
         
         # Start drift audit (non-blocking to avoid blocking UI)
@@ -348,6 +378,28 @@ class ManifestApp(App):
             status = feature.get("status", "pending")
             content_lines.append(f"Feature: {name} ({status})")
         content.update("\n".join(content_lines) if content_lines else "No features defined")
+
+    async def update_feature_explorer(self):
+        """Update the Feature Explorer view with feature data."""
+        features = self.intent_data.get("features", [])
+        
+        # Update feature tree
+        try:
+            feature_tree = self.query_one("#feature-tree", FeatureTree)
+            feature_tree.load_features(features)
+        except Exception:
+            # Feature tree might not be visible yet
+            pass
+        
+        # Update feature details (will be populated when feature is selected)
+        try:
+            details = self.query_one("#feature-details", Static)
+            if features:
+                details.update(f"📊 {len(features)} features loaded. Select a feature to view details.")
+            else:
+                details.update("No features defined. Add features to intent.json")
+        except Exception:
+            pass
 
     async def update_blueprint_view(self):
         """Update the Blueprint view with blueprint data."""
@@ -594,6 +646,39 @@ class ManifestApp(App):
                         log.write(f"[bold green]Status: {status}[/]")
                     else:
                         log.write("[bold yellow]OMOC not connected.[/]")
+                elif command == "start_agent" or command.startswith("start_agent"):
+                    # Format: /start_agent <task_id> <agent_type>
+                    parts = user_input.split()
+                    if len(parts) >= 3:
+                        task_id = parts[2]
+                        agent_type = parts[3] if len(parts) > 3 else "sisyphus"
+                        if self.agent_coordinator:
+                            log.write(f"[bold green]Starting {agent_type} agent for task {task_id}...[/]")
+                            success = await self.agent_coordinator.start_worker_agent(task_id, agent_type)
+                            if success:
+                                log.write(f"[bold green]Agent started. Channel: squad-{task_id}-{agent_type}[/]")
+                                await self.update_squad_channels()
+                            else:
+                                log.write(f"[bold red]Failed to start agent.[/]")
+                        else:
+                            log.write("[bold yellow]Agent coordinator not available.[/]")
+                    else:
+                        log.write("[bold yellow]Usage: /start_agent <task_id> <agent_type>[/]")
+                elif command == "stop_agent" or command.startswith("stop_agent"):
+                    parts = user_input.split()
+                    if len(parts) >= 3:
+                        task_id = parts[2]
+                        if self.agent_coordinator:
+                            success = await self.agent_coordinator.stop_agent(task_id)
+                            if success:
+                                log.write(f"[bold green]Agent stopped for task {task_id}.[/]")
+                                await self.update_squad_channels()
+                            else:
+                                log.write(f"[bold red]Failed to stop agent.[/]")
+                        else:
+                            log.write("[bold yellow]Agent coordinator not available.[/]")
+                    else:
+                        log.write("[bold yellow]Usage: /stop_agent <task_id>[/]")
                 else:
                     log.write(f"[bold yellow]Unknown command: {command}[/]")
             else:
@@ -637,6 +722,91 @@ class ManifestApp(App):
         log = self.query_one("#log-main", RichLog)
         log.write(f"[bold red]Task {task_id} rejected.[/]")
         await self.state_manager.save_state()
+    
+    async def create_squad_channel(self, task_id: str, agent_type: str) -> Optional[str]:
+        """Create a squad channel for agent output."""
+        channel_name = f"squad-{task_id}-{agent_type}"
+        tab_id = f"tab-{channel_name}"
+        
+        # Check if channel already exists
+        if channel_name in self.squad_channels:
+            return tab_id
+        
+        try:
+            chat_tabs = self.query_one("#chat-tabs", TabbedContent)
+            
+            # Create new TabPane dynamically
+            # Note: Textual doesn't support dynamic TabPane creation easily
+            # We'll track channels and display in main log for now
+            # Full implementation would require Textual's dynamic widget support
+            self.squad_channels[channel_name] = tab_id
+            
+            # Load existing chat history if any
+            history = self.state_manager.get_chat_history(channel_name)
+            if history:
+                log = self.query_one("#log-main", RichLog)
+                log.write(f"[bold cyan]Channel {channel_name} has {len(history)} messages[/]")
+            
+            return tab_id
+        except Exception as e:
+            print(f"Error creating squad channel: {e}")
+            return None
+    
+    async def update_squad_channels(self):
+        """Update squad channels based on active tasks."""
+        if not self.agent_coordinator:
+            return
+        
+        # Get active agents
+        active_agents = self.agent_coordinator.get_active_agents()
+        active_channels = set()
+        
+        # Create channels for active agents
+        for task_id, agent_info in active_agents.items():
+            if agent_info.get("status") == "active":
+                channel_name = agent_info.get("channel")
+                if channel_name:
+                    agent_type = agent_info.get("agent_type", "unknown")
+                    tab_id = await self.create_squad_channel(task_id, agent_type)
+                    if tab_id:
+                        active_channels.add(channel_name)
+        
+        # Also check tasks for agent assignments
+        tasks = self.state_manager.get_task_checklist()
+        for task in tasks:
+            agent_info = task.get("agent")
+            if agent_info and agent_info.get("status") == "active":
+                task_id = task.get("id")
+                agent_type = agent_info.get("type", "unknown")
+                channel_name = agent_info.get("channel")
+                if channel_name and channel_name not in self.squad_channels:
+                    await self.create_squad_channel(task_id, agent_type)
+    
+    async def handle_agent_output(self, channel: str, content: str, role: str = "assistant"):
+        """Handle agent output and display in appropriate channel."""
+        # Update state
+        self.state_manager.add_chat_message(channel, role, content)
+        await self.state_manager.save_state()
+        
+        # Display in UI
+        try:
+            if channel == "main":
+                log = self.query_one("#log-main", RichLog)
+                if role == "user":
+                    log.write(f"[bold blue]User:[/] {content}")
+                else:
+                    log.write(f"[bold green]Assistant:[/] {content}")
+            else:
+                # Display in main log with channel prefix for now
+                # Full implementation would use dynamic TabPane
+                log = self.query_one("#log-main", RichLog)
+                agent_type = channel.split("-")[-1] if "-" in channel else "agent"
+                if role == "user":
+                    log.write(f"[bold blue][{channel}] User:[/] {content}")
+                else:
+                    log.write(f"[bold green][{channel}] {agent_type.title()}:[/] {content}")
+        except Exception as e:
+            print(f"Error displaying agent output: {e}")
 
     async def on_unmount(self) -> None:
         """Cleanup on app exit."""
