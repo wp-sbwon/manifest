@@ -31,6 +31,10 @@ class OMOCBridge:
         self.config_manager = config_manager
         self.working_dir = working_dir or Path.cwd()
         
+        # Lazy import to avoid circular dependencies
+        from manifest.agents.resource_monitor import ResourceMonitor
+        from manifest.agents.watchdog import AgentWatchdog
+        
         # Resource monitor
         try:
             import docker
