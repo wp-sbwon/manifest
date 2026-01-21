@@ -12,6 +12,7 @@ from manifest.omoc.router.terminal_router import TerminalRouter
 from manifest.omoc.agent.orchestrator import Orchestrator
 from manifest.omoc.agent.manager import AgentManager
 from manifest.omoc.agent.executor import AgentExecutor
+from manifest.agents.watchdog import AgentWatchdog
 
 
 class OMOCBridge:
@@ -30,8 +31,23 @@ class OMOCBridge:
         self.config_manager = config_manager
         self.working_dir = working_dir or Path.cwd()
         
-        # Terminal router for command execution
-        self.terminal_router = TerminalRouter(self.working_dir)
+        # Resource monitor
+        try:
+            import docker
+            docker_client = docker.from_env()
+            self.resource_monitor = ResourceMonitor(docker_client)
+        except Exception:
+            self.resource_monitor = ResourceMonitor(None)
+        
+        # Watchdog for monitoring
+        self.watchdog = AgentWatchdog(state_manager, None, check_interval=5.0)
+        self.watchdog.set_resource_monitor(self.resource_monitor)
+        
+        # Terminal router for command execution (with watchdog)
+        self.terminal_router = TerminalRouter(self.working_dir, watchdog=self.watchdog)
+        
+        # Update watchdog's terminal router reference
+        self.watchdog.terminal_router = self.terminal_router
         
         # Agent executor for LLM calls
         self.executor = AgentExecutor(config_manager or ConfigManager(), state_manager) if config_manager else None
@@ -50,8 +66,9 @@ class OMOCBridge:
         Loads state and initializes OMOC agent system.
         """
         try:
-            # Initialize terminal router
-            self.terminal_router = TerminalRouter(self.working_dir)
+            # Initialize terminal router (already done in __init__)
+            # Start watchdog
+            await self.watchdog.start()
             
             # OMOC agent system is already initialized in __init__
             
@@ -66,6 +83,9 @@ class OMOCBridge:
         """Stop OMOC integration and clean up resources."""
         self.is_connected = False
         
+        # Stop watchdog
+        await self.watchdog.stop()
+        
         # Cancel all active commands
         for command_id in list(self.terminal_router.active_commands.keys()):
             self.terminal_router.cancel_command(command_id)
@@ -73,7 +93,7 @@ class OMOCBridge:
         # Stop all active agents
         for task_id in list(self._active_agents.keys()):
             await self.stop_agent(task_id)
-        
+            
         # TODO: Clean up OMOC agent system when integrated
         # if self.agent_manager:
         #     await self.agent_manager.shutdown()
