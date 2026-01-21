@@ -50,7 +50,7 @@ class AgentWatchdog:
         self._alert_callbacks: List[Callable] = []
         
         # Resource monitor
-        self.resource_monitor: Optional[ResourceMonitor] = None
+        self.resource_monitor: Optional["ResourceMonitor"] = None
     
     async def start(self):
         """Start watchdog monitoring."""
@@ -232,7 +232,7 @@ class AgentWatchdog:
             }
             await self._raise_alert(alert)
     
-    def set_resource_monitor(self, resource_monitor: ResourceMonitor):
+    def set_resource_monitor(self, resource_monitor: "ResourceMonitor"):
         """Set resource monitor instance."""
         self.resource_monitor = resource_monitor
     
