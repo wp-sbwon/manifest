@@ -16,5 +16,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Set PYTHONPATH to include src/ for src layout
+ENV PYTHONPATH=/app/src
+
 # Default command
-CMD ["python", "test.py"]
+CMD ["python", "-m", "manifest"]

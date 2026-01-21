@@ -1,3 +1,24 @@
+# Manifest
+
+**AI-Native Orchestration IDE** - Solve Code Blindness by elevating developers to Conductors.
+
+## Documentation
+
+All documentation is located in the [`docs/`](docs/) directory. See [docs/README.md](docs/README.md) for the complete documentation index.
+
+**Quick Links:**
+- [User Guide](docs/USER_GUIDE.md) - How to use Manifest
+- [API Documentation](docs/API.md) - API reference
+- [Module Documentation](docs/MODULES.md) - Detailed module docs
+- [Architecture](docs/ARCHITECTURE.md) - System architecture
+- [Development Setup](docs/DEV_SETUP.md) - Setup instructions
+- [Contributing](docs/CONTRIBUTING.md) - Contribution guidelines
+- [Refactoring Notes](docs/REFACTORING.md) - Project refactoring history
+
+## Quick Start
+
+See [DEV_SETUP.md](docs/DEV_SETUP.md) for detailed setup instructions.
+
 # Manifest Development Environment
 
 This document provides an overview of the development environment setup for the Manifest project.
@@ -24,7 +45,12 @@ This document provides an overview of the development environment setup for the 
 
 3. **Run the application:**
    ```bash
-   python test.py
+   PYTHONPATH=src python -m manifest
+   ```
+   또는 개발 환경에서:
+   ```bash
+   export PYTHONPATH=src
+   python -m manifest
    ```
 
 4. **Deactivate when done:**
@@ -58,13 +84,22 @@ This document provides an overview of the development environment setup for the 
 
 ```
 manifest/
-├── venv/                 # Python virtual environment (gitignored)
-├── test.py              # Main application file
-├── requirements.txt     # Python dependencies
+├── src/
+│   └── manifest/       # Main package (src layout)
+│       ├── core/       # Core modules (config, state_manager)
+│       ├── ui/         # UI modules (app, widgets, bootstrap_ui)
+│       ├── agents/     # Agent modules (coordinator, context_provider, task_scoper)
+│       ├── bridge/     # Bridge modules (omoc_bridge)
+│       └── audit/      # Audit modules (drift_auditor)
+├── tests/              # Test files
+├── docs/               # Documentation files
+├── scripts/            # Setup and utility scripts
+├── .manifest/          # Application data and configuration
+├── venv/               # Python virtual environment (gitignored)
+├── requirements.txt    # Python dependencies
+├── pytest.ini          # Pytest configuration
 ├── Dockerfile          # Docker image configuration
 ├── docker-compose.yml  # Docker Compose configuration
-├── setup.sh            # Python environment setup script
-├── setup-docker.sh     # Docker environment setup script
 └── README.md           # This file
 ```
 
@@ -92,7 +127,7 @@ See `requirements.txt` for the complete list.
 
 3. Run tests or the application:
    ```bash
-   python test.py
+   python -m manifest
    ```
 
 ### Using Docker

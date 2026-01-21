@@ -11,15 +11,17 @@ from textual.widgets import Header, Footer, Tree, Input, RichLog, TabbedContent,
 from textual import on, work
 from textual.binding import Binding
 
-from config import get_config_manager
-from state_manager import StateManager
-from omoc_bridge import OMOCBridge
-from drift_auditor import DriftAuditor
-from widgets import RequirementMap, ArchitectureGraph, FeatureTree, TaskTree, GateController
-from bootstrap_ui import run_bootstrap
-from task_scoper import TaskScoper
-from context_provider import ContextProvider
-from agent_coordinator import AgentCoordinator
+from manifest.core.config import get_config_manager
+from manifest.core.state_manager import StateManager
+from manifest.bridge.omoc_bridge import OMOCBridge
+from manifest.audit.drift_auditor import DriftAuditor
+from manifest.audit.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
+from manifest.audit.blueprint_comparator import BlueprintComparator
+from manifest.ui.widgets import RequirementMap, ArchitectureGraph, FeatureTree, TaskTree, GateController
+from manifest.ui.bootstrap_ui import run_bootstrap
+from manifest.agents.task_scoper import TaskScoper
+from manifest.agents.context_provider import ContextProvider
+from manifest.agents.agent_coordinator import AgentCoordinator
 
 try:
     import git
@@ -163,6 +165,8 @@ class ManifestApp(App):
         self.state_manager = StateManager()
         self.omoc_bridge: Optional[OMOCBridge] = None
         self.drift_auditor = DriftAuditor()
+        self.blueprint_synchronizer = BlueprintSynchronizer()
+        self.blueprint_comparator = BlueprintComparator()
         self.manifest_dir = Path(".manifest")
         self.intent_data = {}
         self.blueprint_data = {}
@@ -527,10 +531,37 @@ class ManifestApp(App):
 
     async def audit_drift(self):
         """Run drift audit and update inspector."""
-        conflicts = self.drift_auditor.audit_project()
-        if conflicts:
+        # Generate bottom-up blueprint from code
+        bottom_up_blueprint = self.drift_auditor.generate_bottom_up_blueprint(Path("src"))
+        
+        # Load top-down blueprint
+        top_down_blueprint = self._load_blueprint_sync()
+        
+        # Compare blueprints
+        blueprint_conflicts = self.blueprint_comparator.compare_blueprints(
+            top_down_blueprint,
+            bottom_up_blueprint
+        )
+        
+        # Also run traditional drift audit
+        drift_conflicts = self.drift_auditor.audit_project()
+        
+        # Combine conflicts for display
+        from manifest.audit.drift_auditor import DriftConflict as DriftConflictClass
+        all_conflicts = drift_conflicts + [
+            # Convert BlueprintConflict to DriftConflict for display
+            DriftConflictClass(
+                severity=bc.severity,
+                message=bc.message,
+                node_id=bc.component_id,
+                file_path=bc.file_path
+            )
+            for bc in blueprint_conflicts
+        ]
+        
+        if all_conflicts:
             drift_log = self.query_one("#drift-log", RichLog)
-            grouped = self.drift_auditor.get_conflicts_by_severity(conflicts)
+            grouped = self.drift_auditor.get_conflicts_by_severity(all_conflicts)
             
             for severity, conflict_list in grouped.items():
                 if conflict_list:
@@ -539,8 +570,18 @@ class ManifestApp(App):
                     for conflict in conflict_list[:10]:  # Show first 10
                         drift_log.write(f"  • {conflict.message}")
         
+        # Check for blueprint mismatches and trigger workflow if needed
+        if blueprint_conflicts:
+            mismatch_report = self.blueprint_synchronizer.detect_mismatch(
+                top_down_blueprint,
+                bottom_up_blueprint
+            )
+            if mismatch_report:
+                # Trigger conflict workflow (will be handled by agent coordinator)
+                await self.handle_blueprint_conflict(mismatch_report)
+        
         # Show drift mode if there are conflicts
-        if conflicts:
+        if all_conflicts:
             visual_pane = self.query_one("#insp-visual")
             data_pane = self.query_one("#insp-data")
             drift_pane = self.query_one("#insp-drift")
@@ -679,6 +720,20 @@ class ManifestApp(App):
                             log.write("[bold yellow]Agent coordinator not available.[/]")
                     else:
                         log.write("[bold yellow]Usage: /stop_agent <task_id>[/]")
+                elif command.startswith("sync_blueprints"):
+                    log.write("[bold green]Synchronizing blueprints...[/]")
+                    await self.sync_blueprints()
+                    log.write("[bold green]Blueprint sync complete.[/]")
+                elif command.startswith("resolve_conflict"):
+                    # Format: /resolve_conflict <conflict_id> <action>
+                    parts = user_input.split()
+                    if len(parts) >= 3:
+                        conflict_id = parts[2]
+                        action = parts[3] if len(parts) > 3 else "approved"
+                        await self.resolve_conflict(conflict_id, action)
+                        log.write(f"[bold green]Conflict {conflict_id} {action}.[/]")
+                    else:
+                        log.write("[bold red]Usage: /resolve_conflict <conflict_id> <approved|rejected>[/]")
                 else:
                     log.write(f"[bold yellow]Unknown command: {command}[/]")
             else:

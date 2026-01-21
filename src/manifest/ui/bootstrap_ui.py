@@ -5,7 +5,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical, Horizontal
 from textual.widgets import Header, Footer, Input, Button, Label, Static
 from textual import on
-from config import get_config_manager
+from manifest.core.config import get_config_manager
 import asyncio
 
 
