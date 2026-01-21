@@ -27,7 +27,9 @@ def state_manager(temp_dir):
 @pytest.fixture
 def omoc_bridge(state_manager):
     """Create an OMOCBridge instance."""
-    return OMOCBridge(state_manager)  # No longer uses omoc_path
+    from manifest.core.config import ConfigManager
+    config_manager = ConfigManager()
+    return OMOCBridge(state_manager, config_manager=config_manager)
 
 
 def test_omoc_bridge_initialization(omoc_bridge):
