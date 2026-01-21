@@ -14,14 +14,43 @@ from manifest.core.state_manager import StateManager
 @pytest.fixture
 def mock_components():
     """Create mock components for testing."""
+    # Mock terminal router
+    terminal_router = Mock()
+    terminal_router.active_commands = {}
+    terminal_router.execute_command = AsyncMock(return_value={"returncode": 0, "stdout": "", "stderr": ""})
+    
+    # Mock container manager
+    container_manager = Mock()
+    container_manager.is_docker_available = Mock(return_value=False)
+    container_manager.start_agent_container = AsyncMock(return_value=None)
+    container_manager.stop_agent_container = AsyncMock(return_value=False)
+    container_manager.get_container_status = AsyncMock(return_value=None)
+    
+    # Mock orchestrator and agent manager
+    orchestrator = Mock()
+    orchestrator.start_mission = AsyncMock(return_value=True)
+    
+    agent_manager = Mock()
+    agent_manager.create_agent = AsyncMock(return_value={"id": "task-1", "type": "sisyphus", "status": "created"})
+    agent_manager.start_agent = AsyncMock(return_value=True)
+    agent_manager.stop_agent = AsyncMock(return_value=True)
+    agent_manager.get_agent = Mock(return_value={"id": "task-1", "type": "sisyphus", "status": "active"})
+    
     omoc_bridge = Mock(spec=OMOCBridge)
+    omoc_bridge.terminal_router = terminal_router
+    omoc_bridge.orchestrator = orchestrator
+    omoc_bridge.agent_manager = agent_manager
     omoc_bridge.start_agent_mission = AsyncMock(return_value=True)
     omoc_bridge.stop_agent = AsyncMock(return_value=True)
     omoc_bridge.get_agent_status = AsyncMock(return_value={"status": "active", "data": {}})
     
     context_provider = Mock(spec=ContextProvider)
     context_provider.get_orchestrator_context = Mock(return_value={"tier": "orchestrator"})
-    context_provider.get_worker_context = Mock(return_value={"tier": "worker", "task_id": "task-1"})
+    context_provider.get_worker_context = Mock(return_value={
+        "tier": "worker",
+        "task_id": "task-1",
+        "task_scope": {"components": [], "allowed_files": []}
+    })
     
     task_scoper = Mock(spec=TaskScoper)
     task_scoper.get_task_context = Mock(return_value={"components": [], "files": []})
@@ -34,6 +63,8 @@ def mock_components():
     state_manager.set_task_checklist = Mock()
     state_manager.set_last_action = Mock()
     state_manager.save_state = AsyncMock(return_value=True)
+    state_manager.get_chat_history = Mock(return_value=[])
+    state_manager.add_chat_message = Mock()
     
     return {
         "omoc_bridge": omoc_bridge,
