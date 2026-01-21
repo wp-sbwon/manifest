@@ -299,6 +299,74 @@ Manages task scope and file boundaries.
 
 ## Bridge Modules
 
+### `manifest.omoc`
+
+OMOC (Oh My Open Code) integration modules.
+
+#### `manifest.omoc.router.terminal_router`
+
+**Location**: `src/manifest/omoc/router/terminal_router.py`
+
+**Purpose**: OpenCode router for terminal command execution.
+
+##### `TerminalRouter`
+
+Routes terminal commands through OpenCode router system.
+
+**Methods**:
+- `execute_command(command, args, timeout, stream)`: Execute a terminal command
+- `stream_command_output(command, args)`: Stream command output line by line
+- `cancel_command(command_id)`: Cancel a running command
+- `is_command_running(command_id)`: Check if a command is running
+
+#### `manifest.omoc.agent`
+
+OMOC agent system integration.
+
+##### `Orchestrator`
+
+**Location**: `src/manifest/omoc/agent/orchestrator.py`
+
+Agent orchestration system from OMOC.
+
+**Methods**:
+- `start_mission(task_id, mission_description)`: Start a new mission
+- `stop_mission(task_id)`: Stop a mission
+- `get_mission_status(task_id)`: Get mission status
+
+##### `AgentManager`
+
+**Location**: `src/manifest/omoc/agent/manager.py`
+
+Manages agent lifecycle from OMOC.
+
+**Methods**:
+- `create_agent(agent_type, context, model_config, task_id)`: Create a new agent
+- `start_agent(agent_id)`: Start an agent
+- `stop_agent(agent_id)`: Stop an agent
+- `get_agent(agent_id)`: Get agent information
+- `list_agents()`: List all agent IDs
+- `shutdown()`: Shutdown all agents
+
+### `manifest.agents.container_manager`
+
+**Location**: `src/manifest/agents/container_manager.py`
+
+**Purpose**: Manages Docker containers for Agent Squad execution.
+
+##### `ContainerManager`
+
+Manages Docker containers for agent execution with lifecycle management, monitoring, and logging.
+
+**Methods**:
+- `start_agent_container(task_id, agent_type, environment, volumes, network)`: Start an agent container
+- `stop_agent_container(task_id)`: Stop an agent container
+- `get_container_status(task_id)`: Get container status
+- `get_container_logs(task_id, tail, follow)`: Get container logs
+- `list_active_containers()`: List all active container task IDs
+- `cleanup_all()`: Stop and remove all managed containers
+- `is_docker_available()`: Check if Docker is available
+
 ### `manifest.bridge.omoc_bridge`
 
 **Location**: `src/manifest/bridge/omoc_bridge.py`

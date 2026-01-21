@@ -1,11 +1,13 @@
 """
 Agent Coordinator - Coordinates agents through OMOC with task boundaries.
 Manages orchestrator and worker agent lifecycle with proper scoping.
+Supports both direct execution and Docker container execution.
 """
 from typing import Dict, Any, Optional
 from manifest.bridge.omoc_bridge import OMOCBridge
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.task_scoper import TaskScoper
+from manifest.agents.container_manager import ContainerManager
 from manifest.core.config import ConfigManager
 from manifest.core.state_manager import StateManager
 
@@ -62,9 +64,17 @@ class AgentCoordinator:
     async def start_worker_agent(
         self,
         task_id: str,
-        agent_type: str
+        agent_type: str,
+        use_container: Optional[bool] = None
     ) -> bool:
-        """Start worker agent with task scope."""
+        """
+        Start worker agent with task scope.
+        
+        Args:
+            task_id: Task identifier
+            agent_type: Type of agent (prometheus, sisyphus, test, review)
+            use_container: Whether to use Docker container (None = auto-detect)
+        """
         # Validate task exists
         tasks = self.state_manager.get_task_checklist()
         task = next((t for t in tasks if t.get("id") == task_id), None)
@@ -83,7 +93,55 @@ class AgentCoordinator:
         # Get model config for agent type
         model_config = self.config_manager.get_agent_model_config(agent_type)
         
-        # Start via OMOC bridge
+        # Determine execution mode
+        should_use_container = use_container if use_container is not None else self.use_containers
+        
+        if should_use_container and self.container_manager.is_docker_available():
+            # Start agent in Docker container
+            container_id = await self.container_manager.start_agent_container(
+                task_id=task_id,
+                agent_type=agent_type,
+                environment={
+                    "TASK_ID": task_id,
+                    "AGENT_TYPE": agent_type,
+                    **{f"CONTEXT_{k.upper()}": str(v) for k, v in context.items()}
+                }
+            )
+            
+            if container_id:
+                channel = f"squad-{task_id}-{agent_type}"
+                self.active_agents[task_id] = {
+                    "agent_type": agent_type,
+                    "status": "active",
+                    "channel": channel,
+                    "container_id": container_id,
+                    "execution_mode": "container"
+                }
+                
+                # Update task with agent info
+                task["agent"] = {
+                    "type": agent_type,
+                    "status": "active",
+                    "channel": channel,
+                    "container_id": container_id
+                }
+                
+                # Update task scope in state
+                task["scope"] = {
+                    "components": task_scope.get("components", []),
+                    "files": task_scope.get("allowed_files", []),
+                    "allowed_modifications": task_scope.get("allowed_modifications", [])
+                }
+                
+                self.state_manager.set_task_checklist(tasks)
+                self.state_manager.set_last_action(f"Started {agent_type} agent in container for task {task_id}")
+                await self.state_manager.save_state()
+                return True
+            else:
+                # Fall back to direct execution if container fails
+                print(f"Failed to start container, falling back to direct execution")
+        
+        # Start via OMOC bridge (direct execution)
         success = await self.omoc_bridge.start_agent_mission(
             task_id=task_id,
             agent_type=agent_type,
@@ -96,7 +154,8 @@ class AgentCoordinator:
             self.active_agents[task_id] = {
                 "agent_type": agent_type,
                 "status": "active",
-                "channel": channel
+                "channel": channel,
+                "execution_mode": "direct"
             }
             
             # Update task with agent info
@@ -124,7 +183,17 @@ class AgentCoordinator:
         if task_id not in self.active_agents:
             return False
         
-        success = await self.omoc_bridge.stop_agent(task_id)
+        agent_info = self.active_agents[task_id]
+        execution_mode = agent_info.get("execution_mode", "direct")
+        
+        success = False
+        
+        if execution_mode == "container":
+            # Stop container
+            success = await self.container_manager.stop_agent_container(task_id)
+        else:
+            # Stop via OMOC bridge
+            success = await self.omoc_bridge.stop_agent(task_id)
         
         if success:
             # Update task status
@@ -145,8 +214,32 @@ class AgentCoordinator:
         if task_id not in self.active_agents:
             return {"status": "not_active", "data": {}}
         
-        status = await self.omoc_bridge.get_agent_status(task_id)
-        return status
+        agent_info = self.active_agents[task_id]
+        execution_mode = agent_info.get("execution_mode", "direct")
+        
+        if execution_mode == "container":
+            # Get container status
+            container_status = await self.container_manager.get_container_status(task_id)
+            if container_status:
+                return {
+                    "status": container_status.get("status", "unknown"),
+                    "data": {
+                        "execution_mode": "container",
+                        "container_id": container_status.get("container_id"),
+                        "cpu_usage": container_status.get("cpu_usage"),
+                        "memory_usage": container_status.get("memory_usage"),
+                        "memory_limit": container_status.get("memory_limit"),
+                        **container_status.get("metadata", {})
+                    }
+                }
+            else:
+                return {"status": "not_active", "data": {}}
+        else:
+            # Get status via OMOC bridge
+            status = await self.omoc_bridge.get_agent_status(task_id)
+            if status:
+                status["data"]["execution_mode"] = "direct"
+            return status
     
     def get_active_agents(self) -> Dict[str, Dict[str, Any]]:
         """Get all active agents."""

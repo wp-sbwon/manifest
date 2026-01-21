@@ -1,94 +1,71 @@
 """
-OMOC Bridge - IPC engine for communicating with Oh My Open Code.
-Handles state persistence, message protocol, and agent coordination.
+OMOC Bridge - Direct integration with OMOC (Oh My Open Code).
+Integrates OMOC agent system and terminal router directly instead of IPC.
 """
 import asyncio
 import json
-import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Awaitable
 from manifest.core.state_manager import StateManager
+from manifest.omoc.router.terminal_router import TerminalRouter
+from manifest.omoc.agent.orchestrator import Orchestrator
+from manifest.omoc.agent.manager import AgentManager
 
 
 class OMOCBridge:
-    """IPC bridge to OMOC process via standard I/O pipes."""
+    """
+    Direct integration bridge to OMOC functionality.
+    Uses OMOC code directly instead of IPC communication.
+    """
     
-    def __init__(self, state_manager: StateManager, omoc_path: Optional[str] = None):
+    def __init__(self, state_manager: StateManager, working_dir: Optional[Path] = None):
         self.state_manager = state_manager
-        self.omoc_path = omoc_path or "omoc"  # Default to 'omoc' command
-        self.process: Optional[subprocess.Popen] = None
-        self.reader_task: Optional[asyncio.Task] = None
-        self.message_queue: asyncio.Queue = asyncio.Queue()
-        self.response_callbacks: Dict[str, Callable[[Dict[str, Any]], Awaitable[None]]] = {}
+        self.working_dir = working_dir or Path.cwd()
+        
+        # Terminal router for command execution
+        self.terminal_router = TerminalRouter(self.working_dir)
+        
+        # OMOC Agent system
+        self.orchestrator = Orchestrator(state_manager)
+        self.agent_manager = AgentManager(state_manager)
+        
         self.is_connected = False
         self._message_id_counter = 0
-        self._standalone_mode = False  # True when OMOC is not available, use simulation
+        self._active_agents: Dict[str, Dict[str, Any]] = {}  # task_id -> agent info
     
     async def start(self) -> bool:
-        """Start the OMOC process and establish IPC connection."""
-        # Check if OMOC is available
-        if not self.is_omoc_available():
-            # Fall back to standalone mode (simulated OMOC)
-            self.is_connected = True
-            self._standalone_mode = True
-            # Load state
-            state = self.state_manager.get_state()
-            # In standalone mode, we'll simulate agent responses
-            return True
-        
+        """
+        Initialize OMOC integration.
+        Loads state and initializes OMOC agent system.
+        """
         try:
-            # Start OMOC process with pipes
-            self.process = subprocess.Popen(
-                [self.omoc_path],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1
-            )
+            # Initialize terminal router
+            self.terminal_router = TerminalRouter(self.working_dir)
             
-            # Start reader task
-            self.reader_task = asyncio.create_task(self._read_messages())
+            # OMOC agent system is already initialized in __init__
+            
             self.is_connected = True
-            self._standalone_mode = False
-            
-            # Load state and send to OMOC
-            state = self.state_manager.get_state()
-            await self.send_message({
-                "type": "init",
-                "payload": {"state": state}
-            })
-            
             return True
         except Exception as e:
-            print(f"Error starting OMOC: {e}")
-            # Fall back to standalone mode
-            self.is_connected = True
-            self._standalone_mode = True
-            return True
+            print(f"Error initializing OMOC: {e}")
+            self.is_connected = False
+            return False
     
     async def stop(self):
-        """Stop the OMOC process."""
+        """Stop OMOC integration and clean up resources."""
         self.is_connected = False
         
-        # If in standalone mode, nothing to stop
-        if self._standalone_mode:
-            return
+        # Cancel all active commands
+        for command_id in list(self.terminal_router.active_commands.keys()):
+            self.terminal_router.cancel_command(command_id)
         
-        if self.reader_task:
-            self.reader_task.cancel()
-            try:
-                await self.reader_task
-            except asyncio.CancelledError:
-                pass
+        # Stop all active agents
+        for task_id in list(self._active_agents.keys()):
+            await self.stop_agent(task_id)
         
-        if self.process:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-            self.process = None
+        # TODO: Clean up OMOC agent system when integrated
+        # if self.agent_manager:
+        #     await self.agent_manager.shutdown()
     
     async def _read_messages(self):
         """Continuously read messages from OMOC stdout."""
@@ -278,42 +255,31 @@ class OMOCBridge:
         return result["success"]
     
     async def get_agent_status(self, task_id: str) -> Dict[str, Any]:
-        """Get status of agent working on task."""
-        # If in standalone mode, return simulated status
-        if self._standalone_mode:
-            # Check if there's chat history for this task
-            channel = None
-            for ch in self.state_manager.get_chat_history("main"):
-                if task_id in str(ch.get("content", "")):
-                    channel = f"squad-{task_id}"
-                    break
-            
-            if channel:
-                history = self.state_manager.get_chat_history(channel)
-                return {
-                    "status": "active",
-                    "data": {
-                        "task_id": task_id,
-                        "message_count": len(history),
-                        "mode": "standalone"
-                    }
-                }
+        """
+        Get status of agent working on task.
+        
+        Args:
+            task_id: Task identifier
+        """
+        agent_info = self.agent_manager.get_agent(task_id)
+        
+        if not agent_info:
             return {"status": "not_active", "data": {}}
         
-        result = {"status": "unknown", "data": {}}
+        # Get channel info from active agents
+        active_info = self._active_agents.get(task_id, {})
+        channel = active_info.get("channel", f"squad-{task_id}")
+        history = self.state_manager.get_chat_history(channel)
         
-        async def callback(response: Dict[str, Any]):
-            result["status"] = response.get("status", "unknown")
-            result["data"] = response.get("data", {})
-        
-        await self.send_message({
-            "type": "agent_status",
-            "command": "get_agent_status",
-            "payload": {"task_id": task_id}
-        }, callback)
-        
-        await asyncio.sleep(0.1)
-        return result
+        return {
+            "status": agent_info.get("status", "unknown"),
+            "data": {
+                "task_id": task_id,
+                "agent_type": agent_info.get("type"),
+                "message_count": len(history),
+                "channel": channel
+            }
+        }
     
     async def stop_agent(self, task_id: str) -> bool:
         """Stop agent working on task."""

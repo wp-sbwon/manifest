@@ -42,6 +42,61 @@ deactivate
 
 ## Docker Setup
 
+### Docker Installation
+
+Docker is required for running agents in isolated containers. Install Docker Desktop or Docker Engine:
+
+- **macOS**: Download [Docker Desktop](https://www.docker.com/products/docker-desktop)
+- **Linux**: Follow [Docker Engine installation guide](https://docs.docker.com/engine/install/)
+- **Windows**: Download [Docker Desktop](https://www.docker.com/products/docker-desktop)
+
+Verify Docker installation:
+```bash
+docker --version
+docker-compose --version
+```
+
+### Building Agent Images
+
+Build the agent Docker image:
+```bash
+docker build -f Dockerfile.agent -t manifest-agent:latest .
+```
+
+### Running with Docker Compose
+
+Start the main application and agent services:
+```bash
+docker-compose up -d
+```
+
+This will start:
+- `manifest-app`: Main Manifest application
+- `agent-prometheus`: Prometheus (planner) agent container
+- `agent-sisyphus`: Sisyphus (coder) agent container
+- `agent-test`: Test agent container
+- `agent-review`: Review agent container
+
+View logs:
+```bash
+docker-compose logs -f agent-prometheus
+```
+
+Stop all services:
+```bash
+docker-compose down
+```
+
+### Agent Container Management
+
+Agents can run in two modes:
+1. **Container mode**: Each agent runs in its own Docker container (default when Docker is available)
+2. **Direct mode**: Agents run directly in the main process (fallback when Docker is unavailable)
+
+The system automatically detects Docker availability and chooses the appropriate mode.
+
+## Docker Setup (Legacy)
+
 ### Prerequisites
 - Docker Desktop (macOS/Windows) or Docker Engine (Linux)
 
