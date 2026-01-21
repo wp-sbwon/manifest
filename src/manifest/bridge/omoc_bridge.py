@@ -7,9 +7,11 @@ import json
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Awaitable
 from manifest.core.state_manager import StateManager
+from manifest.core.config import ConfigManager
 from manifest.omoc.router.terminal_router import TerminalRouter
 from manifest.omoc.agent.orchestrator import Orchestrator
 from manifest.omoc.agent.manager import AgentManager
+from manifest.omoc.agent.executor import AgentExecutor
 
 
 class OMOCBridge:
@@ -18,16 +20,25 @@ class OMOCBridge:
     Uses OMOC code directly instead of IPC communication.
     """
     
-    def __init__(self, state_manager: StateManager, working_dir: Optional[Path] = None):
+    def __init__(
+        self,
+        state_manager: StateManager,
+        config_manager: Optional[ConfigManager] = None,
+        working_dir: Optional[Path] = None
+    ):
         self.state_manager = state_manager
+        self.config_manager = config_manager
         self.working_dir = working_dir or Path.cwd()
         
         # Terminal router for command execution
         self.terminal_router = TerminalRouter(self.working_dir)
         
+        # Agent executor for LLM calls
+        self.executor = AgentExecutor(config_manager or ConfigManager(), state_manager) if config_manager else None
+        
         # OMOC Agent system
         self.orchestrator = Orchestrator(state_manager)
-        self.agent_manager = AgentManager(state_manager)
+        self.agent_manager = AgentManager(state_manager, executor=self.executor)
         
         self.is_connected = False
         self._message_id_counter = 0

@@ -13,12 +13,17 @@ class AgentManager:
     Uses agent prompt logic from OMOC (Sisyphus, etc.).
     """
     
-    def __init__(self, state_manager: StateManager):
+    def __init__(
+        self,
+        state_manager: StateManager,
+        executor: Optional[AgentExecutor] = None
+    ):
         """
         Initialize agent manager.
         
         Args:
             state_manager: State manager for persistence
+            executor: Optional agent executor (creates one if not provided)
         """
         self.state_manager = state_manager
         self.agents: Dict[str, Any] = {}  # agent_id -> agent instance
@@ -28,6 +33,7 @@ class AgentManager:
             "test": "Test agent",
             "review": "Review agent"
         }
+        self.executor = executor
     
     async def create_agent(
         self,
@@ -53,6 +59,15 @@ class AgentManager:
         # Generate agent prompt based on type
         prompt = self._generate_agent_prompt(agent_type, context, task_id)
         
+        # Create actual agent instance based on type
+        if agent_type == "prometheus" and self.executor:
+            agent_instance = PrometheusAgent(agent_id, self.executor, self.state_manager)
+        elif agent_type == "sisyphus" and self.executor:
+            agent_instance = SisyphusAgent(agent_id, self.executor, self.state_manager)
+        else:
+            # Fallback to dict for other types
+            agent_instance = None
+        
         # Create agent object with OMOC-style structure
         agent = {
             "id": agent_id,
@@ -61,7 +76,8 @@ class AgentManager:
             "model_config": model_config,
             "prompt": prompt,
             "status": "created",
-            "system_prompt": self.agent_prompts.get(agent_type, "")
+            "system_prompt": self.agent_prompts.get(agent_type, ""),
+            "instance": agent_instance  # Actual agent instance
         }
         
         self.agents[agent_id] = agent
