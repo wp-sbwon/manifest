@@ -27,7 +27,7 @@ def state_manager(temp_dir):
 @pytest.fixture
 def omoc_bridge(state_manager):
     """Create an OMOCBridge instance."""
-    return OMOCBridge(state_manager, omoc_path="echo")  # Use echo as mock
+    return OMOCBridge(state_manager)  # No longer uses omoc_path
 
 
 def test_omoc_bridge_initialization(omoc_bridge):

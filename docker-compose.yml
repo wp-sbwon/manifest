@@ -12,3 +12,82 @@ services:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app/src
     command: python -m manifest
+    networks:
+      - manifest-network
+
+  # Agent services - each agent runs in its own container
+  agent-prometheus:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: manifest-agent-prometheus
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
+      - AGENT_TYPE=prometheus
+      - AGENT_MODE=container
+    command: ["python", "-m", "manifest.agents.prometheus"]
+    networks:
+      - manifest-network
+    depends_on:
+      - app
+
+  agent-sisyphus:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: manifest-agent-sisyphus
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
+      - AGENT_TYPE=sisyphus
+      - AGENT_MODE=container
+    command: ["python", "-m", "manifest.agents.sisyphus"]
+    networks:
+      - manifest-network
+    depends_on:
+      - app
+
+  agent-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: manifest-agent-test
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
+      - AGENT_TYPE=test
+      - AGENT_MODE=container
+    command: ["python", "-m", "manifest.agents.test"]
+    networks:
+      - manifest-network
+    depends_on:
+      - app
+
+  agent-review:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: manifest-agent-review
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
+      - AGENT_TYPE=review
+      - AGENT_MODE=container
+    command: ["python", "-m", "manifest.agents.review"]
+    networks:
+      - manifest-network
+    depends_on:
+      - app
+
+networks:
+  manifest-network:
+    driver: bridge
