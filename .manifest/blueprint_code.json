@@ -1,0 +1,3307 @@
+{
+  "version": "1.0",
+  "source": "code_extraction",
+  "zones": {
+    "client": [
+      "comp-manifest.ui.widgets-RequirementMap",
+      "comp-manifest.ui.widgets-ArchitectureGraph",
+      "comp-manifest.ui.widgets-FeatureTree",
+      "comp-manifest.ui.widgets-TaskTree",
+      "comp-manifest.ui.widgets-GateController",
+      "comp-manifest.ui.widgets-Approved",
+      "comp-manifest.ui.widgets-Rejected",
+      "comp-manifest.ui.widgets-FeedbackRequested",
+      "comp-manifest.ui.app-ManifestApp",
+      "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "comp-manifest.ui.bootstrap_ui-run_bootstrap"
+    ],
+    "server": [
+      "comp-manifest.core.state_manager-StateManager",
+      "comp-manifest.core.config-ConfigManager",
+      "comp-manifest.core.config-get_config_manager",
+      "comp-manifest.bridge.omoc_bridge-OMOCBridge"
+    ],
+    "data": [
+      "comp-manifest.agents.task_scoper-TaskScoper",
+      "comp-manifest.agents.context_provider-ContextProvider",
+      "comp-manifest.agents.agent_coordinator-AgentCoordinator",
+      "comp-manifest.audit.code_extractor-Component",
+      "comp-manifest.audit.code_extractor-Contract",
+      "comp-manifest.audit.code_extractor-CodeExtractor",
+      "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "comp-manifest.audit.blueprint_synchronizer-BlueprintSynchronizer",
+      "comp-manifest.audit.drift_auditor-Severity",
+      "comp-manifest.audit.drift_auditor-DriftConflict",
+      "comp-manifest.audit.drift_auditor-DriftAuditor",
+      "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "comp-manifest.audit.blueprint_comparator-BlueprintConflict",
+      "comp-manifest.audit.blueprint_comparator-BlueprintComparator"
+    ]
+  },
+  "components": [
+    {
+      "id": "comp-manifest.ui.widgets-RequirementMap",
+      "name": "RequirementMap",
+      "type": "class",
+      "file": "src/manifest/ui/widgets.py",
+      "line": 12,
+      "module_path": "manifest.ui.widgets",
+      "methods": [
+        "__init__",
+        "render",
+        "update_data"
+      ]
+    },
+    {
+      "id": "comp-manifest.ui.widgets-ArchitectureGraph",
+      "name": "ArchitectureGraph",
+      "type": "class",
+      "file": "src/manifest/ui/widgets.py",
+      "line": 57,
+      "module_path": "manifest.ui.widgets",
+      "methods": [
+        "__init__",
+        "render",
+        "update_data"
+      ]
+    },
+    {
+      "id": "comp-manifest.ui.widgets-FeatureTree",
+      "name": "FeatureTree",
+      "type": "class",
+      "file": "src/manifest/ui/widgets.py",
+      "line": 103,
+      "module_path": "manifest.ui.widgets",
+      "methods": [
+        "__init__",
+        "load_features"
+      ]
+    },
+    {
+      "id": "comp-manifest.ui.widgets-TaskTree",
+      "name": "TaskTree",
+      "type": "class",
+      "file": "src/manifest/ui/widgets.py",
+      "line": 144,
+      "module_path": "manifest.ui.widgets",
+      "methods": [
+        "__init__",
+        "load_tasks",
+        "get_selected_task"
+      ]
+    },
+    {
+      "id": "comp-manifest.ui.widgets-GateController",
+      "name": "GateController",
+      "type": "class",
+      "file": "src/manifest/ui/widgets.py",
+      "line": 199,
+      "module_path": "manifest.ui.widgets",
+      "methods": [
+        "__init__",
+        "compose",
+        "on_approve",
+        "on_reject",
+        "on_feedback"
+      ]
+    },
+    {
+      "id": "comp-manifest.ui.widgets-Approved",
+      "name": "Approved",
+      "type": "class",
+      "file": "src/manifest/ui/widgets.py",
+      "line": 230,
+      "module_path": "manifest.ui.widgets",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "id": "comp-manifest.ui.widgets-Rejected",
+      "name": "Rejected",
+      "type": "class",
+      "file": "src/manifest/ui/widgets.py",
+      "line": 237,
+      "module_path": "manifest.ui.widgets",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "id": "comp-manifest.ui.widgets-FeedbackRequested",
+      "name": "FeedbackRequested",
+      "type": "class",
+      "file": "src/manifest/ui/widgets.py",
+      "line": 244,
+      "module_path": "manifest.ui.widgets",
+      "methods": [
+        "__init__"
+      ]
+    },
+    {
+      "id": "comp-manifest.ui.app-ManifestApp",
+      "name": "ManifestApp",
+      "type": "class",
+      "file": "src/manifest/ui/app.py",
+      "line": 33,
+      "module_path": "manifest.ui.app",
+      "methods": [
+        "__init__",
+        "compose",
+        "action_toggle_inspector",
+        "action_show_history",
+        "action_show_project"
+      ],
+      "attributes": [
+        "CSS",
+        "BINDINGS"
+      ]
+    },
+    {
+      "id": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "name": "BootstrapApp",
+      "type": "class",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "line": 12,
+      "module_path": "manifest.ui.bootstrap_ui",
+      "methods": [
+        "__init__",
+        "compose",
+        "on_mount",
+        "on_skip"
+      ],
+      "attributes": [
+        "CSS",
+        "BINDINGS"
+      ]
+    },
+    {
+      "id": "comp-manifest.ui.bootstrap_ui-run_bootstrap",
+      "name": "run_bootstrap",
+      "type": "function",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "line": 142,
+      "module_path": "manifest.ui.bootstrap_ui"
+    },
+    {
+      "id": "comp-manifest.core.state_manager-StateManager",
+      "name": "StateManager",
+      "type": "class",
+      "file": "src/manifest/core/state_manager.py",
+      "line": 12,
+      "module_path": "manifest.core.state_manager",
+      "methods": [
+        "__init__",
+        "_load_state",
+        "_default_state",
+        "get_state",
+        "get_mission_tree",
+        "get_task_checklist",
+        "get_chat_history",
+        "get_last_action",
+        "set_mission_tree",
+        "set_task_checklist",
+        "add_chat_message",
+        "set_last_action",
+        "save_state_sync",
+        "get_next_action_prompt",
+        "clear_state",
+        "get_state_version"
+      ]
+    },
+    {
+      "id": "comp-manifest.core.config-ConfigManager",
+      "name": "ConfigManager",
+      "type": "class",
+      "file": "src/manifest/core/config.py",
+      "line": 14,
+      "module_path": "manifest.core.config",
+      "methods": [
+        "__init__",
+        "_load_or_create_key",
+        "get_api_keys",
+        "save_api_keys",
+        "has_all_keys",
+        "_load_agent_config",
+        "_default_agent_config",
+        "get_agent_model_config",
+        "set_agent_model_config",
+        "get_default_model_for_agent"
+      ]
+    },
+    {
+      "id": "comp-manifest.core.config-get_config_manager",
+      "name": "get_config_manager",
+      "type": "function",
+      "file": "src/manifest/core/config.py",
+      "line": 273,
+      "module_path": "manifest.core.config"
+    },
+    {
+      "id": "comp-manifest.bridge.omoc_bridge-OMOCBridge",
+      "name": "OMOCBridge",
+      "type": "class",
+      "file": "src/manifest/bridge/omoc_bridge.py",
+      "line": 13,
+      "module_path": "manifest.bridge.omoc_bridge",
+      "methods": [
+        "__init__",
+        "is_omoc_available"
+      ]
+    },
+    {
+      "id": "comp-manifest.agents.task_scoper-TaskScoper",
+      "name": "TaskScoper",
+      "type": "class",
+      "file": "src/manifest/agents/task_scoper.py",
+      "line": 10,
+      "module_path": "manifest.agents.task_scoper",
+      "methods": [
+        "__init__",
+        "_load_data",
+        "get_task_context",
+        "_get_task_components",
+        "_get_task_files",
+        "_get_task_requirements",
+        "_get_allowed_modifications",
+        "validate_task_scope",
+        "get_task_scope_summary"
+      ]
+    },
+    {
+      "id": "comp-manifest.agents.context_provider-ContextProvider",
+      "name": "ContextProvider",
+      "type": "class",
+      "file": "src/manifest/agents/context_provider.py",
+      "line": 15,
+      "module_path": "manifest.agents.context_provider",
+      "methods": [
+        "__init__",
+        "get_orchestrator_context",
+        "get_worker_context",
+        "_load_tier_0",
+        "_load_tier_1",
+        "_load_tier_2_scoped",
+        "_load_tier_3_scoped",
+        "get_context_summary"
+      ]
+    },
+    {
+      "id": "comp-manifest.agents.agent_coordinator-AgentCoordinator",
+      "name": "AgentCoordinator",
+      "type": "class",
+      "file": "src/manifest/agents/agent_coordinator.py",
+      "line": 13,
+      "module_path": "manifest.agents.agent_coordinator",
+      "methods": [
+        "__init__",
+        "get_active_agents",
+        "get_agent_channel"
+      ]
+    },
+    {
+      "id": "comp-manifest.audit.code_extractor-Component",
+      "name": "Component",
+      "type": "class",
+      "file": "src/manifest/audit/code_extractor.py",
+      "line": 14,
+      "module_path": "manifest.audit.code_extractor"
+    },
+    {
+      "id": "comp-manifest.audit.code_extractor-Contract",
+      "name": "Contract",
+      "type": "class",
+      "file": "src/manifest/audit/code_extractor.py",
+      "line": 27,
+      "module_path": "manifest.audit.code_extractor"
+    },
+    {
+      "id": "comp-manifest.audit.code_extractor-CodeExtractor",
+      "name": "CodeExtractor",
+      "type": "class",
+      "file": "src/manifest/audit/code_extractor.py",
+      "line": 36,
+      "module_path": "manifest.audit.code_extractor",
+      "methods": [
+        "__init__",
+        "extract_project_structure",
+        "_find_python_files",
+        "_extract_file_structure",
+        "_identify_entities",
+        "_infer_relationships",
+        "_find_containing_entity",
+        "_find_file_entity",
+        "_generate_blueprint",
+        "save_blueprint"
+      ]
+    },
+    {
+      "id": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "name": "ConflictReport",
+      "type": "class",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "line": 16,
+      "module_path": "manifest.audit.blueprint_synchronizer",
+      "methods": [
+        "to_dict"
+      ]
+    },
+    {
+      "id": "comp-manifest.audit.blueprint_synchronizer-BlueprintSynchronizer",
+      "name": "BlueprintSynchronizer",
+      "type": "class",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "line": 43,
+      "module_path": "manifest.audit.blueprint_synchronizer",
+      "methods": [
+        "__init__",
+        "detect_mismatch",
+        "create_conflict_issue",
+        "save_conflict_report",
+        "load_conflict_report",
+        "resend_to_worker_squad",
+        "request_planner_review",
+        "request_user_approval",
+        "update_conflict_status",
+        "sync_blueprints"
+      ]
+    },
+    {
+      "id": "comp-manifest.audit.drift_auditor-Severity",
+      "name": "Severity",
+      "type": "class",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "line": 14,
+      "module_path": "manifest.audit.drift_auditor",
+      "attributes": [
+        "ERROR",
+        "WARNING",
+        "INFO"
+      ]
+    },
+    {
+      "id": "comp-manifest.audit.drift_auditor-DriftConflict",
+      "name": "DriftConflict",
+      "type": "class",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "line": 21,
+      "module_path": "manifest.audit.drift_auditor",
+      "methods": [
+        "__init__",
+        "to_dict"
+      ]
+    },
+    {
+      "id": "comp-manifest.audit.drift_auditor-DriftAuditor",
+      "name": "DriftAuditor",
+      "type": "class",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "line": 40,
+      "module_path": "manifest.audit.drift_auditor",
+      "methods": [
+        "__init__",
+        "_load_blueprint",
+        "reload_blueprint",
+        "parse_python_file",
+        "find_python_files",
+        "compare_with_blueprint",
+        "audit_project",
+        "get_conflicts_by_severity",
+        "get_conflicts_for_node",
+        "generate_bottom_up_blueprint"
+      ]
+    },
+    {
+      "id": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "name": "ConflictType",
+      "type": "class",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "line": 12,
+      "module_path": "manifest.audit.blueprint_comparator",
+      "attributes": [
+        "MISSING_COMPONENT",
+        "EXTRA_COMPONENT",
+        "METHOD_MISMATCH",
+        "CONTRACT_MISMATCH",
+        "ZONE_MISMATCH",
+        "ATTRIBUTE_MISMATCH"
+      ]
+    },
+    {
+      "id": "comp-manifest.audit.blueprint_comparator-BlueprintConflict",
+      "name": "BlueprintConflict",
+      "type": "class",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "line": 23,
+      "module_path": "manifest.audit.blueprint_comparator",
+      "methods": [
+        "to_dict"
+      ]
+    },
+    {
+      "id": "comp-manifest.audit.blueprint_comparator-BlueprintComparator",
+      "name": "BlueprintComparator",
+      "type": "class",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "line": 46,
+      "module_path": "manifest.audit.blueprint_comparator",
+      "methods": [
+        "compare_blueprints",
+        "compare_components",
+        "_compare_methods",
+        "_compare_attributes",
+        "compare_contracts",
+        "_normalize_contracts",
+        "compare_zones",
+        "get_conflicts_by_severity",
+        "get_conflicts_by_type"
+      ]
+    }
+  ],
+  "contracts": [
+    {
+      "from": "comp-manifest.__main__",
+      "to": "external-manifest.ui.app.ManifestApp",
+      "type": "dependency",
+      "file": "src/manifest/__main__.py",
+      "symbols": [
+        "ManifestApp"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets",
+      "to": "external-textual.on",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "on"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets",
+      "to": "external-textual.on",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "on"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets",
+      "to": "external-textual.on",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "on"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets",
+      "to": "external-textual.containers.Horizontal",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Horizontal"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "comp-manifest.ui.widgets-GateController",
+      "type": "call",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Approved"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "comp-manifest.ui.widgets-GateController",
+      "type": "call",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Rejected"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "comp-manifest.ui.widgets-GateController",
+      "type": "call",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "FeedbackRequested"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets",
+      "to": "external-textual.widgets.Button",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Button"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets",
+      "to": "external-textual.widgets.Button",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Button"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets",
+      "to": "external-textual.widgets.Button",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Button"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-textual.widgets.Tree",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Tree"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-textual.widgets.Button",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Button"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-textual.widgets.Static",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Static"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-textual.containers.Container",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Container"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-textual.containers.Vertical",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Vertical"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-textual.containers.Horizontal",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Horizontal"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-textual.on",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "on"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-textual.message.Message",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Message"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-typing.Dict",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Dict"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-typing.Any",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Any"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-typing.List",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "List"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-typing.Optional",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "Optional"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.widgets-RequirementMap",
+      "to": "external-json",
+      "type": "dependency",
+      "file": "src/manifest/ui/widgets.py",
+      "symbols": [
+        "json"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.on",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "on"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.on",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "on"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.work",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "work"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.on",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "on"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.on",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "on"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "comp-manifest.ui.app-ManifestApp",
+      "type": "call",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "ManifestApp"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.core.config.get_config_manager",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "get_config_manager"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.core.state_manager.StateManager",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "StateManager"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.audit.drift_auditor.DriftAuditor",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "DriftAuditor"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.audit.blueprint_synchronizer.BlueprintSynchronizer",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "BlueprintSynchronizer"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.audit.blueprint_comparator.BlueprintComparator",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "BlueprintComparator"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.agents.task_scoper.TaskScoper",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TaskScoper"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.agents.context_provider.ContextProvider",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "ContextProvider"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Header",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Header"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.Horizontal",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Horizontal"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Footer",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Footer"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.bridge.omoc_bridge.OMOCBridge",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "OMOCBridge"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.agents.agent_coordinator.AgentCoordinator",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "AgentCoordinator"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.Vertical",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Vertical"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.Container",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Container"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.Container",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Container"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.audit.drift_auditor.DriftConflict",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "DriftConflictClass"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.ui.widgets.TaskTree",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TaskTree"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.ui.widgets.GateController",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "GateController"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.Vertical",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Vertical"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.Vertical",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Vertical"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.TabbedContent",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TabbedContent"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Input",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.TabbedContent",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TabbedContent"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.Container",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Container"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.TabPane",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TabPane"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.TabPane",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TabPane"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.TabPane",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TabPane"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.TabPane",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TabPane"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.TabPane",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TabPane"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.TabPane",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TabPane"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.Vertical",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Vertical"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.Vertical",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Vertical"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.Vertical",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Vertical"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.RichLog",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "RichLog"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.VerticalScroll",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "VerticalScroll"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.VerticalScroll",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "VerticalScroll"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.VerticalScroll",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "VerticalScroll"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.VerticalScroll",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "VerticalScroll"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.VerticalScroll",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "VerticalScroll"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.Vertical",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Vertical"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.Vertical",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Vertical"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.containers.Vertical",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Vertical"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.ui.widgets.RequirementMap",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "RequirementMap"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Static",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Static"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.ui.widgets.ArchitectureGraph",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "ArchitectureGraph"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Static",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Static"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.RichLog",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "RichLog"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Static",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Static"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-manifest.ui.widgets.FeatureTree",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "FeatureTree"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Static",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Static"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.RichLog",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "RichLog"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Static",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Static"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Static",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Static"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.RichLog",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "RichLog"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app",
+      "to": "external-textual.widgets.RichLog",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "RichLog"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-asyncio",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "asyncio"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-json",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "json"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-typing.Optional",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Optional"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.app.App",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "App"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.app.ComposeResult",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "ComposeResult"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.containers.Container",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Container"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.containers.Horizontal",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Horizontal"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.containers.Vertical",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Vertical"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.containers.VerticalScroll",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "VerticalScroll"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.containers.Grid",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Grid"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.widgets.Header",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Header"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.widgets.Footer",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Footer"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.widgets.Tree",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Tree"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.widgets.Input",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.widgets.RichLog",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "RichLog"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.widgets.TabbedContent",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TabbedContent"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.widgets.TabPane",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TabPane"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.widgets.Static",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Static"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.on",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "on"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.work",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "work"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-textual.binding.Binding",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "Binding"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.core.config.get_config_manager",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "get_config_manager"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.core.state_manager.StateManager",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "StateManager"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.bridge.omoc_bridge.OMOCBridge",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "OMOCBridge"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.audit.drift_auditor.DriftAuditor",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "DriftAuditor"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.audit.blueprint_synchronizer.BlueprintSynchronizer",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "BlueprintSynchronizer"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.audit.blueprint_synchronizer.ConflictReport",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "ConflictReport"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.audit.blueprint_comparator.BlueprintComparator",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "BlueprintComparator"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.ui.widgets.RequirementMap",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "RequirementMap"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.ui.widgets.ArchitectureGraph",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "ArchitectureGraph"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.ui.widgets.FeatureTree",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "FeatureTree"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.ui.widgets.TaskTree",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TaskTree"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.ui.widgets.GateController",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "GateController"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.ui.bootstrap_ui.run_bootstrap",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "run_bootstrap"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.agents.task_scoper.TaskScoper",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "TaskScoper"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.agents.context_provider.ContextProvider",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "ContextProvider"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.agents.agent_coordinator.AgentCoordinator",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "AgentCoordinator"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-git",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "git"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.app-ManifestApp",
+      "to": "external-manifest.audit.drift_auditor.DriftConflict",
+      "type": "dependency",
+      "file": "src/manifest/ui/app.py",
+      "symbols": [
+        "DriftConflictClass"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.on",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "on"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.on",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "on"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "type": "call",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "BootstrapApp"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-manifest.core.config.get_config_manager",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "get_config_manager"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Header",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Header"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.containers.Container",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Container"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Footer",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Footer"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Input",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Input",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Input",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.containers.Horizontal",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Horizontal"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Button",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Button"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui",
+      "to": "external-textual.widgets.Button",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Button"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-textual.app.App",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "App"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-textual.app.ComposeResult",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "ComposeResult"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-textual.containers.Container",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Container"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-textual.containers.Vertical",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Vertical"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-textual.containers.Horizontal",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Horizontal"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-textual.widgets.Header",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Header"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-textual.widgets.Footer",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Footer"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-textual.widgets.Input",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Input"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-textual.widgets.Button",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Button"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-textual.widgets.Label",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Label"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-textual.widgets.Static",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "Static"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-textual.on",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "on"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-manifest.core.config.get_config_manager",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "get_config_manager"
+      ]
+    },
+    {
+      "from": "comp-manifest.ui.bootstrap_ui-BootstrapApp",
+      "to": "external-asyncio",
+      "type": "dependency",
+      "file": "src/manifest/ui/bootstrap_ui.py",
+      "symbols": [
+        "asyncio"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.state_manager",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/core/state_manager.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.state_manager-StateManager",
+      "to": "external-json",
+      "type": "dependency",
+      "file": "src/manifest/core/state_manager.py",
+      "symbols": [
+        "json"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.state_manager-StateManager",
+      "to": "external-aiofiles",
+      "type": "dependency",
+      "file": "src/manifest/core/state_manager.py",
+      "symbols": [
+        "aiofiles"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.state_manager-StateManager",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/core/state_manager.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.state_manager-StateManager",
+      "to": "external-typing.Dict",
+      "type": "dependency",
+      "file": "src/manifest/core/state_manager.py",
+      "symbols": [
+        "Dict"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.state_manager-StateManager",
+      "to": "external-typing.Any",
+      "type": "dependency",
+      "file": "src/manifest/core/state_manager.py",
+      "symbols": [
+        "Any"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.state_manager-StateManager",
+      "to": "external-typing.Optional",
+      "type": "dependency",
+      "file": "src/manifest/core/state_manager.py",
+      "symbols": [
+        "Optional"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.state_manager-StateManager",
+      "to": "external-datetime.datetime",
+      "type": "dependency",
+      "file": "src/manifest/core/state_manager.py",
+      "symbols": [
+        "datetime"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.config",
+      "to": "external-cryptography.fernet.Fernet",
+      "type": "dependency",
+      "file": "src/manifest/core/config.py",
+      "symbols": [
+        "Fernet"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.config-ConfigManager",
+      "to": "comp-manifest.core.config-ConfigManager",
+      "type": "call",
+      "file": "src/manifest/core/config.py",
+      "symbols": [
+        "ConfigManager"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.config",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/core/config.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.config-ConfigManager",
+      "to": "external-json",
+      "type": "dependency",
+      "file": "src/manifest/core/config.py",
+      "symbols": [
+        "json"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.config-ConfigManager",
+      "to": "external-os",
+      "type": "dependency",
+      "file": "src/manifest/core/config.py",
+      "symbols": [
+        "os"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.config-ConfigManager",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/core/config.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.config-ConfigManager",
+      "to": "external-typing.Optional",
+      "type": "dependency",
+      "file": "src/manifest/core/config.py",
+      "symbols": [
+        "Optional"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.config-ConfigManager",
+      "to": "external-typing.Dict",
+      "type": "dependency",
+      "file": "src/manifest/core/config.py",
+      "symbols": [
+        "Dict"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.config-ConfigManager",
+      "to": "external-typing.Any",
+      "type": "dependency",
+      "file": "src/manifest/core/config.py",
+      "symbols": [
+        "Any"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.config-ConfigManager",
+      "to": "external-cryptography.fernet.Fernet",
+      "type": "dependency",
+      "file": "src/manifest/core/config.py",
+      "symbols": [
+        "Fernet"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.config-ConfigManager",
+      "to": "external-asyncio",
+      "type": "dependency",
+      "file": "src/manifest/core/config.py",
+      "symbols": [
+        "asyncio"
+      ]
+    },
+    {
+      "from": "comp-manifest.core.config-ConfigManager",
+      "to": "external-httpx",
+      "type": "dependency",
+      "file": "src/manifest/core/config.py",
+      "symbols": [
+        "httpx"
+      ]
+    },
+    {
+      "from": "comp-manifest.bridge.omoc_bridge-OMOCBridge",
+      "to": "external-asyncio",
+      "type": "dependency",
+      "file": "src/manifest/bridge/omoc_bridge.py",
+      "symbols": [
+        "asyncio"
+      ]
+    },
+    {
+      "from": "comp-manifest.bridge.omoc_bridge-OMOCBridge",
+      "to": "external-json",
+      "type": "dependency",
+      "file": "src/manifest/bridge/omoc_bridge.py",
+      "symbols": [
+        "json"
+      ]
+    },
+    {
+      "from": "comp-manifest.bridge.omoc_bridge-OMOCBridge",
+      "to": "external-subprocess",
+      "type": "dependency",
+      "file": "src/manifest/bridge/omoc_bridge.py",
+      "symbols": [
+        "subprocess"
+      ]
+    },
+    {
+      "from": "comp-manifest.bridge.omoc_bridge-OMOCBridge",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/bridge/omoc_bridge.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.bridge.omoc_bridge-OMOCBridge",
+      "to": "external-typing.Dict",
+      "type": "dependency",
+      "file": "src/manifest/bridge/omoc_bridge.py",
+      "symbols": [
+        "Dict"
+      ]
+    },
+    {
+      "from": "comp-manifest.bridge.omoc_bridge-OMOCBridge",
+      "to": "external-typing.Any",
+      "type": "dependency",
+      "file": "src/manifest/bridge/omoc_bridge.py",
+      "symbols": [
+        "Any"
+      ]
+    },
+    {
+      "from": "comp-manifest.bridge.omoc_bridge-OMOCBridge",
+      "to": "external-typing.Optional",
+      "type": "dependency",
+      "file": "src/manifest/bridge/omoc_bridge.py",
+      "symbols": [
+        "Optional"
+      ]
+    },
+    {
+      "from": "comp-manifest.bridge.omoc_bridge-OMOCBridge",
+      "to": "external-typing.Callable",
+      "type": "dependency",
+      "file": "src/manifest/bridge/omoc_bridge.py",
+      "symbols": [
+        "Callable"
+      ]
+    },
+    {
+      "from": "comp-manifest.bridge.omoc_bridge-OMOCBridge",
+      "to": "external-typing.Awaitable",
+      "type": "dependency",
+      "file": "src/manifest/bridge/omoc_bridge.py",
+      "symbols": [
+        "Awaitable"
+      ]
+    },
+    {
+      "from": "comp-manifest.bridge.omoc_bridge-OMOCBridge",
+      "to": "external-manifest.core.state_manager.StateManager",
+      "type": "dependency",
+      "file": "src/manifest/bridge/omoc_bridge.py",
+      "symbols": [
+        "StateManager"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.task_scoper",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/agents/task_scoper.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.task_scoper",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/agents/task_scoper.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.task_scoper",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/agents/task_scoper.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.task_scoper",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/agents/task_scoper.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.task_scoper",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/agents/task_scoper.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.task_scoper-TaskScoper",
+      "to": "external-json",
+      "type": "dependency",
+      "file": "src/manifest/agents/task_scoper.py",
+      "symbols": [
+        "json"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.task_scoper-TaskScoper",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/agents/task_scoper.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.task_scoper-TaskScoper",
+      "to": "external-typing.Dict",
+      "type": "dependency",
+      "file": "src/manifest/agents/task_scoper.py",
+      "symbols": [
+        "Dict"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.task_scoper-TaskScoper",
+      "to": "external-typing.Any",
+      "type": "dependency",
+      "file": "src/manifest/agents/task_scoper.py",
+      "symbols": [
+        "Any"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.task_scoper-TaskScoper",
+      "to": "external-typing.List",
+      "type": "dependency",
+      "file": "src/manifest/agents/task_scoper.py",
+      "symbols": [
+        "List"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.task_scoper-TaskScoper",
+      "to": "external-typing.Optional",
+      "type": "dependency",
+      "file": "src/manifest/agents/task_scoper.py",
+      "symbols": [
+        "Optional"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.task_scoper-TaskScoper",
+      "to": "external-typing.Set",
+      "type": "dependency",
+      "file": "src/manifest/agents/task_scoper.py",
+      "symbols": [
+        "Set"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.context_provider",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/agents/context_provider.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.context_provider",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/agents/context_provider.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.context_provider",
+      "to": "external-manifest.agents.task_scoper.TaskScoper",
+      "type": "dependency",
+      "file": "src/manifest/agents/context_provider.py",
+      "symbols": [
+        "TaskScoper"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.context_provider",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/agents/context_provider.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.context_provider-ContextProvider",
+      "to": "external-json",
+      "type": "dependency",
+      "file": "src/manifest/agents/context_provider.py",
+      "symbols": [
+        "json"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.context_provider-ContextProvider",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/agents/context_provider.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.context_provider-ContextProvider",
+      "to": "external-typing.Dict",
+      "type": "dependency",
+      "file": "src/manifest/agents/context_provider.py",
+      "symbols": [
+        "Dict"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.context_provider-ContextProvider",
+      "to": "external-typing.Any",
+      "type": "dependency",
+      "file": "src/manifest/agents/context_provider.py",
+      "symbols": [
+        "Any"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.context_provider-ContextProvider",
+      "to": "external-typing.Optional",
+      "type": "dependency",
+      "file": "src/manifest/agents/context_provider.py",
+      "symbols": [
+        "Optional"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.context_provider-ContextProvider",
+      "to": "external-manifest.agents.task_scoper.TaskScoper",
+      "type": "dependency",
+      "file": "src/manifest/agents/context_provider.py",
+      "symbols": [
+        "TaskScoper"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.agent_coordinator",
+      "to": "external-manifest.audit.blueprint_synchronizer.BlueprintSynchronizer",
+      "type": "dependency",
+      "file": "src/manifest/agents/agent_coordinator.py",
+      "symbols": [
+        "BlueprintSynchronizer"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.agent_coordinator-AgentCoordinator",
+      "to": "external-typing.Dict",
+      "type": "dependency",
+      "file": "src/manifest/agents/agent_coordinator.py",
+      "symbols": [
+        "Dict"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.agent_coordinator-AgentCoordinator",
+      "to": "external-typing.Any",
+      "type": "dependency",
+      "file": "src/manifest/agents/agent_coordinator.py",
+      "symbols": [
+        "Any"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.agent_coordinator-AgentCoordinator",
+      "to": "external-typing.Optional",
+      "type": "dependency",
+      "file": "src/manifest/agents/agent_coordinator.py",
+      "symbols": [
+        "Optional"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.agent_coordinator-AgentCoordinator",
+      "to": "external-manifest.bridge.omoc_bridge.OMOCBridge",
+      "type": "dependency",
+      "file": "src/manifest/agents/agent_coordinator.py",
+      "symbols": [
+        "OMOCBridge"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.agent_coordinator-AgentCoordinator",
+      "to": "external-manifest.agents.context_provider.ContextProvider",
+      "type": "dependency",
+      "file": "src/manifest/agents/agent_coordinator.py",
+      "symbols": [
+        "ContextProvider"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.agent_coordinator-AgentCoordinator",
+      "to": "external-manifest.agents.task_scoper.TaskScoper",
+      "type": "dependency",
+      "file": "src/manifest/agents/agent_coordinator.py",
+      "symbols": [
+        "TaskScoper"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.agent_coordinator-AgentCoordinator",
+      "to": "external-manifest.core.config.ConfigManager",
+      "type": "dependency",
+      "file": "src/manifest/agents/agent_coordinator.py",
+      "symbols": [
+        "ConfigManager"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.agent_coordinator-AgentCoordinator",
+      "to": "external-manifest.core.state_manager.StateManager",
+      "type": "dependency",
+      "file": "src/manifest/agents/agent_coordinator.py",
+      "symbols": [
+        "StateManager"
+      ]
+    },
+    {
+      "from": "comp-manifest.agents.agent_coordinator-AgentCoordinator",
+      "to": "external-manifest.audit.blueprint_synchronizer.BlueprintSynchronizer",
+      "type": "dependency",
+      "file": "src/manifest/agents/agent_coordinator.py",
+      "symbols": [
+        "BlueprintSynchronizer"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor",
+      "to": "external-dataclasses.field",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "field"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor",
+      "to": "external-dataclasses.field",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "field"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor",
+      "to": "external-dataclasses.field",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "field"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "comp-manifest.audit.code_extractor-Component",
+      "type": "call",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Component"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "comp-manifest.audit.code_extractor-Contract",
+      "type": "call",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Contract"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "comp-manifest.audit.code_extractor-Component",
+      "type": "call",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Component"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "comp-manifest.audit.code_extractor-Contract",
+      "type": "call",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Contract"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "comp-manifest.audit.code_extractor-Contract",
+      "type": "call",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Contract"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "comp-manifest.audit.code_extractor-Contract",
+      "type": "call",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Contract"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "comp-manifest.audit.code_extractor-Contract",
+      "type": "call",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Contract"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "comp-manifest.audit.code_extractor-Contract",
+      "type": "call",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Contract"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "external-ast",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "ast"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "external-json",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "json"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "external-typing.Dict",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Dict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "external-typing.Any",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Any"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "external-typing.List",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "List"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "external-typing.Optional",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Optional"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "external-typing.Set",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Set"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "external-typing.Tuple",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "Tuple"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "external-dataclasses.dataclass",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "dataclass"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.code_extractor-Component",
+      "to": "external-dataclasses.field",
+      "type": "dependency",
+      "file": "src/manifest/audit/code_extractor.py",
+      "symbols": [
+        "field"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer",
+      "to": "external-manifest.audit.blueprint_comparator.BlueprintComparator",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "BlueprintComparator"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "type": "call",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "ConflictReport"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "type": "call",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "ConflictReport"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer",
+      "to": "external-manifest.audit.blueprint_comparator.BlueprintConflict",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "BlueprintConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer",
+      "to": "external-manifest.audit.blueprint_comparator.ConflictType",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "ConflictType"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer",
+      "to": "external-manifest.audit.drift_auditor.Severity",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "Severity"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-json",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "json"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-typing.Dict",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "Dict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-typing.Any",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "Any"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-typing.List",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "List"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-typing.Optional",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "Optional"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-datetime.datetime",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "datetime"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-dataclasses.dataclass",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "dataclass"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-dataclasses.field",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "field"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-dataclasses.asdict",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "asdict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-manifest.audit.blueprint_comparator.BlueprintComparator",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "BlueprintComparator"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-manifest.audit.blueprint_comparator.BlueprintConflict",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "BlueprintConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-manifest.audit.blueprint_comparator.ConflictType",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "ConflictType"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_synchronizer-ConflictReport",
+      "to": "external-manifest.audit.drift_auditor.Severity",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_synchronizer.py",
+      "symbols": [
+        "Severity"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor",
+      "to": "external-manifest.audit.code_extractor.CodeExtractor",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "CodeExtractor"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "comp-manifest.audit.drift_auditor-DriftConflict",
+      "type": "call",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "DriftConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "comp-manifest.audit.drift_auditor-DriftConflict",
+      "type": "call",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "DriftConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "comp-manifest.audit.drift_auditor-DriftConflict",
+      "type": "call",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "DriftConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "comp-manifest.audit.drift_auditor-DriftConflict",
+      "type": "call",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "DriftConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "external-json",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "json"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "external-ast",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "ast"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "external-pathlib.Path",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "Path"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "external-typing.Dict",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "Dict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "external-typing.Any",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "Any"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "external-typing.List",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "List"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "external-typing.Optional",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "Optional"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "external-typing.Tuple",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "Tuple"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "external-enum.Enum",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "Enum"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.drift_auditor-Severity",
+      "to": "external-manifest.audit.code_extractor.CodeExtractor",
+      "type": "dependency",
+      "file": "src/manifest/audit/drift_auditor.py",
+      "symbols": [
+        "CodeExtractor"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "comp-manifest.audit.blueprint_comparator-BlueprintConflict",
+      "type": "call",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "BlueprintConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "comp-manifest.audit.blueprint_comparator-BlueprintConflict",
+      "type": "call",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "BlueprintConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "comp-manifest.audit.blueprint_comparator-BlueprintConflict",
+      "type": "call",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "BlueprintConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "comp-manifest.audit.blueprint_comparator-BlueprintConflict",
+      "type": "call",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "BlueprintConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "comp-manifest.audit.blueprint_comparator-BlueprintConflict",
+      "type": "call",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "BlueprintConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "comp-manifest.audit.blueprint_comparator-BlueprintConflict",
+      "type": "call",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "BlueprintConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "comp-manifest.audit.blueprint_comparator-BlueprintConflict",
+      "type": "call",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "BlueprintConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "comp-manifest.audit.blueprint_comparator-BlueprintConflict",
+      "type": "call",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "BlueprintConflict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "external-typing.Dict",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "Dict"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "external-typing.Any",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "Any"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "external-typing.List",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "List"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "external-typing.Optional",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "Optional"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "external-dataclasses.dataclass",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "dataclass"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "external-enum.Enum",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "Enum"
+      ]
+    },
+    {
+      "from": "comp-manifest.audit.blueprint_comparator-ConflictType",
+      "to": "external-manifest.audit.drift_auditor.Severity",
+      "type": "dependency",
+      "file": "src/manifest/audit/blueprint_comparator.py",
+      "symbols": [
+        "Severity"
+      ]
+    }
+  ]
+}

@@ -291,7 +291,7 @@ class ManifestApp(App):
             else:
                 self.query_one("#log-main", RichLog).write("[bold yellow]OMOC not available. Running in standalone mode.[/]")
         
-        # Initialize agent coordinator
+        # Initialize agent coordinator (works in both OMOC and standalone mode)
         if self.omoc_bridge and self.omoc_bridge.is_connected:
             self.agent_coordinator = AgentCoordinator(
                 self.omoc_bridge,
