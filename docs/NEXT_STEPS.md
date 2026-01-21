@@ -129,6 +129,54 @@ Based on project status, these are the planned features:
    - Sandbox operations
    - Safe promotion logic
 
+## Backlog (Future Features)
+
+Features planned for implementation after core infrastructure is complete:
+
+### Agent Squad Monitoring & Watchdog System
+**Priority**: Medium (후순위 - Multi-agent 시스템 뼈대 구현 후)
+
+**Description**: 
+Agent squad의 작업을 실시간으로 모니터링하고 문제를 감지/방지하는 시스템
+
+**Requirements**:
+- Agent 작업 모니터링
+  - 각 agent의 실행 상태 추적
+  - 작업 진행률 모니터링
+  - 리소스 사용량 추적 (CPU, 메모리, 네트워크)
+  
+- 문제 감지 및 방지
+  - Terminal command hanging 감지
+  - 무한 루프 감지
+  - 데드락 감지
+  - 타임아웃 관리
+  - 메모리 누수 감지
+  - 무응답 프로세스 감지
+  
+- 자동 복구 메커니즘
+  - Hanging 작업 자동 종료
+  - 실패한 작업 재시도 로직
+  - Agent 상태 복구
+  - 리소스 정리
+
+- 알림 및 로깅
+  - 문제 발생 시 사용자 알림
+  - 상세한 감사 로그
+  - 성능 메트릭 수집
+  - 문제 패턴 분석
+
+**Implementation Notes**:
+- Agent 실행을 프로세스/스레드 레벨에서 추적
+- Heartbeat 메커니즘으로 agent 생존 확인
+- Command timeout 설정 및 강제 종료
+- Resource limits 설정 (CPU, memory)
+- Watchdog thread/process로 전체 시스템 감시
+
+**Dependencies**:
+- Multi-Agent System 기본 구조 완성 후
+- OMOC Bridge와의 통합 필요
+- State Manager 확장 필요
+
 ## Notes
 
 - All documentation should be in `docs/` directory
