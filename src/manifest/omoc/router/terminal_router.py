@@ -14,15 +14,17 @@ class TerminalRouter:
     This integrates OMOC's router functionality for terminal command execution.
     """
     
-    def __init__(self, working_dir: Optional[Path] = None):
+    def __init__(self, working_dir: Optional[Path] = None, watchdog=None):
         """
         Initialize terminal router.
         
         Args:
             working_dir: Working directory for command execution
+            watchdog: Optional watchdog instance for monitoring
         """
         self.working_dir = working_dir or Path.cwd()
         self.active_commands: Dict[str, subprocess.Popen] = {}
+        self.watchdog = watchdog
     
     async def execute_command(
         self,
