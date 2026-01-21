@@ -10,4 +10,5 @@ services:
     tty: true
     environment:
       - PYTHONUNBUFFERED=1
-    command: python test.py
+      - PYTHONPATH=/app/src
+    command: python -m manifest

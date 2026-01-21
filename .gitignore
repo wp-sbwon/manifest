@@ -57,3 +57,9 @@ htmlcov/
 # Manifest specific
 .manifest/keys.json
 .manifest/.key
+.manifest/conflicts/
+
+# Package structure (src layout)
+src/manifest/__pycache__/
+src/manifest/*/__pycache__/
+src/*/__pycache__/

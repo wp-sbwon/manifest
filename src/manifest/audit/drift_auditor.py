@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from enum import Enum
 
+from manifest.audit.code_extractor import CodeExtractor
+
 
 class Severity(Enum):
     """Severity levels for drift conflicts."""
@@ -196,3 +198,17 @@ class DriftAuditor:
     def get_conflicts_for_node(self, conflicts: List[DriftConflict], node_id: str) -> List[DriftConflict]:
         """Get conflicts for a specific blueprint node."""
         return [c for c in conflicts if c.node_id == node_id]
+    
+    def generate_bottom_up_blueprint(self, root: Path = None) -> Dict[str, Any]:
+        """Generate bottom-up blueprint from code structure."""
+        if root is None:
+            root = Path(".")
+        
+        extractor = CodeExtractor(root)
+        blueprint = extractor.extract_project_structure(root)
+        
+        # Save to blueprint_code.json
+        blueprint_file = self.manifest_dir / "blueprint_code.json"
+        extractor.save_blueprint(blueprint, blueprint_file)
+        
+        return blueprint

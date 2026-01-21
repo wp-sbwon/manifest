@@ -6,7 +6,7 @@ import json
 import tempfile
 import shutil
 from pathlib import Path
-from state_manager import StateManager
+from manifest.core.state_manager import StateManager
 
 
 @pytest.fixture

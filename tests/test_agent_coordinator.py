@@ -3,12 +3,12 @@ Unit tests for agent_coordinator.py
 """
 import pytest
 from unittest.mock import Mock, AsyncMock, MagicMock
-from agent_coordinator import AgentCoordinator
-from omoc_bridge import OMOCBridge
-from context_provider import ContextProvider
-from task_scoper import TaskScoper
-from config import ConfigManager
-from state_manager import StateManager
+from manifest.agents.agent_coordinator import AgentCoordinator
+from manifest.bridge.omoc_bridge import OMOCBridge
+from manifest.agents.context_provider import ContextProvider
+from manifest.agents.task_scoper import TaskScoper
+from manifest.core.config import ConfigManager
+from manifest.core.state_manager import StateManager
 
 
 @pytest.fixture

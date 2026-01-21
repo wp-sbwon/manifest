@@ -4,7 +4,7 @@ Unit tests for task_scoper.py
 import pytest
 import json
 from pathlib import Path
-from task_scoper import TaskScoper
+from manifest.agents.task_scoper import TaskScoper
 
 
 @pytest.fixture

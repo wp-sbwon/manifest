@@ -6,8 +6,8 @@ import asyncio
 import tempfile
 import shutil
 from pathlib import Path
-from state_manager import StateManager
-from omoc_bridge import OMOCBridge
+from manifest.core.state_manager import StateManager
+from manifest.bridge.omoc_bridge import OMOCBridge
 
 
 @pytest.fixture

@@ -10,8 +10,8 @@ from textual.widgets import Input, RichLog
 @pytest.fixture
 def mock_app():
     """Create a mock app instance."""
-    with patch('app.ManifestApp'):
-        from app import ManifestApp
+    with patch('manifest.ui.app.ManifestApp'):
+        from manifest.ui.app import ManifestApp
         app = ManifestApp()
         app.state_manager = Mock()
         app.state_manager.add_chat_message = Mock()

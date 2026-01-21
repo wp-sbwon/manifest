@@ -9,7 +9,7 @@ Implements the Tiered Orchestration system:
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional
-from task_scoper import TaskScoper
+from manifest.agents.task_scoper import TaskScoper
 
 
 class ContextProvider:

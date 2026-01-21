@@ -7,7 +7,7 @@ import json
 import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Awaitable
-from state_manager import StateManager
+from manifest.core.state_manager import StateManager
 
 
 class OMOCBridge:

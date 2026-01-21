@@ -4,8 +4,8 @@ Unit tests for context_provider.py
 import pytest
 import json
 from pathlib import Path
-from context_provider import ContextProvider
-from task_scoper import TaskScoper
+from manifest.agents.context_provider import ContextProvider
+from manifest.agents.task_scoper import TaskScoper
 
 
 @pytest.fixture

@@ -3,11 +3,11 @@ Agent Coordinator - Coordinates agents through OMOC with task boundaries.
 Manages orchestrator and worker agent lifecycle with proper scoping.
 """
 from typing import Dict, Any, Optional
-from omoc_bridge import OMOCBridge
-from context_provider import ContextProvider
-from task_scoper import TaskScoper
-from config import ConfigManager
-from state_manager import StateManager
+from manifest.bridge.omoc_bridge import OMOCBridge
+from manifest.agents.context_provider import ContextProvider
+from manifest.agents.task_scoper import TaskScoper
+from manifest.core.config import ConfigManager
+from manifest.core.state_manager import StateManager
 
 
 class AgentCoordinator:
@@ -156,3 +156,35 @@ class AgentCoordinator:
         """Get channel name for agent working on task."""
         agent_info = self.active_agents.get(task_id)
         return agent_info.get("channel") if agent_info else None
+    
+    async def handle_blueprint_conflict(self, conflict_issue: Dict[str, Any], task_id: str) -> bool:
+        """Handle blueprint conflict by resending to worker squad with conflict context."""
+        from manifest.audit.blueprint_synchronizer import BlueprintSynchronizer
+        
+        synchronizer = BlueprintSynchronizer()
+        
+        # Create resend request
+        resend_request = synchronizer.resend_to_worker_squad(task_id, conflict_issue)
+        
+        # Request planner review
+        planner_request = synchronizer.request_planner_review(conflict_issue)
+        
+        # Send to OMOC for planner review
+        # This would integrate with OMOC bridge to send to Prometheus (planner)
+        # For now, we'll update the task with conflict information
+        tasks = self.state_manager.get_task_checklist()
+        for task in tasks:
+            if task.get("id") == task_id:
+                task["conflict"] = {
+                    "issue": conflict_issue,
+                    "status": "planner_review",
+                    "resend_request": resend_request
+                }
+                self.state_manager.set_task_checklist(tasks)
+                await self.state_manager.save_state()
+                break
+        
+        # TODO: Integrate with OMOC bridge to actually send to planner
+        # await self.omoc_bridge.send_to_planner(planner_request)
+        
+        return True

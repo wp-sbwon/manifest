@@ -33,8 +33,8 @@ pip install -r requirements.txt
 # Activate environment
 source venv/bin/activate
 
-# Run application
-python test.py
+# Run application (with src/ layout)
+PYTHONPATH=src python -m manifest
 
 # Deactivate when done
 deactivate
@@ -91,17 +91,23 @@ docker-compose down
 
 ```
 manifest/
-├── venv/                 # Python virtual environment (gitignored)
-├── test.py              # Main application
-├── requirements.txt     # Python dependencies
+├── src/
+│   └── manifest/       # Main package (src layout)
+│       ├── core/       # Core modules (config, state_manager)
+│       ├── ui/         # UI modules (app, widgets, bootstrap_ui)
+│       ├── agents/     # Agent modules (coordinator, context_provider, task_scoper)
+│       ├── bridge/     # Bridge modules (omoc_bridge)
+│       └── audit/      # Audit modules (drift_auditor)
+├── tests/              # Test files
+├── docs/               # Documentation files
+├── scripts/            # Setup and utility scripts
+├── .manifest/          # Application data and configuration
+├── venv/               # Python virtual environment (gitignored)
+├── requirements.txt    # Python dependencies
+├── pytest.ini          # Pytest configuration
 ├── Dockerfile          # Docker image configuration
 ├── docker-compose.yml  # Docker Compose configuration
-├── .dockerignore       # Files excluded from Docker build
-├── .gitignore         # Git ignore rules
-├── setup.sh           # Python environment setup script
-├── setup-docker.sh    # Docker environment setup script
-├── README.md          # Project overview
-└── DEV_SETUP.md       # This file
+└── README.md           # Project overview
 ```
 
 ## Dependencies
@@ -128,7 +134,7 @@ All dependencies are listed in `requirements.txt`.
 
 3. **Run application:**
    ```bash
-   python test.py
+   PYTHONPATH=src python -m manifest
    ```
 
 4. **Deactivate:**
@@ -249,7 +255,7 @@ Note: `.env` files are gitignored and should not be committed.
 source venv/bin/activate
 python --version
 pip list
-python test.py
+PYTHONPATH=src python -m manifest
 ```
 
 ### Verify Docker Environment
