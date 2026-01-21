@@ -24,7 +24,7 @@ class AgentWatchdog:
     def __init__(
         self,
         state_manager: StateManager,
-        terminal_router: TerminalRouter,
+        terminal_router: Optional["TerminalRouter"],
         check_interval: float = 5.0,
         command_timeout: float = 300.0  # 5 minutes default
     ):
@@ -38,7 +38,7 @@ class AgentWatchdog:
             command_timeout: Default timeout for commands (seconds)
         """
         self.state_manager = state_manager
-        self.terminal_router = terminal_router
+        self.terminal_router: Optional["TerminalRouter"] = terminal_router
         self.check_interval = check_interval
         self.command_timeout = command_timeout
         
