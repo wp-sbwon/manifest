@@ -4,6 +4,12 @@ Welcome to the Manifest documentation! This directory contains comprehensive doc
 
 ## Documentation Index
 
+### Project Manifest (Strict Doc > View)
+- [`project-manifest/`](project-manifest/) - Manifest 프로젝트 자체의 구조화된 문서
+  - `project.json` - 프로젝트 아키텍처 및 상태
+  - `documentation.json` - 프로젝트 문서 통합본
+  - `visualization.md` - 아키텍처 시각화
+
 ### Getting Started
 
 - **[User Guide](./USER_GUIDE.md)** - Complete guide for using Manifest
@@ -139,7 +145,9 @@ docs/
 
 ## Documentation Principles
 
-1. **Strict Doc > View**: Primary documentation is in JSON format (`.manifest/documentation.json`, `.manifest/project.json`)
+1. **Strict Doc > View**: Primary documentation is in JSON format
+   - Runtime project docs: `.manifest/intent.json`, `.manifest/blueprint.json`, `.manifest/architecture.json`
+   - Manifest project docs: `docs/project-manifest/project.json`, `docs/project-manifest/documentation.json`
 2. **Markdown for Reference**: Markdown files serve as human-readable references
 3. **Keep Updated**: Documentation should be updated with code changes
 4. **Clear Examples**: Include practical examples where helpful
@@ -168,7 +176,9 @@ docs/
 When updating documentation:
 
 1. Update the relevant Markdown file
-2. Update JSON documentation in `.manifest/` if needed
+2. Update JSON documentation:
+   - Runtime project docs: `.manifest/` (for user projects)
+   - Manifest project docs: `docs/project-manifest/` (for Manifest project itself)
 3. Update this index if adding new documents
 4. Ensure cross-references are correct
 5. Test any code examples

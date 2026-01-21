@@ -346,8 +346,17 @@ class ManifestApp(App):
             self.blueprint_data = {"version": "1.0", "zones": {}, "components": [], "contracts": []}
 
     async def load_project_data(self):
-        """Load project.json data (strict doc > view)."""
-        project_file = self.manifest_dir / "project.json"
+        """Load project.json data (strict doc > view).
+        
+        Note: project.json is now in docs/project-manifest/ for Manifest project documentation.
+        For user projects, this would be in .manifest/ directory.
+        """
+        # For Manifest project itself, load from docs/project-manifest/
+        project_file = Path("docs/project-manifest/project.json")
+        if not project_file.exists():
+            # Fallback: try .manifest/ for user projects
+            project_file = self.manifest_dir / "project.json"
+        
         if project_file.exists():
             try:
                 with open(project_file, "r") as f:

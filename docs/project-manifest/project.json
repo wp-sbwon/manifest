@@ -411,6 +411,34 @@
       "Visual Editor"
     ]
   },
+  "backlog": [
+    {
+      "id": "agent_squad_monitoring",
+      "name": "Agent Squad Monitoring & Watchdog System",
+      "priority": "medium",
+      "status": "planned",
+      "description": "Agent squad의 작업을 실시간으로 모니터링하고 문제를 감지/방지하는 시스템",
+      "requirements": [
+        "Agent 작업 모니터링 (실행 상태, 진행률, 리소스 사용량)",
+        "문제 감지 (terminal command hanging, 무한 루프, 데드락, 타임아웃, 메모리 누수, 무응답 프로세스)",
+        "자동 복구 메커니즘 (hanging 작업 종료, 실패 작업 재시도, agent 상태 복구, 리소스 정리)",
+        "알림 및 로깅 (사용자 알림, 감사 로그, 성능 메트릭, 문제 패턴 분석)"
+      ],
+      "implementation_notes": [
+        "Agent 실행을 프로세스/스레드 레벨에서 추적",
+        "Heartbeat 메커니즘으로 agent 생존 확인",
+        "Command timeout 설정 및 강제 종료",
+        "Resource limits 설정 (CPU, memory)",
+        "Watchdog thread/process로 전체 시스템 감시"
+      ],
+      "dependencies": [
+        "Multi-Agent System 기본 구조 완성",
+        "OMOC Bridge와의 통합",
+        "State Manager 확장"
+      ],
+      "note": "후순위 - Multi-agent 시스템 뼈대 구현 후 구현 예정"
+    }
+  ],
   "metrics": {
     "code_statistics": {
       "total_python_files": 14,
