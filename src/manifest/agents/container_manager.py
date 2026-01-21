@@ -7,6 +7,7 @@ import docker
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime
+from manifest.agents.container_communication import ContainerMessageBus, ContainerStateSync
 
 
 class ContainerManager:
@@ -33,6 +34,10 @@ class ContainerManager:
         
         self.active_containers: Dict[str, docker.models.containers.Container] = {}
         self.container_metadata: Dict[str, Dict[str, Any]] = {}
+        
+        # Message bus for inter-container communication
+        self.message_bus = ContainerMessageBus()
+        self._message_bus_connected = False
     
     def is_docker_available(self) -> bool:
         """Check if Docker is available."""
@@ -124,6 +129,21 @@ class ContainerManager:
                 "status": "running"
             }
             
+            # Connect message bus if not connected
+            if not self._message_bus_connected:
+                await self.message_bus.connect()
+                self._message_bus_connected = True
+            
+            # Notify other containers about new agent
+            await self.message_bus.send_message(
+                topic="agent-started",
+                message={
+                    "task_id": task_id,
+                    "agent_type": agent_type,
+                    "container_id": container.id
+                }
+            )
+            
             return container.id
         except Exception as e:
             print(f"Error starting container for task {task_id}: {e}")
@@ -153,6 +173,15 @@ class ContainerManager:
             if task_id in self.container_metadata:
                 self.container_metadata[task_id]["status"] = "stopped"
                 self.container_metadata[task_id]["stopped_at"] = datetime.now().isoformat()
+            
+            # Notify other containers about agent stop
+            await self.message_bus.send_message(
+                topic="agent-stopped",
+                message={
+                    "task_id": task_id,
+                    "container_id": container.id if container else None
+                }
+            )
             
             del self.active_containers[task_id]
             return True

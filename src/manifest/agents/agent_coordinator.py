@@ -38,6 +38,13 @@ class AgentCoordinator:
         # Container manager for Docker-based agent execution
         self.container_manager = ContainerManager()
         self.use_containers = self.container_manager.is_docker_available()
+        
+        # Container communication (if using containers)
+        if self.use_containers:
+            from manifest.agents.container_communication import ContainerStateSync
+            self.state_sync = ContainerStateSync(state_manager, self.container_manager.message_bus)
+        else:
+            self.state_sync = None
     
     async def start_orchestrator(self, mission_description: str) -> bool:
         """Start orchestrator (Prometheus) via OMOC."""

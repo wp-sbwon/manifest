@@ -8,9 +8,12 @@ services:
       - .:/app
     stdin_open: true
     tty: true
+    ports:
+      - "8000:8000"  # API endpoint for container communication
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app/src
+      - CONTAINER_MODE=true
     command: python -m manifest
     networks:
       - manifest-network
