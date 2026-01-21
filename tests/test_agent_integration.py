@@ -73,7 +73,24 @@ def temp_manifest_dir(tmp_path):
 @pytest.fixture
 def mock_omoc_bridge():
     """Create mock OMOC bridge."""
+    # Mock terminal router
+    terminal_router = Mock()
+    terminal_router.active_commands = {}
+    
+    # Mock orchestrator and agent manager
+    orchestrator = Mock()
+    orchestrator.start_mission = AsyncMock(return_value=True)
+    
+    agent_manager = Mock()
+    agent_manager.create_agent = AsyncMock(return_value={"id": "task-1", "type": "sisyphus", "status": "created"})
+    agent_manager.start_agent = AsyncMock(return_value=True)
+    agent_manager.stop_agent = AsyncMock(return_value=True)
+    agent_manager.get_agent = Mock(return_value={"id": "task-1", "type": "sisyphus", "status": "active"})
+    
     bridge = Mock(spec=OMOCBridge)
+    bridge.terminal_router = terminal_router
+    bridge.orchestrator = orchestrator
+    bridge.agent_manager = agent_manager
     bridge.is_connected = True
     bridge.start_agent_mission = AsyncMock(return_value=True)
     bridge.stop_agent = AsyncMock(return_value=True)
