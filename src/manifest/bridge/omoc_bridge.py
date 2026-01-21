@@ -12,7 +12,6 @@ from manifest.omoc.router.terminal_router import TerminalRouter
 from manifest.omoc.agent.orchestrator import Orchestrator
 from manifest.omoc.agent.manager import AgentManager
 from manifest.omoc.agent.executor import AgentExecutor
-from manifest.agents.watchdog import AgentWatchdog
 
 
 class OMOCBridge:
