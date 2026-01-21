@@ -16,7 +16,7 @@ class AgentManager:
     def __init__(
         self,
         state_manager: StateManager,
-        executor: Optional[AgentExecutor] = None
+        executor: Optional["AgentExecutor"] = None
     ):
         """
         Initialize agent manager.
@@ -60,13 +60,13 @@ class AgentManager:
         prompt = self._generate_agent_prompt(agent_type, context, task_id)
         
         # Create actual agent instance based on type
+        agent_instance = None
         if agent_type == "prometheus" and self.executor:
+            from manifest.omoc.agent.prometheus_agent import PrometheusAgent
             agent_instance = PrometheusAgent(agent_id, self.executor, self.state_manager)
         elif agent_type == "sisyphus" and self.executor:
+            from manifest.omoc.agent.sisyphus_agent import SisyphusAgent
             agent_instance = SisyphusAgent(agent_id, self.executor, self.state_manager)
-        else:
-            # Fallback to dict for other types
-            agent_instance = None
         
         # Create agent object with OMOC-style structure
         agent = {

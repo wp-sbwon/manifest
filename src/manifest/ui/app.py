@@ -284,12 +284,13 @@ class ManifestApp(App):
         
         # Try to connect to OMOC
         if self.omoc_bridge is None:
-            self.omoc_bridge = OMOCBridge(self.state_manager)
-            if self.omoc_bridge.is_omoc_available():
-                await self.omoc_bridge.start()
-                self.query_one("#log-main", RichLog).write("[bold green]OMOC bridge connected.[/]")
+            config_manager = get_config_manager()
+            self.omoc_bridge = OMOCBridge(self.state_manager, config_manager)
+            await self.omoc_bridge.start()
+            if self.omoc_bridge.is_connected:
+                self.query_one("#log-main", RichLog).write("[bold green]OMOC bridge initialized.[/]")
             else:
-                self.query_one("#log-main", RichLog).write("[bold yellow]OMOC not available. Running in standalone mode.[/]")
+                self.query_one("#log-main", RichLog).write("[bold yellow]OMOC initialization failed.[/]")
         
         # Initialize agent coordinator (works in both OMOC and standalone mode)
         if self.omoc_bridge and self.omoc_bridge.is_connected:
