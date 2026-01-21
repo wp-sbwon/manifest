@@ -34,7 +34,9 @@ def test_omoc_bridge_initialization(omoc_bridge):
     """Test OMOCBridge initialization."""
     assert omoc_bridge.state_manager is not None
     assert omoc_bridge.is_connected is False
-    assert omoc_bridge.process is None
+    assert omoc_bridge.terminal_router is not None
+    assert omoc_bridge.orchestrator is not None
+    assert omoc_bridge.agent_manager is not None
 
 
 def test_is_omoc_available(omoc_bridge):
@@ -72,11 +74,16 @@ def test_bridge_state_integration(omoc_bridge, state_manager):
 
 @pytest.mark.asyncio
 async def test_bridge_commands(omoc_bridge):
-    """Test bridge command methods (without actual OMOC)."""
-    # These should not crash even without OMOC running
+    """Test bridge command methods."""
+    await omoc_bridge.start()
+    
+    # Test get_status
     status = await omoc_bridge.get_status()
     assert isinstance(status, dict)
+    assert "status" in status
     
-    # start_mission should return False if not connected
-    result = await omoc_bridge.start_mission("test-task")
+    # Test start_mission
+    result = await omoc_bridge.start_mission("test-task", "Test mission")
     assert isinstance(result, bool)
+    
+    await omoc_bridge.stop()
