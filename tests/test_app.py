@@ -87,7 +87,7 @@ def test_blueprint_data_loading(setup_manifest_dir):
 
 def test_state_persistence_workflow(setup_manifest_dir):
     """Test state persistence workflow."""
-    from state_manager import StateManager
+    from manifest.core.state_manager import StateManager
     
     state_manager = StateManager(manifest_dir=setup_manifest_dir)
     
@@ -112,7 +112,7 @@ def test_state_persistence_workflow(setup_manifest_dir):
 
 def test_drift_audit_integration(setup_manifest_dir, temp_dir):
     """Test drift audit integration."""
-    from drift_auditor import DriftAuditor
+    from manifest.audit.drift_auditor import DriftAuditor
     
     # Create a test Python file
     test_file = temp_dir / "test_component.py"
