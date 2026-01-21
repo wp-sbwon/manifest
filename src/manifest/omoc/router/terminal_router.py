@@ -46,6 +46,10 @@ class TerminalRouter:
         full_command = [command] + (args or [])
         command_id = f"cmd_{id(full_command)}"
         
+        # Register with watchdog if available
+        if self.watchdog:
+            self.watchdog.register_command(command_id)
+        
         try:
             if stream:
                 return await self._execute_streaming(full_command, command_id, timeout)
