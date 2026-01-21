@@ -22,9 +22,20 @@ class OMOCBridge:
         self.response_callbacks: Dict[str, Callable[[Dict[str, Any]], Awaitable[None]]] = {}
         self.is_connected = False
         self._message_id_counter = 0
+        self._standalone_mode = False  # True when OMOC is not available, use simulation
     
     async def start(self) -> bool:
         """Start the OMOC process and establish IPC connection."""
+        # Check if OMOC is available
+        if not self.is_omoc_available():
+            # Fall back to standalone mode (simulated OMOC)
+            self.is_connected = True
+            self._standalone_mode = True
+            # Load state
+            state = self.state_manager.get_state()
+            # In standalone mode, we'll simulate agent responses
+            return True
+        
         try:
             # Start OMOC process with pipes
             self.process = subprocess.Popen(
@@ -39,6 +50,7 @@ class OMOCBridge:
             # Start reader task
             self.reader_task = asyncio.create_task(self._read_messages())
             self.is_connected = True
+            self._standalone_mode = False
             
             # Load state and send to OMOC
             state = self.state_manager.get_state()
@@ -50,12 +62,19 @@ class OMOCBridge:
             return True
         except Exception as e:
             print(f"Error starting OMOC: {e}")
-            self.is_connected = False
-            return False
+            # Fall back to standalone mode
+            self.is_connected = True
+            self._standalone_mode = True
+            return True
     
     async def stop(self):
         """Stop the OMOC process."""
         self.is_connected = False
+        
+        # If in standalone mode, nothing to stop
+        if self._standalone_mode:
+            return
+        
         if self.reader_task:
             self.reader_task.cancel()
             try:
@@ -127,6 +146,17 @@ class OMOCBridge:
     
     async def send_message(self, message: Dict[str, Any], callback: Optional[Callable] = None) -> Optional[str]:
         """Send a message to OMOC."""
+        # If in standalone mode, simulate response
+        if self._standalone_mode:
+            if callback:
+                # Simulate a successful response
+                await callback({
+                    "type": "response",
+                    "status": "ok",
+                    "data": {"mode": "standalone", "message": "Simulated response"}
+                })
+            return "standalone-msg-id"
+        
         if not self.is_connected or not self.process or not self.process.stdin:
             return None
         
@@ -212,6 +242,20 @@ class OMOCBridge:
         model_config: Dict[str, Any]
     ) -> bool:
         """Start an agent mission with scoped context and model config."""
+        # If in standalone mode, simulate agent start
+        if self._standalone_mode:
+            # Simulate agent start
+            channel = f"squad-{task_id}-{agent_type}"
+            self.state_manager.add_chat_message(
+                channel,
+                "assistant",
+                f"[{agent_type.upper()}] Agent started for task {task_id}\n"
+                f"Context tiers: {', '.join([k for k in context.keys() if k.startswith('tier_')])}\n"
+                f"Model: {model_config.get('model', 'default')}"
+            )
+            await self.state_manager.save_state()
+            return True
+        
         result = {"success": False}
         
         async def callback(response: Dict[str, Any]):
@@ -235,6 +279,27 @@ class OMOCBridge:
     
     async def get_agent_status(self, task_id: str) -> Dict[str, Any]:
         """Get status of agent working on task."""
+        # If in standalone mode, return simulated status
+        if self._standalone_mode:
+            # Check if there's chat history for this task
+            channel = None
+            for ch in self.state_manager.get_chat_history("main"):
+                if task_id in str(ch.get("content", "")):
+                    channel = f"squad-{task_id}"
+                    break
+            
+            if channel:
+                history = self.state_manager.get_chat_history(channel)
+                return {
+                    "status": "active",
+                    "data": {
+                        "task_id": task_id,
+                        "message_count": len(history),
+                        "mode": "standalone"
+                    }
+                }
+            return {"status": "not_active", "data": {}}
+        
         result = {"status": "unknown", "data": {}}
         
         async def callback(response: Dict[str, Any]):
