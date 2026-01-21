@@ -1,15 +1,16 @@
 """
 OMOC Orchestrator - Agent orchestration system from OMOC.
-This will integrate OMOC's orchestrator code when available.
+Integrates Prometheus (planner) agent logic from OMOC.
 """
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from manifest.core.state_manager import StateManager
+from manifest.omoc.agent.prometheus_prompt import get_prometheus_prompt, PROMETHEUS_SYSTEM_PROMPT
 
 
 class Orchestrator:
     """
     OMOC Orchestrator for managing agent missions.
-    This is a placeholder that will be replaced with actual OMOC code.
+    Uses Prometheus (planner) agent logic from OMOC.
     """
     
     def __init__(self, state_manager: StateManager):
@@ -21,6 +22,7 @@ class Orchestrator:
         """
         self.state_manager = state_manager
         self.active_missions: Dict[str, Dict[str, Any]] = {}
+        self.system_prompt = PROMETHEUS_SYSTEM_PROMPT
     
     async def start_mission(self, task_id: str, mission_description: str) -> bool:
         """
@@ -33,12 +35,55 @@ class Orchestrator:
         Returns:
             True if mission started successfully
         """
-        # TODO: Integrate with actual OMOC orchestrator code
+        # Get context for orchestrator (Tier 0, Tier 1)
+        state = self.state_manager.get_state()
+        
+        context = {
+            "tier_0": self._get_tier_0_context(),
+            "tier_1": self._get_tier_1_context(state)
+        }
+        
+        # Generate prompt using OMOC's Prometheus prompt
+        prompt = get_prometheus_prompt(
+            mission_description=mission_description,
+            context=context,
+            available_agents=["sisyphus", "test", "review"]
+        )
+        
         self.active_missions[task_id] = {
             "description": mission_description,
-            "status": "active"
+            "status": "active",
+            "prompt": prompt,
+            "context": context
         }
+        
         return True
+    
+    def _get_tier_0_context(self) -> str:
+        """Get Tier 0 context (Policy & Principles)."""
+        # Load from .claude/rules/manifest-policy.md
+        try:
+            from pathlib import Path
+            policy_path = Path(".claude/rules/manifest-policy.md")
+            if policy_path.exists():
+                return policy_path.read_text(encoding="utf-8")
+        except Exception:
+            pass
+        return "Blueprint-First Development: All code must align with blueprint.json"
+    
+    def _get_tier_1_context(self, state: Dict[str, Any]) -> str:
+        """Get Tier 1 context (Architecture & Blueprint)."""
+        # Get architecture and blueprint from state
+        architecture = state.get("architecture", {})
+        blueprint = state.get("blueprint", {})
+        
+        context_parts = []
+        if architecture:
+            context_parts.append(f"Architecture: {architecture}")
+        if blueprint:
+            context_parts.append(f"Blueprint: {blueprint}")
+        
+        return "\n".join(context_parts) if context_parts else "No architecture/blueprint available"
     
     async def stop_mission(self, task_id: str) -> bool:
         """Stop a mission."""
