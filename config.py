@@ -5,7 +5,7 @@ Handles API key bootstrap mode and validation.
 import json
 import os
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 from cryptography.fernet import Fernet
 import asyncio
 import httpx
@@ -113,6 +113,157 @@ class ConfigManager:
             else:
                 results[provider] = False
         return results
+    
+    def _load_agent_config(self) -> Dict[str, Any]:
+        """Load agent configuration from agent_config.json."""
+        agent_config_file = self.manifest_dir / "agent_config.json"
+        if agent_config_file.exists():
+            try:
+                with open(agent_config_file, "r") as f:
+                    return json.load(f)
+            except Exception:
+                return self._default_agent_config()
+        return self._default_agent_config()
+    
+    def _default_agent_config(self) -> Dict[str, Any]:
+        """Return default agent configuration."""
+        return {
+            "version": "1.0",
+            "agent_models": {
+                "prometheus": {
+                    "provider": "anthropic",
+                    "model": "claude-3-5-sonnet-20241022",
+                    "use_default_key": True
+                },
+                "sisyphus": {
+                    "provider": "anthropic",
+                    "model": "claude-3-5-sonnet-20241022",
+                    "use_default_key": True
+                },
+                "test": {
+                    "provider": "openai",
+                    "model": "gpt-4-turbo-preview",
+                    "use_default_key": True
+                },
+                "review": {
+                    "provider": "anthropic",
+                    "model": "claude-3-opus-20240229",
+                    "use_default_key": True
+                }
+            },
+            "default_models": {
+                "anthropic": "claude-3-5-sonnet-20241022",
+                "openai": "gpt-4-turbo-preview",
+                "google": "gemini-pro"
+            }
+        }
+    
+    def get_agent_model_config(self, agent_type: str) -> Dict[str, Any]:
+        """Get model configuration for an agent type."""
+        agent_config = self._load_agent_config()
+        agent_models = agent_config.get("agent_models", {})
+        
+        # Get agent-specific config or use defaults
+        if agent_type in agent_models:
+            config = agent_models[agent_type].copy()
+        else:
+            # Use default for provider (default to anthropic)
+            default_models = agent_config.get("default_models", {})
+            provider = "anthropic"  # Default provider
+            config = {
+                "provider": provider,
+                "model": default_models.get(provider, "claude-3-5-sonnet-20241022"),
+                "use_default_key": True
+            }
+        
+        # Resolve API key
+        if config.get("use_default_key", True):
+            # Use default key from keys.json
+            keys = self.get_api_keys()
+            provider = config["provider"]
+            api_key = keys.get(provider)
+            
+            # Fallback to environment variable
+            if not api_key:
+                env_key = os.getenv(f"{provider.upper()}_API_KEY") or os.getenv(f"{provider}_api_key")
+                api_key = env_key
+        else:
+            # Use agent-specific key (stored in config, encrypted)
+            api_key = config.get("api_key")
+            if api_key:
+                # Decrypt if needed
+                try:
+                    api_key = self._cipher.decrypt(api_key.encode()).decode()
+                except Exception:
+                    pass
+        
+        return {
+            "provider": config["provider"],
+            "model": config["model"],
+            "api_key": api_key
+        }
+    
+    def set_agent_model_config(
+        self,
+        agent_type: str,
+        provider: str,
+        model: str,
+        api_key: Optional[str] = None,
+        use_default_key: bool = True
+    ) -> bool:
+        """Set model configuration for an agent type."""
+        agent_config = self._load_agent_config()
+        
+        if "agent_models" not in agent_config:
+            agent_config["agent_models"] = {}
+        
+        config = {
+            "provider": provider,
+            "model": model,
+            "use_default_key": use_default_key
+        }
+        
+        # If agent-specific key provided, encrypt and store
+        if api_key and not use_default_key:
+            try:
+                encrypted_key = self._cipher.encrypt(api_key.encode())
+                config["api_key"] = encrypted_key.decode()
+            except Exception as e:
+                print(f"Error encrypting API key: {e}")
+                return False
+        
+        agent_config["agent_models"][agent_type] = config
+        
+        # Save to file
+        agent_config_file = self.manifest_dir / "agent_config.json"
+        try:
+            self.manifest_dir.mkdir(parents=True, exist_ok=True)
+            with open(agent_config_file, "w") as f:
+                json.dump(agent_config, f, indent=2)
+            os.chmod(agent_config_file, 0o600)
+            return True
+        except Exception as e:
+            print(f"Error saving agent config: {e}")
+            return False
+    
+    def get_default_model_for_agent(self, agent_type: str) -> Dict[str, str]:
+        """Get default model configuration for agent type."""
+        agent_config = self._load_agent_config()
+        agent_models = agent_config.get("agent_models", {})
+        
+        if agent_type in agent_models:
+            config = agent_models[agent_type]
+            return {
+                "provider": config["provider"],
+                "model": config["model"]
+            }
+        
+        # Return default for anthropic
+        default_models = agent_config.get("default_models", {})
+        return {
+            "provider": "anthropic",
+            "model": default_models.get("anthropic", "claude-3-5-sonnet-20241022")
+        }
 
 
 # Global config instance

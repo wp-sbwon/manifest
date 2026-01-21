@@ -8,10 +8,34 @@
     "status": "phase1_complete"
   },
   "architecture": {
+    "principle": "Feature-centric architecture: Features → Requirements → Modules (not file-centric)",
     "layers": [
       {
         "id": "presentation",
-        "name": "Presentation Layer",
+        "name": "Presentation Module",
+        "description": "User interface and view management",
+        "features": [
+          {
+            "id": "custom_widgets",
+            "name": "Custom Widgets",
+            "status": "complete",
+            "requirements": ["REQ-05: Visual Components"],
+            "classes": [
+              {"name": "RequirementMap", "file": "widgets.py"},
+              {"name": "ArchitectureGraph", "file": "widgets.py"},
+              {"name": "FeatureTree", "file": "widgets.py"},
+              {"name": "TaskTree", "file": "widgets.py"},
+              {"name": "GateController", "file": "widgets.py"}
+            ]
+          },
+          {
+            "id": "5_view_workspace",
+            "name": "5-View Workspace",
+            "status": "complete",
+            "requirements": ["REQ-06: Multi-View Interface"],
+            "views": ["architect", "blueprint", "inspector", "mission_control", "history", "feature_explorer", "project_info"]
+          }
+        ],
         "modules": [
           {
             "id": "app",
@@ -20,7 +44,8 @@
             "responsibility": "TUI application entry point and view management",
             "dependencies": ["config", "state_manager", "omoc_bridge", "drift_auditor", "widgets"],
             "lines_of_code": 550,
-            "status": "complete"
+            "status": "complete",
+            "note": "File reference for implementation details"
           },
           {
             "id": "widgets",
@@ -49,7 +74,37 @@
       },
       {
         "id": "business_logic",
-        "name": "Business Logic Layer",
+        "name": "Business Logic Module",
+        "description": "Core business logic and features",
+        "features": [
+          {
+            "id": "state_management",
+            "name": "State Management",
+            "status": "complete",
+            "requirements": ["REQ-02: State Persistence"],
+            "classes": [
+              {"name": "StateManager", "file": "state_manager.py", "methods": ["load_state", "save_state", "add_chat_message", "set_last_action"]}
+            ]
+          },
+          {
+            "id": "omoc_bridge",
+            "name": "OMOC Bridge",
+            "status": "complete",
+            "requirements": ["REQ-03: IPC Communication"],
+            "classes": [
+              {"name": "OMOCBridge", "file": "omoc_bridge.py", "methods": ["start", "stop", "send_message", "receive_message"]}
+            ]
+          },
+          {
+            "id": "drift_auditor",
+            "name": "Drift Auditor",
+            "status": "complete",
+            "requirements": ["REQ-04: Architecture Validation"],
+            "classes": [
+              {"name": "DriftAuditor", "file": "drift_auditor.py", "methods": ["audit_project", "parse_python_file", "compare_with_blueprint"]}
+            ]
+          }
+        ],
         "modules": [
           {
             "id": "state_manager",
@@ -64,7 +119,8 @@
               "session_resumption"
             ],
             "lines_of_code": 150,
-            "status": "complete"
+            "status": "complete",
+            "note": "File reference for implementation details"
           },
           {
             "id": "omoc_bridge",
@@ -107,7 +163,26 @@
       },
       {
         "id": "infrastructure",
-        "name": "Infrastructure Layer",
+        "name": "Infrastructure Module",
+        "description": "Infrastructure and configuration",
+        "features": [
+          {
+            "id": "configuration_system",
+            "name": "Configuration System",
+            "status": "complete",
+            "requirements": ["REQ-01: API Key Management"],
+            "classes": [
+              {"name": "ConfigManager", "file": "config.py", "methods": ["get_api_key", "set_api_key", "validate_key", "has_all_keys"]}
+            ]
+          },
+          {
+            "id": "core_infrastructure",
+            "name": "Core Infrastructure",
+            "status": "complete",
+            "requirements": ["REQ-01: API Key Management"],
+            "description": "Base infrastructure for the application"
+          }
+        ],
         "modules": [
           {
             "id": "config",
@@ -121,7 +196,8 @@
               "bootstrap_mode"
             ],
             "lines_of_code": 100,
-            "status": "complete"
+            "status": "complete",
+            "note": "File reference for implementation details"
           }
         ]
       }
@@ -168,6 +244,21 @@
       "description": "Git-linked timeline for design and code changes",
       "data_source": "git_repository",
       "dependencies": ["GitPython"],
+      "status": "complete"
+    },
+    {
+      "id": "feature_explorer",
+      "name": "Feature Explorer",
+      "description": "Feature → Class → Method navigation tree",
+      "data_source": "intent.json",
+      "widgets": ["feature_tree"],
+      "status": "complete"
+    },
+    {
+      "id": "project_info",
+      "name": "Project Info",
+      "description": "Project architecture and status information",
+      "data_source": "project.json",
       "status": "complete"
     }
   ],
@@ -233,6 +324,7 @@
       "drift_auditor",
       "custom_widgets",
       "5_view_workspace",
+      "feature_explorer",
       "testing"
     ],
     "partial_features": [

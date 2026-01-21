@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "agent_models": {
+    "prometheus": {
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20241022",
+      "use_default_key": true
+    },
+    "sisyphus": {
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20241022",
+      "use_default_key": true
+    },
+    "test": {
+      "provider": "openai",
+      "model": "gpt-4-turbo-preview",
+      "use_default_key": true
+    },
+    "review": {
+      "provider": "anthropic",
+      "model": "claude-3-opus-20240229",
+      "use_default_key": true
+    }
+  },
+  "default_models": {
+    "anthropic": "claude-3-5-sonnet-20241022",
+    "openai": "gpt-4-turbo-preview",
+    "google": "gemini-pro"
+  }
+}
