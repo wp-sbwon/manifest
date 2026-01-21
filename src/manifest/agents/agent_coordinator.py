@@ -29,6 +29,15 @@ class AgentCoordinator:
         self.config_manager = config_manager
         self.state_manager = state_manager
         self.active_agents: Dict[str, Dict[str, Any]] = {}  # task_id -> agent info
+        
+        # Access to OMOC components
+        self.terminal_router = omoc_bridge.terminal_router
+        self.orchestrator = omoc_bridge.orchestrator
+        self.agent_manager = omoc_bridge.agent_manager
+        
+        # Container manager for Docker-based agent execution
+        self.container_manager = ContainerManager()
+        self.use_containers = self.container_manager.is_docker_available()
     
     async def start_orchestrator(self, mission_description: str) -> bool:
         """Start orchestrator (Prometheus) via OMOC."""
