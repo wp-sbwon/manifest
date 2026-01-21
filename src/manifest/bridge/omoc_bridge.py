@@ -70,56 +70,48 @@ class OMOCBridge:
     # Legacy IPC methods removed - now using direct integration
     # _read_messages, _handle_message, send_message are no longer needed
     
-    async def start_mission(self, task_id: str) -> bool:
-        """Start a mission with the given task ID."""
-        result = {"success": False}
+    async def start_mission(self, task_id: str, mission_description: str = "") -> bool:
+        """
+        Start a mission with the given task ID.
         
-        async def callback(response: Dict[str, Any]):
-            result["success"] = response.get("status") == "ok"
-            result["data"] = response.get("data", {})
-        
-        await self.send_message({
-            "type": "command",
-            "command": "start_mission",
-            "payload": {"task_id": task_id}
-        }, callback)
-        
-        # Wait for response (with timeout)
-        await asyncio.sleep(0.1)  # Give time for response
-        return result["success"]
+        Args:
+            task_id: Task identifier
+            mission_description: Optional mission description
+        """
+        success = await self.orchestrator.start_mission(task_id, mission_description)
+        if success:
+            self.state_manager.set_last_action(f"Started mission: {task_id}")
+            await self.state_manager.save_state()
+        return success
     
     async def get_status(self) -> Dict[str, Any]:
-        """Get current mission status."""
-        result = {"status": "unknown", "data": {}}
-        
-        async def callback(response: Dict[str, Any]):
-            result["status"] = response.get("status", "unknown")
-            result["data"] = response.get("data", {})
-        
-        await self.send_message({
-            "type": "command",
-            "command": "get_status",
-            "payload": {}
-        }, callback)
-        
-        await asyncio.sleep(0.1)
-        return result
+        """
+        Get current mission status.
+        TODO: Integrate with OMOC orchestrator when available.
+        """
+        state = self.state_manager.get_state()
+        return {
+            "status": "active",
+            "data": {
+                "mission_tree": state.get("mission_tree", {}),
+                "task_checklist": state.get("task_checklist", []),
+                "active_agents": len(self._active_agents)
+            }
+        }
     
     async def promote_task(self, task_id: str, stage: str) -> bool:
-        """Promote a task to a new stage."""
-        result = {"success": False}
-        
-        async def callback(response: Dict[str, Any]):
-            result["success"] = response.get("status") == "ok"
-        
-        await self.send_message({
-            "type": "command",
-            "command": "promote_task",
-            "payload": {"task_id": task_id, "stage": stage}
-        }, callback)
-        
-        await asyncio.sleep(0.1)
-        return result["success"]
+        """
+        Promote a task to a new stage.
+        TODO: Integrate with OMOC orchestrator when available.
+        """
+        tasks = self.state_manager.get_task_checklist()
+        for task in tasks:
+            if task.get("id") == task_id:
+                task["stage"] = stage
+                self.state_manager.set_task_checklist(tasks)
+                await self.state_manager.save_state()
+                return True
+        return False
     
     async def get_agent_output(self, channel: str) -> list:
         """Get agent output for a channel."""
@@ -132,10 +124,27 @@ class OMOCBridge:
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> bool:
-        """Start an agent mission with scoped context and model config."""
-        # If in standalone mode, simulate agent start
-        if self._standalone_mode:
-            # Simulate agent start
+        """
+        Start an agent mission with scoped context and model config.
+        
+        Args:
+            task_id: Task identifier
+            agent_type: Type of agent (prometheus, sisyphus, test, review)
+            context: Agent context (tiered context)
+            model_config: Model configuration
+        """
+        # Create agent using OMOC agent manager
+        agent = await self.agent_manager.create_agent(
+            agent_type=agent_type,
+            context=context,
+            model_config=model_config,
+            task_id=task_id
+        )
+        
+        # Start the agent
+        success = await self.agent_manager.start_agent(task_id)
+        
+        if success:
             channel = f"squad-{task_id}-{agent_type}"
             self.state_manager.add_chat_message(
                 channel,
@@ -144,29 +153,19 @@ class OMOCBridge:
                 f"Context tiers: {', '.join([k for k in context.keys() if k.startswith('tier_')])}\n"
                 f"Model: {model_config.get('model', 'default')}"
             )
-            await self.state_manager.save_state()
-            return True
-        
-        result = {"success": False}
-        
-        async def callback(response: Dict[str, Any]):
-            result["success"] = response.get("status") == "ok"
-            result["data"] = response.get("data", {})
-        
-        await self.send_message({
-            "type": "agent_start",
-            "command": "start_agent_mission",
-            "payload": {
-                "task_id": task_id,
+            
+            self._active_agents[task_id] = {
+                "agent": agent,
                 "agent_type": agent_type,
+                "status": "active",
+                "channel": channel,
                 "context": context,
                 "model_config": model_config
             }
-        }, callback)
+            
+            await self.state_manager.save_state()
         
-        # Wait for response
-        await asyncio.sleep(0.2)  # Give more time for agent start
-        return result["success"]
+        return success
     
     async def get_agent_status(self, task_id: str) -> Dict[str, Any]:
         """
@@ -196,29 +195,28 @@ class OMOCBridge:
         }
     
     async def stop_agent(self, task_id: str) -> bool:
-        """Stop agent working on task."""
-        result = {"success": False}
+        """
+        Stop agent working on task.
         
-        async def callback(response: Dict[str, Any]):
-            result["success"] = response.get("status") == "ok"
+        Args:
+            task_id: Task identifier
+        """
+        # Stop agent using OMOC agent manager
+        success = await self.agent_manager.stop_agent(task_id)
         
-        await self.send_message({
-            "type": "agent_stop",
-            "command": "stop_agent",
-            "payload": {"task_id": task_id}
-        }, callback)
-        
-        await asyncio.sleep(0.1)
-        return result["success"]
-    
-    def is_omoc_available(self) -> bool:
-        """Check if OMOC command is available."""
-        try:
-            result = subprocess.run(
-                ["which", self.omoc_path],
-                capture_output=True,
-                timeout=2
+        if success:
+            active_info = self._active_agents.get(task_id, {})
+            channel = active_info.get("channel", f"squad-{task_id}")
+            
+            self.state_manager.add_chat_message(
+                channel,
+                "assistant",
+                f"Agent stopped for task {task_id}"
             )
-            return result.returncode == 0
-        except Exception:
-            return False
+            
+            if task_id in self._active_agents:
+                del self._active_agents[task_id]
+            
+            await self.state_manager.save_state()
+        
+        return success
