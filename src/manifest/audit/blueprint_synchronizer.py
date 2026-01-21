@@ -8,7 +8,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
 
-from manifest.audit.blueprint_comparator import BlueprintComparator, BlueprintConflict
+from manifest.audit.blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
 from manifest.audit.drift_auditor import Severity
 
 
@@ -125,9 +125,23 @@ class BlueprintSynchronizer:
             # Reconstruct conflicts
             conflicts = []
             for c_dict in data.get("conflicts", []):
+                # Convert string type to ConflictType enum
+                conflict_type_str = c_dict["type"]
+                if isinstance(conflict_type_str, str):
+                    try:
+                        conflict_type = ConflictType(conflict_type_str)
+                    except ValueError:
+                        # Fallback: try to find by value
+                        conflict_type = next(
+                            (ct for ct in ConflictType if ct.value == conflict_type_str),
+                            ConflictType.METHOD_MISMATCH  # Default fallback
+                        )
+                else:
+                    conflict_type = conflict_type_str
+                
                 conflict = BlueprintConflict(
                     severity=Severity(c_dict["severity"]),
-                    type=ConflictType(c_dict["type"]),
+                    type=conflict_type,
                     message=c_dict["message"],
                     top_down_component=c_dict.get("top_down_component"),
                     bottom_up_component=c_dict.get("bottom_up_component"),

@@ -86,14 +86,22 @@ def test_get_worker_context(temp_manifest_dir):
     assert "task_scope" in context
 
 
-def test_load_tier_0(temp_manifest_dir):
+def test_load_tier_0(temp_manifest_dir, tmp_path):
     """Test loading Tier 0 (policy)."""
-    provider = ContextProvider(temp_manifest_dir)
-    tier_0 = provider._load_tier_0()
-    
-    assert tier_0["source"] == ".claude/rules/manifest-policy.md"
-    assert "content" in tier_0
-    assert "Test content" in tier_0["content"]
+    import os
+    # ContextProvider uses Path(".claude/rules/manifest-policy.md") which is relative to CWD
+    # So we need to change to tmp_path directory
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(tmp_path)
+        provider = ContextProvider(temp_manifest_dir)
+        tier_0 = provider._load_tier_0()
+        
+        assert tier_0["source"] == ".claude/rules/manifest-policy.md"
+        assert "content" in tier_0
+        assert "Test content" in tier_0["content"]
+    finally:
+        os.chdir(original_cwd)
 
 
 def test_get_context_summary(temp_manifest_dir):
