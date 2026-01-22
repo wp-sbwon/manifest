@@ -17,7 +17,7 @@ def mock_app():
         app.state_manager.add_chat_message = Mock()
         app.state_manager.set_last_action = Mock()
         app.state_manager.save_state = AsyncMock(return_value=True)
-        app.omoc_bridge = None
+        app.agent_bridge = None
         return app
 
 

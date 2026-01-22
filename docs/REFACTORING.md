@@ -26,7 +26,7 @@ manifest/
 │       │   └── task_scoper.py
 │       ├── bridge/        # 브리지 모듈
 │       │   ├── __init__.py
-│       │   └── omoc_bridge.py
+│       │   └── agent_bridge.py
 │       └── audit/         # 감사 모듈
 │           ├── __init__.py
 │           └── drift_auditor.py
@@ -54,7 +54,7 @@ manifest/
 - `task_scoper.py` → `src/manifest/agents/task_scoper.py`
 
 **Bridge 모듈:**
-- `omoc_bridge.py` → `src/manifest/bridge/omoc_bridge.py`
+- Bridge module renamed to `agent_bridge.py` in `src/manifest/bridge/`
 
 **Audit 모듈:**
 - `drift_auditor.py` → `src/manifest/audit/drift_auditor.py`
@@ -95,14 +95,14 @@ python -m manifest
 ```python
 from config import get_config_manager
 from state_manager import StateManager
-from omoc_bridge import OMOCBridge
+from agent_bridge import AgentBridge
 ```
 
 ### 현재
 ```python
 from manifest.core.config import get_config_manager
 from manifest.core.state_manager import StateManager
-from manifest.bridge.omoc_bridge import OMOCBridge
+from manifest.bridge.agent_bridge import AgentBridge
 ```
 
 ## 업데이트된 파일

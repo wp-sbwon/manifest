@@ -8,7 +8,7 @@ graph TB
         F1[Feature: Core Infrastructure]
         F2[Feature: Configuration System]
         F3[Feature: State Management]
-        F4[Feature: OMOC Bridge]
+        F4[Feature: Agent Bridge]
         F5[Feature: Drift Auditor]
         F6[Feature: Custom Widgets]
         F7[Feature: 5-View Workspace]
@@ -61,8 +61,8 @@ graph TD
         C1 --> M4[Method: set_last_action]
     end
     
-    subgraph Feature2["Feature: OMOC Bridge"]
-        C2[Class: OMOCBridge]
+    subgraph Feature2["Feature: Agent Bridge"]
+        C2[Class: AgentBridge]
         C2 --> M5[Method: start]
         C2 --> M6[Method: stop]
         C2 --> M7[Method: send_message]
@@ -151,7 +151,7 @@ graph TD
     
     subgraph BusinessLogic["Business Logic Module"]
         F3[Feature: State Management]
-        F4[Feature: OMOC Bridge]
+        F4[Feature: Agent Bridge]
         F5[Feature: Drift Auditor]
     end
     
@@ -223,7 +223,7 @@ sequenceDiagram
     participant User
     participant App
     participant StateMgr[State Management Feature]
-    participant OMOCBridge[OMOC Bridge Feature]
+    participant AgentBridge[Agent Bridge Feature]
     participant DriftAudit[Drift Auditor Feature]
     participant FeatureExplorer[Feature Explorer]
     
@@ -240,8 +240,8 @@ sequenceDiagram
     else Command is /reload
         App->>App: Reload JSON files
     else Regular Command
-        App->>OMOCBridge: Send Message
-        OMOCBridge-->>App: Response
+        App->>AgentBridge: Start Mission
+        AgentBridge-->>App: Status
     end
     
     App->>StateMgr: Save State
@@ -258,7 +258,7 @@ sequenceDiagram
 - ✅ Core Infrastructure (100%)
 - ✅ Configuration System (100%)
 - ✅ State Management (100%)
-- ✅ OMOC Bridge (100%)
+- ✅ Agent Bridge (100%)
 - ✅ Drift Auditor (100%)
 - ✅ Custom Widgets (100%)
 - ✅ 5-View Workspace (100%)
@@ -269,7 +269,7 @@ sequenceDiagram
 - ❌ Context Injection (0%)
 - ❌ Structural Management (0%)
 - ❌ Shadow Manager (0%)
-- ❌ Enhanced OMOC (0%)
+- ✅ Agent System Integration (100%)
 
 ## 11. Feature Explorer 사용 흐름
 
@@ -351,7 +351,7 @@ graph TB
         M1 --> F1[Feature: Custom Widgets]
         M1 --> F2[Feature: 5-View Workspace]
         M2 --> F3[Feature: State Management]
-        M2 --> F4[Feature: OMOC Bridge]
+        M2 --> F4[Feature: Agent Bridge]
         M2 --> F5[Feature: Drift Auditor]
         M3 --> F6[Feature: Configuration]
     end

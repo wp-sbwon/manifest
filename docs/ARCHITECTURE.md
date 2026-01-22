@@ -31,8 +31,8 @@ Manifest는 다음과 같은 핵심 가치를 제공합니다:
 - Mission Tree, Task Checklist, Chat History 관리
 - 세션 재개 기능
 
-#### 4. OMOC Bridge
-- **omoc_bridge.py**: IPC 파이프 엔진
+#### 4. Agent Bridge
+- **agent_bridge.py**: Agent system integration
 - JSON 기반 메시지 프로토콜
 - 비동기 메시지 처리
 - 명령 인터페이스: `start_mission()`, `get_status()`, `promote_task()`
@@ -66,18 +66,18 @@ Manifest는 다음과 같은 핵심 가치를 제공합니다:
 - **tests/**: 완전한 테스트 스위트
   - `test_state_manager.py`: 상태 영속성 테스트
   - `test_drift_auditor.py`: 드리프트 감지 테스트
-  - `test_bridge.py`: OMOC 브리지 프로토콜 테스트
+  - `test_agent_bridge.py`: Agent bridge protocol tests
   - `test_app.py`: 통합 테스트
   - `test_app_input.py`: 입력 처리 테스트
 
 ### ⏳ 미구현 기능 (향후 구현 예정)
 
 1. **Full Multi-Agent Squad System**
-   - Prometheus (Planner), Sisyphus (Coder) 등 에이전트 통합
+   - Orchestrator, Planner, Coder 등 에이전트 통합
    - 에이전트 간 협업 메커니즘
 
-2. **Enhanced OMOC Protocol**
-   - 완전한 OMOC 프로토콜 구현
+2. **Agent System Integration**
+   - 완전한 Agent 시스템 통합
    - Shadow Manager (샌드박스 운영)
 
 3. **Advanced Drift Resolution**
@@ -111,7 +111,7 @@ Manifest는 다음과 같은 핵심 가치를 제공합니다:
         ┌───────────────┼───────────────┐
         │               │               │
 ┌───────▼──────┐ ┌─────▼──────┐ ┌─────▼──────┐
-│ State Manager│ │OMOC Bridge │ │Drift Auditor│
+│ State Manager│ │Agent Bridge│ │Drift Auditor│
 │              │ │            │ │            │
 │ - Mission    │ │ - IPC Pipes │ │ - AST Parse│
 │ - Tasks      │ │ - Messages │ │ - Compare  │
@@ -129,7 +129,7 @@ Manifest는 다음과 같은 핵심 가치를 제공합니다:
             └─────────────────────┘
                        │
             ┌──────────▼──────────┐
-            │   OMOC Process      │
+            │   Agent System      │
             │  (External)         │
             └─────────────────────┘
 ```
@@ -167,13 +167,13 @@ Manifest는 다음과 같은 핵심 가치를 제공합니다:
   - `add_chat_message()`: 채팅 메시지 추가
   - `get_next_action_prompt()`: 재개 프롬프트
 
-#### `omoc_bridge.py` - OMOC Integration
-- **책임**: OMOC 프로세스와의 IPC 통신
+#### `agent_bridge.py` - Agent System Integration
+- **책임**: Agent 시스템과의 직접 통합
 - **의존성**: `state_manager`
-- **주요 클래스**: `OMOCBridge`
+- **주요 클래스**: `AgentBridge`
 - **주요 메서드**:
-  - `start()`: OMOC 프로세스 시작
-  - `send_message()`: 메시지 전송
+  - `start()`: Agent 시스템 초기화
+  - `get_status()`: 상태 조회
   - `start_mission()`: 미션 시작
   - `promote_task()`: 작업 승격
 
@@ -208,7 +208,7 @@ Manifest는 다음과 같은 핵심 가치를 제공합니다:
 1. ManifestApp.on_mount()
    ├─> ConfigManager.has_all_keys() 체크
    ├─> StateManager.load_state_async() 로드
-   ├─> OMOCBridge.start() 연결 시도
+   ├─> AgentBridge.start() 초기화
    ├─> Intent/Blueprint 데이터 로드
    ├─> 각 뷰 업데이트
    └─> DriftAuditor.audit_project() 실행
@@ -222,7 +222,7 @@ Manifest는 다음과 같은 핵심 가치를 제공합니다:
    │   ├─> StateManager.add_chat_message()
    │   └─> process_command()
    │       ├─> 명령 파싱 (/audit, /reload, etc.)
-   │       ├─> OMOCBridge 통신 (선택적)
+   │       ├─> AgentBridge 통신
    │       └─> 상태 저장
    └─> 입력 필드 포커스 복원
 ```
@@ -252,7 +252,7 @@ manifest/
 ├── app.py                    # 메인 TUI 애플리케이션
 ├── config.py                 # 설정 및 API 키 관리
 ├── state_manager.py          # 상태 영속성
-├── omoc_bridge.py            # OMOC IPC 브리지
+├── agent_bridge.py            # Agent system integration
 ├── drift_auditor.py          # 드리프트 감지
 ├── widgets.py                # 커스텀 위젯
 ├── bootstrap_ui.py           # 부트스트랩 UI
@@ -279,7 +279,7 @@ manifest/
 
 ### 1. 계층적 아키텍처
 - **UI Layer**: `app.py`, `widgets.py`, `bootstrap_ui.py`
-- **Business Logic Layer**: `state_manager.py`, `omoc_bridge.py`, `drift_auditor.py`
+- **Business Logic Layer**: `state_manager.py`, `agent_bridge.py`, `drift_auditor.py`
 - **Infrastructure Layer**: `config.py`
 
 ### 2. 상태 관리
@@ -293,7 +293,7 @@ manifest/
 - 명확한 인터페이스
 
 ### 4. 확장성
-- OMOC 브리지는 선택적 (독립 실행 모드 지원)
+- Agent 시스템은 직접 통합됨
 - 위젯은 재사용 가능한 컴포넌트
 - 플러그인 가능한 구조
 
@@ -314,7 +314,7 @@ manifest/
 ## 향후 개선 사항
 
 ### 단기 (Phase 2)
-1. **Full OMOC Integration**: 완전한 OMOC 프로토콜 구현
+1. **Full Agent System Integration**: 완전한 Agent 시스템 통합
 2. **Multi-Agent System**: 에이전트 스쿼드 시스템
 3. **Enhanced Drift Resolution**: 자동 드리프트 해결
 
@@ -333,7 +333,7 @@ manifest/
 현재 테스트는 다음을 포함합니다:
 - ✅ 상태 관리 테스트
 - ✅ 드리프트 감지 테스트
-- ✅ OMOC 브리지 프로토콜 테스트
+- ✅ Agent bridge protocol tests
 - ✅ 통합 테스트
 - ✅ 입력 처리 테스트
 

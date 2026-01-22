@@ -25,7 +25,7 @@
    - 세션 재개
    - 채팅 히스토리 관리
 
-4. **OMOC Bridge** ✅
+4. **Agent Bridge** ✅
    - IPC 파이프 엔진
    - 메시지 프로토콜
    - 명령 인터페이스
@@ -69,8 +69,9 @@
 ### ❌ 미구현 기능 (0%)
 
 1. **Multi-Agent Squad System**
-   - Prometheus (Planner)
-   - Sisyphus (Coder)
+   - Orchestrator (Mission coordination)
+   - Planner (Task planning)
+   - Coder (Code implementation)
    - 에이전트 간 협업
 
 2. **Context Injection Hooks**
@@ -85,7 +86,7 @@
    - 샌드박스 운영
    - 안전한 승격 로직
 
-5. **Enhanced OMOC Protocol**
+5. **Agent System Integration**
    - 완전한 프로토콜 구현
    - 고급 메시지 타입
 
@@ -100,7 +101,7 @@
 ### 코드 라인 수 (추정)
 - **app.py**: ~550 라인
 - **widgets.py**: ~260 라인
-- **omoc_bridge.py**: ~200 라인
+- **agent_bridge.py**: ~200 라인
 - **drift_auditor.py**: ~200 라인
 - **state_manager.py**: ~150 라인
 - **config.py**: ~100 라인
@@ -124,7 +125,7 @@
                │
 ┌──────────────▼──────────────────────┐
 │      Business Logic Layer           │
-│  (state_manager, omoc_bridge,       │
+│  (state_manager, agent_bridge,       │
 │   drift_auditor)                    │
 └──────────────┬──────────────────────┘
                │
@@ -140,7 +141,7 @@
 app.py
 ├── config.py
 ├── state_manager.py
-├── omoc_bridge.py
+├── agent_bridge.py
 │   └── state_manager.py
 ├── drift_auditor.py
 ├── widgets.py
@@ -218,7 +219,7 @@ app.py
 ### 단기 (1-2 Sprints)
 1. Multi-Agent System 기본 구조
 2. Context Injection Hooks 프로토타입
-3. Enhanced OMOC Protocol
+3. Agent System Integration
 
 ### 중기 (3-6 Sprints)
 1. Structural Spec-First Management

@@ -209,7 +209,7 @@ def function_name(param1: str, param2: int) -> bool:
 ### Bridge Modules (`manifest.bridge`)
 
 - Handle IPC communication
-- Abstract OMOC protocol
+- Abstract agent system protocol
 - Manage process lifecycle
 
 ### Audit Modules (`manifest.audit`)

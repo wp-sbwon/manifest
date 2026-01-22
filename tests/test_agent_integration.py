@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from unittest.mock import Mock, AsyncMock
 from manifest.agents.agent_coordinator import AgentCoordinator
-from manifest.bridge.omoc_bridge import OMOCBridge
+from manifest.bridge.agent_bridge import AgentBridge
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.task_scoper import TaskScoper
 from manifest.core.config import ConfigManager
@@ -71,8 +71,8 @@ def temp_manifest_dir(tmp_path):
 
 
 @pytest.fixture
-def mock_omoc_bridge():
-    """Create mock OMOC bridge."""
+def mock_agent_bridge():
+    """Create mock agent bridge."""
     # Mock terminal router
     terminal_router = Mock()
     terminal_router.active_commands = {}
@@ -82,12 +82,12 @@ def mock_omoc_bridge():
     orchestrator.start_mission = AsyncMock(return_value=True)
     
     agent_manager = Mock()
-    agent_manager.create_agent = AsyncMock(return_value={"id": "task-1", "type": "sisyphus", "status": "created"})
+    agent_manager.create_agent = AsyncMock(return_value={"id": "task-1", "type": "coder", "status": "created"})
     agent_manager.start_agent = AsyncMock(return_value=True)
     agent_manager.stop_agent = AsyncMock(return_value=True)
-    agent_manager.get_agent = Mock(return_value={"id": "task-1", "type": "sisyphus", "status": "active"})
+    agent_manager.get_agent = Mock(return_value={"id": "task-1", "type": "coder", "status": "active"})
     
-    bridge = Mock(spec=OMOCBridge)
+    bridge = Mock(spec=AgentBridge)
     bridge.terminal_router = terminal_router
     bridge.orchestrator = orchestrator
     bridge.agent_manager = agent_manager
@@ -111,7 +111,7 @@ def mock_config_manager():
 
 
 @pytest.mark.asyncio
-async def test_full_agent_flow(temp_manifest_dir, mock_omoc_bridge, mock_config_manager):
+async def test_full_agent_flow(temp_manifest_dir, mock_agent_bridge, mock_config_manager):
     """Test full agent coordination flow."""
     # Initialize components
     state_manager = StateManager(temp_manifest_dir)
@@ -125,7 +125,7 @@ async def test_full_agent_flow(temp_manifest_dir, mock_omoc_bridge, mock_config_
     
     # Create coordinator
     coordinator = AgentCoordinator(
-        mock_omoc_bridge,
+        mock_agent_bridge,
         context_provider,
         task_scoper,
         mock_config_manager,
@@ -133,16 +133,16 @@ async def test_full_agent_flow(temp_manifest_dir, mock_omoc_bridge, mock_config_
     )
     
     # Start worker agent
-    success = await coordinator.start_worker_agent("task-1", "sisyphus")
+    success = await coordinator.start_worker_agent("task-1", "coder")
     
     assert success == True
     assert "task-1" in coordinator.active_agents
     
     # Verify context was provided
-    mock_omoc_bridge.start_agent_mission.assert_called_once()
-    call_args = mock_omoc_bridge.start_agent_mission.call_args
+    mock_agent_bridge.start_agent_mission.assert_called_once()
+    call_args = mock_agent_bridge.start_agent_mission.call_args
     assert call_args[1]["task_id"] == "task-1"
-    assert call_args[1]["agent_type"] == "sisyphus"
+    assert call_args[1]["agent_type"] == "coder"
     assert "context" in call_args[1]
     assert "model_config" in call_args[1]
     
@@ -151,19 +151,19 @@ async def test_full_agent_flow(temp_manifest_dir, mock_omoc_bridge, mock_config_
     task = next((t for t in tasks if t.get("id") == "task-1"), None)
     assert task is not None
     assert "agent" in task
-    assert task["agent"]["type"] == "sisyphus"
+    assert task["agent"]["type"] == "coder"
     assert "scope" in task
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_flow(temp_manifest_dir, mock_omoc_bridge, mock_config_manager):
+async def test_orchestrator_flow(temp_manifest_dir, mock_agent_bridge, mock_config_manager):
     """Test orchestrator flow."""
     state_manager = StateManager(temp_manifest_dir)
     task_scoper = TaskScoper(temp_manifest_dir)
     context_provider = ContextProvider(temp_manifest_dir, task_scoper)
     
     coordinator = AgentCoordinator(
-        mock_omoc_bridge,
+        mock_agent_bridge,
         context_provider,
         task_scoper,
         mock_config_manager,
@@ -177,8 +177,8 @@ async def test_orchestrator_flow(temp_manifest_dir, mock_omoc_bridge, mock_confi
     assert "orchestrator" in coordinator.active_agents
     
     # Verify context includes mission description
-    mock_omoc_bridge.start_agent_mission.assert_called_once()
-    call_args = mock_omoc_bridge.start_agent_mission.call_args
+    mock_agent_bridge.start_agent_mission.assert_called_once()
+    call_args = mock_agent_bridge.start_agent_mission.call_args
     context = call_args[1]["context"]
     assert context["tier"] == "orchestrator"
     assert "mission_description" in context

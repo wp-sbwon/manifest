@@ -1,16 +1,16 @@
 """
-OMOC Agent Manager - Manages agent lifecycle from OMOC.
-Integrates agent creation and management logic from OMOC.
+Agent Manager - Manages agent lifecycle.
 """
 from typing import Dict, Any, Optional, List
 from manifest.core.state_manager import StateManager
-from manifest.omoc.agent.sisyphus_prompt import get_sisyphus_prompt, SISYPHUS_IDENTITY
+from manifest.runtime.agent.coder_prompt import get_coder_prompt, CODER_IDENTITY
+from manifest.runtime.agent.planner_prompt import get_planner_prompt, PLANNER_IDENTITY
+from manifest.runtime.agent.orchestrator_prompt import get_orchestrator_prompt, ORCHESTRATOR_IDENTITY
 
 
 class AgentManager:
     """
-    OMOC Agent Manager for creating and managing agents.
-    Uses agent prompt logic from OMOC (Sisyphus, etc.).
+    Agent Manager for creating and managing agents.
     """
     
     def __init__(
@@ -28,8 +28,9 @@ class AgentManager:
         self.state_manager = state_manager
         self.agents: Dict[str, Any] = {}  # agent_id -> agent instance
         self.agent_prompts: Dict[str, str] = {
-            "sisyphus": SISYPHUS_IDENTITY,
-            "prometheus": "Planner agent (orchestrator)",
+            "orchestrator": ORCHESTRATOR_IDENTITY,
+            "planner": PLANNER_IDENTITY,
+            "coder": CODER_IDENTITY,
             "test": "Test agent",
             "review": "Review agent"
         }
@@ -43,10 +44,10 @@ class AgentManager:
         task_id: Optional[str] = None
     ) -> Any:
         """
-        Create a new agent using OMOC agent logic.
+        Create a new agent.
         
         Args:
-            agent_type: Type of agent (prometheus, sisyphus, test, review)
+            agent_type: Type of agent (orchestrator, planner, coder, test, review)
             context: Agent context (tiered context)
             model_config: Model configuration
             task_id: Optional task ID
@@ -61,14 +62,17 @@ class AgentManager:
         
         # Create actual agent instance based on type
         agent_instance = None
-        if agent_type == "prometheus" and self.executor:
-            from manifest.omoc.agent.prometheus_agent import PrometheusAgent
-            agent_instance = PrometheusAgent(agent_id, self.executor, self.state_manager)
-        elif agent_type == "sisyphus" and self.executor:
-            from manifest.omoc.agent.sisyphus_agent import SisyphusAgent
-            agent_instance = SisyphusAgent(agent_id, self.executor, self.state_manager)
+        if agent_type == "orchestrator" and self.executor:
+            from manifest.runtime.agent.orchestrator_agent import OrchestratorAgent
+            agent_instance = OrchestratorAgent(agent_id, self.executor, self.state_manager)
+        elif agent_type == "planner" and self.executor:
+            from manifest.runtime.agent.planner_agent import PlannerAgent
+            agent_instance = PlannerAgent(agent_id, self.executor, self.state_manager)
+        elif agent_type == "coder" and self.executor:
+            from manifest.runtime.agent.coder_agent import CoderAgent
+            agent_instance = CoderAgent(agent_id, self.executor, self.state_manager)
         
-        # Create agent object with OMOC-style structure
+        # Create agent object
         agent = {
             "id": agent_id,
             "type": agent_type,
@@ -89,24 +93,31 @@ class AgentManager:
         context: Dict[str, Any],
         task_id: Optional[str] = None
     ) -> str:
-        """Generate agent prompt using OMOC prompt logic."""
-        if agent_type == "sisyphus":
+        """Generate agent prompt."""
+        if agent_type == "coder":
             # Get task description from context
             task_description = context.get("task_description", "Complete the assigned task")
             task_scope = context.get("task_scope", {})
             
-            return get_sisyphus_prompt(
+            return get_coder_prompt(
                 task_description=task_description,
                 context=context,
                 task_scope=task_scope,
                 available_tools=context.get("available_tools", [])
             )
-        elif agent_type == "prometheus":
-            mission_description = context.get("mission_description", "Plan and orchestrate the mission")
-            return get_prometheus_prompt(
+        elif agent_type == "planner":
+            task_description = context.get("task_description", "Plan the assigned task")
+            return get_planner_prompt(
+                task_description=task_description,
+                context=context,
+                available_agents=context.get("available_agents", ["coder", "test", "review"])
+            )
+        elif agent_type == "orchestrator":
+            mission_description = context.get("mission_description", "Coordinate the mission")
+            return get_orchestrator_prompt(
                 mission_description=mission_description,
                 context=context,
-                available_agents=context.get("available_agents", [])
+                available_agents=context.get("available_agents", ["planner", "coder", "test", "review"])
             )
         else:
             # Default prompt for other agent types

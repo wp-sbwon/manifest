@@ -89,7 +89,7 @@ manifest/
 │       ├── core/       # Core modules (config, state_manager)
 │       ├── ui/         # UI modules (app, widgets, bootstrap_ui)
 │       ├── agents/     # Agent modules (coordinator, context_provider, task_scoper)
-│       ├── bridge/     # Bridge modules (omoc_bridge)
+│       ├── bridge/     # Bridge modules (agent_bridge)
 │       └── audit/      # Audit modules (drift_auditor)
 ├── tests/              # Test files
 ├── docs/               # Documentation files

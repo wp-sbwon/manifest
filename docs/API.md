@@ -11,7 +11,7 @@ src/manifest/
 ├── core/          # Core functionality (config, state)
 ├── ui/            # User interface components
 ├── agents/        # Multi-agent coordination
-├── bridge/        # OMOC IPC communication
+├── bridge/        # Agent system integration
 └── audit/         # Architecture drift detection
 ```
 
@@ -120,7 +120,7 @@ run_bootstrap() -> None
 
 ### `manifest.agents.agent_coordinator`
 
-**Purpose**: Coordinates agents through OMOC with task boundaries.
+**Purpose**: Coordinates agents with task boundaries.
 
 **Classes**:
 - `AgentCoordinator`: Manages orchestrator and worker agent lifecycle
@@ -137,14 +137,15 @@ AgentCoordinator.stop_agent(task_id: str) -> Awaitable[bool]
 ```
 
 **Agent Types**:
-- `prometheus`: Orchestrator/Planner
-- `sisyphus`: Worker/Coder
+- `orchestrator`: Mission coordination and task delegation
+- `planner`: Detailed task planning and blueprint creation
+- `coder`: Code implementation
 - `test`: Test agent
 - `review`: Review agent
 
 ### `manifest.agents.context_provider`
 
-**Purpose**: Provides tiered context to OMOC for agents.
+**Purpose**: Provides tiered context to agents.
 
 **Classes**:
 - `ContextProvider`: Manages tiered context provisioning
@@ -177,32 +178,31 @@ TaskScoper.get_files_in_scope(task_id: str) -> List[str]
 
 ## Bridge Modules
 
-### `manifest.bridge.omoc_bridge`
+### `manifest.bridge.agent_bridge`
 
-**Purpose**: IPC engine for communicating with OMOC process.
+**Purpose**: Direct integration with agent system.
 
 **Classes**:
-- `OMOCBridge`: IPC bridge to OMOC via standard I/O pipes
+- `AgentBridge`: Agent system integration bridge
 
 **Key Methods**:
 ```python
-OMOCBridge.start_mission(mission_description: str) -> Awaitable[bool]
-OMOCBridge.send_message(message: Dict[str, Any]) -> Awaitable[Optional[Dict[str, Any]]]
-OMOCBridge.get_status() -> Awaitable[Optional[Dict[str, Any]]]
-OMOCBridge.promote_task(task_id: str) -> Awaitable[bool]
-OMOCBridge.start_agent_mission(
+AgentBridge.start_mission(mission_description: str) -> Awaitable[bool]
+AgentBridge.get_status() -> Awaitable[Optional[Dict[str, Any]]]
+AgentBridge.promote_task(task_id: str) -> Awaitable[bool]
+AgentBridge.start_agent_mission(
     task_id: str,
     agent_type: str,
     context: Dict[str, Any],
     model_config: Dict[str, Any]
 ) -> Awaitable[bool]
-OMOCBridge.stop_agent(task_id: str) -> Awaitable[bool]
-OMOCBridge.get_agent_status(task_id: str) -> Awaitable[Optional[Dict[str, Any]]]
+AgentBridge.stop_agent(task_id: str) -> Awaitable[bool]
+AgentBridge.get_agent_status(task_id: str) -> Awaitable[Optional[Dict[str, Any]]]
 ```
 
 **Message Protocol**:
 - JSON-based message format
-- Commands: `start_mission`, `send_message`, `get_status`, `promote_task`
+- Commands: `start_mission`, `get_status`, `promote_task`
 - Agent commands: `start_agent_mission`, `stop_agent`, `get_agent_status`
 
 ## Audit Modules
@@ -265,7 +265,17 @@ DriftAuditor.compare_with_blueprint(
 {
     "version": "1.0",
     "agent_models": {
-        "prometheus": {
+        "orchestrator": {
+            "provider": str,
+            "model": str,
+            "use_default_key": bool
+        },
+        "planner": {
+            "provider": str,
+            "model": str,
+            "use_default_key": bool
+        },
+        "coder": {
             "provider": str,
             "model": str,
             "use_default_key": bool
@@ -287,7 +297,7 @@ All modules use standard Python exceptions. Common exceptions:
 - `FileNotFoundError`: Configuration or state files not found
 - `ValueError`: Invalid configuration or state data
 - `KeyError`: Missing required configuration keys
-- `RuntimeError`: OMOC process communication errors
+- `RuntimeError`: Agent system communication errors
 
 ## Async/Await Patterns
 
@@ -298,9 +308,9 @@ Most methods that interact with external processes or file I/O are async:
 await state_manager.save_state()
 await state_manager.load_state()
 
-# OMOC bridge operations
-await omoc_bridge.start_mission(description)
-await omoc_bridge.send_message(message)
+# Agent bridge operations
+await agent_bridge.start_mission(description)
+await agent_bridge.get_status()
 ```
 
 ## Examples
@@ -309,14 +319,14 @@ await omoc_bridge.send_message(message)
 
 ```python
 from manifest.agents.agent_coordinator import AgentCoordinator
-from manifest.bridge.omoc_bridge import OMOCBridge
+from manifest.bridge.agent_bridge import AgentBridge
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.task_scoper import TaskScoper
 from manifest.core.config import get_config_manager
 from manifest.core.state_manager import StateManager
 
 # Initialize components
-omoc_bridge = OMOCBridge()
+agent_bridge = AgentBridge(state_manager, config_manager)
 context_provider = ContextProvider()
 task_scoper = TaskScoper()
 config_manager = get_config_manager()
@@ -324,7 +334,7 @@ state_manager = StateManager()
 
 # Create coordinator
 coordinator = AgentCoordinator(
-    omoc_bridge,
+    agent_bridge,
     context_provider,
     task_scoper,
     config_manager,
@@ -334,7 +344,7 @@ coordinator = AgentCoordinator(
 # Start worker agent
 await coordinator.start_worker_agent(
     task_id="TASK-01",
-    agent_type="sisyphus",
+    agent_type="coder",
     mission_description="Implement authentication system"
 )
 ```

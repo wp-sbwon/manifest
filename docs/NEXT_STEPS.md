@@ -119,7 +119,7 @@ Based on project status, these are the planned features:
 1. **Multi-Agent System** (High Priority)
    - Complete agent coordination
    - Context injection hooks
-   - Enhanced OMOC protocol
+   - Agent system integration
 
 2. **Structural Spec-First Management** (Medium Priority)
    - Blueprint-based file system management
@@ -174,7 +174,7 @@ Agent squad의 작업을 실시간으로 모니터링하고 문제를 감지/방
 
 **Dependencies**:
 - Multi-Agent System 기본 구조 완성 후
-- OMOC Bridge와의 통합 필요
+- Agent Bridge와의 통합 필요
 - State Manager 확장 필요
 
 ## Notes

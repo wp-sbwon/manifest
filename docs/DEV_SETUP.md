@@ -72,14 +72,15 @@ docker-compose up -d
 
 This will start:
 - `manifest-app`: Main Manifest application
-- `agent-prometheus`: Prometheus (planner) agent container
-- `agent-sisyphus`: Sisyphus (coder) agent container
+- `agent-orchestrator`: Orchestrator agent container
+- `agent-planner`: Planner agent container
+- `agent-coder`: Coder agent container
 - `agent-test`: Test agent container
 - `agent-review`: Review agent container
 
 View logs:
 ```bash
-docker-compose logs -f agent-prometheus
+docker-compose logs -f agent-orchestrator
 ```
 
 Stop all services:
@@ -151,7 +152,7 @@ manifest/
 │       ├── core/       # Core modules (config, state_manager)
 │       ├── ui/         # UI modules (app, widgets, bootstrap_ui)
 │       ├── agents/     # Agent modules (coordinator, context_provider, task_scoper)
-│       ├── bridge/     # Bridge modules (omoc_bridge)
+│       ├── bridge/     # Bridge modules (agent_bridge)
 │       └── audit/      # Audit modules (drift_auditor)
 ├── tests/              # Test files
 ├── docs/               # Documentation files

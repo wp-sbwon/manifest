@@ -1,6 +1,6 @@
 """
-OMOC Bridge - Direct integration with OMOC (Oh My Open Code).
-Integrates OMOC agent system and terminal router directly instead of IPC.
+Agent Bridge - Direct integration with agent system.
+Integrates agent system and terminal router directly.
 """
 import asyncio
 import json
@@ -8,16 +8,15 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Awaitable
 from manifest.core.state_manager import StateManager
 from manifest.core.config import ConfigManager
-from manifest.omoc.router.terminal_router import TerminalRouter
-from manifest.omoc.agent.orchestrator import Orchestrator
-from manifest.omoc.agent.manager import AgentManager
-from manifest.omoc.agent.executor import AgentExecutor
+from manifest.runtime.router.terminal_router import TerminalRouter
+from manifest.runtime.agent.orchestrator import Orchestrator
+from manifest.runtime.agent.manager import AgentManager
+from manifest.runtime.agent.executor import AgentExecutor
 
 
-class OMOCBridge:
+class AgentBridge:
     """
-    Direct integration bridge to OMOC functionality.
-    Uses OMOC code directly instead of IPC communication.
+    Direct integration bridge to agent functionality.
     """
     
     def __init__(
@@ -55,7 +54,7 @@ class OMOCBridge:
         # Agent executor for LLM calls
         self.executor = AgentExecutor(config_manager or ConfigManager(), state_manager) if config_manager else None
         
-        # OMOC Agent system
+        # Agent system
         self.orchestrator = Orchestrator(state_manager)
         self.agent_manager = AgentManager(state_manager, executor=self.executor)
         
@@ -65,25 +64,25 @@ class OMOCBridge:
     
     async def start(self) -> bool:
         """
-        Initialize OMOC integration.
-        Loads state and initializes OMOC agent system.
+        Initialize agent integration.
+        Loads state and initializes agent system.
         """
         try:
             # Initialize terminal router (already done in __init__)
             # Start watchdog
             await self.watchdog.start()
             
-            # OMOC agent system is already initialized in __init__
+            # Agent system is already initialized in __init__
             
             self.is_connected = True
             return True
         except Exception as e:
-            print(f"Error initializing OMOC: {e}")
+            print(f"Error initializing agent system: {e}")
             self.is_connected = False
             return False
     
     async def stop(self):
-        """Stop OMOC integration and clean up resources."""
+        """Stop agent integration and clean up resources."""
         self.is_connected = False
         
         # Stop watchdog
@@ -97,12 +96,9 @@ class OMOCBridge:
         for task_id in list(self._active_agents.keys()):
             await self.stop_agent(task_id)
             
-        # TODO: Clean up OMOC agent system when integrated
-        # if self.agent_manager:
-        #     await self.agent_manager.shutdown()
-    
-    # Legacy IPC methods removed - now using direct integration
-    # _read_messages, _handle_message, send_message are no longer needed
+        # Clean up agent system
+        if self.agent_manager:
+            await self.agent_manager.shutdown()
     
     async def start_mission(self, task_id: str, mission_description: str = "") -> bool:
         """
@@ -121,7 +117,6 @@ class OMOCBridge:
     async def get_status(self) -> Dict[str, Any]:
         """
         Get current mission status.
-        TODO: Integrate with OMOC orchestrator when available.
         """
         state = self.state_manager.get_state()
         return {
@@ -136,7 +131,6 @@ class OMOCBridge:
     async def promote_task(self, task_id: str, stage: str) -> bool:
         """
         Promote a task to a new stage.
-        TODO: Integrate with OMOC orchestrator when available.
         """
         tasks = self.state_manager.get_task_checklist()
         for task in tasks:
@@ -163,11 +157,11 @@ class OMOCBridge:
         
         Args:
             task_id: Task identifier
-            agent_type: Type of agent (prometheus, sisyphus, test, review)
+            agent_type: Type of agent (orchestrator, planner, coder, test, review)
             context: Agent context (tiered context)
             model_config: Model configuration
         """
-        # Create agent using OMOC agent manager
+        # Create agent using agent manager
         agent = await self.agent_manager.create_agent(
             agent_type=agent_type,
             context=context,
@@ -235,7 +229,7 @@ class OMOCBridge:
         Args:
             task_id: Task identifier
         """
-        # Stop agent using OMOC agent manager
+        # Stop agent using agent manager
         success = await self.agent_manager.stop_agent(task_id)
         
         if success:

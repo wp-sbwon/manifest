@@ -4,7 +4,7 @@ Tests for Terminal Router.
 import pytest
 import asyncio
 from pathlib import Path
-from manifest.omoc.router.terminal_router import TerminalRouter
+from manifest.runtime.router.terminal_router import TerminalRouter
 
 
 @pytest.fixture

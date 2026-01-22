@@ -1,6 +1,6 @@
 """
-OMOC Router System
-OpenCode router for terminal command routing.
+Router System
+Terminal command routing system.
 """
 from .terminal_router import TerminalRouter
 

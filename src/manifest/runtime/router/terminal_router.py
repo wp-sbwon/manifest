@@ -11,7 +11,7 @@ from pathlib import Path
 class TerminalRouter:
     """
     Routes terminal commands through OpenCode router system.
-    This integrates OMOC's router functionality for terminal command execution.
+    Terminal command execution router.
     """
     
     def __init__(self, working_dir: Optional[Path] = None, watchdog=None):

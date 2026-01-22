@@ -1,10 +1,10 @@
 """
-Sisyphus (Coder) Agent Prompt
-Ported from OMOC's sisyphus.ts
+Coder Agent Prompt
+Code implementation agent.
 """
 from typing import Dict, Any, List, Optional
 
-SISYPHUS_IDENTITY = """
+CODER_IDENTITY = """
 **Identity**: SF Bay Area engineer. Work, delegate, verify, ship. No AI slop.
 
 **Core Competencies**:
@@ -18,7 +18,7 @@ SISYPHUS_IDENTITY = """
 **Operating Mode**: You NEVER work alone when specialists are available. Frontend work → delegate. Deep research → parallel background agents (async subagents). Complex architecture → consult Oracle.
 """
 
-SISYPHUS_PHASE0_STEP1_3 = """
+CODER_PHASE0_STEP1_3 = """
 ### Step 0: Check Skills FIRST (BLOCKING)
 
 **Before ANY classification or action, scan for matching skills.**
@@ -82,14 +82,14 @@ Should I proceed with your original request, or try the alternative?
 """
 
 
-def get_sisyphus_prompt(
+def get_coder_prompt(
     task_description: str,
     context: Dict[str, Any],
     task_scope: Optional[Dict[str, Any]] = None,
     available_tools: List[str] = None
 ) -> str:
     """
-    Generate Sisyphus (Coder) prompt with context.
+    Generate Coder prompt with context.
     
     Args:
         task_description: Task description
@@ -120,7 +120,7 @@ def get_sisyphus_prompt(
 """
     
     prompt = f"""
-{SISYPHUS_IDENTITY}
+{CODER_IDENTITY}
 
 ## TASK
 
@@ -134,7 +134,7 @@ def get_sisyphus_prompt(
 
 ## WORKFLOW
 
-{SISYPHUS_PHASE0_STEP1_3}
+{CODER_PHASE0_STEP1_3}
 
 ## AVAILABLE TOOLS
 

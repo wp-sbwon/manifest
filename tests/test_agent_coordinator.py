@@ -4,7 +4,7 @@ Unit tests for agent_coordinator.py
 import pytest
 from unittest.mock import Mock, AsyncMock, MagicMock
 from manifest.agents.agent_coordinator import AgentCoordinator
-from manifest.bridge.omoc_bridge import OMOCBridge
+from manifest.bridge.agent_bridge import AgentBridge
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.task_scoper import TaskScoper
 from manifest.core.config import ConfigManager
@@ -31,18 +31,18 @@ def mock_components():
     orchestrator.start_mission = AsyncMock(return_value=True)
     
     agent_manager = Mock()
-    agent_manager.create_agent = AsyncMock(return_value={"id": "task-1", "type": "sisyphus", "status": "created"})
+    agent_manager.create_agent = AsyncMock(return_value={"id": "task-1", "type": "coder", "status": "created"})
     agent_manager.start_agent = AsyncMock(return_value=True)
     agent_manager.stop_agent = AsyncMock(return_value=True)
-    agent_manager.get_agent = Mock(return_value={"id": "task-1", "type": "sisyphus", "status": "active"})
+    agent_manager.get_agent = Mock(return_value={"id": "task-1", "type": "coder", "status": "active"})
     
-    omoc_bridge = Mock(spec=OMOCBridge)
-    omoc_bridge.terminal_router = terminal_router
-    omoc_bridge.orchestrator = orchestrator
-    omoc_bridge.agent_manager = agent_manager
-    omoc_bridge.start_agent_mission = AsyncMock(return_value=True)
-    omoc_bridge.stop_agent = AsyncMock(return_value=True)
-    omoc_bridge.get_agent_status = AsyncMock(return_value={"status": "active", "data": {}})
+    agent_bridge = Mock(spec=AgentBridge)
+    agent_bridge.terminal_router = terminal_router
+    agent_bridge.orchestrator = orchestrator
+    agent_bridge.agent_manager = agent_manager
+    agent_bridge.start_agent_mission = AsyncMock(return_value=True)
+    agent_bridge.stop_agent = AsyncMock(return_value=True)
+    agent_bridge.get_agent_status = AsyncMock(return_value={"status": "active", "data": {}})
     
     context_provider = Mock(spec=ContextProvider)
     context_provider.get_orchestrator_context = Mock(return_value={"tier": "orchestrator"})
@@ -67,7 +67,7 @@ def mock_components():
     state_manager.add_chat_message = Mock()
     
     return {
-        "omoc_bridge": omoc_bridge,
+        "agent_bridge": agent_bridge,
         "context_provider": context_provider,
         "task_scoper": task_scoper,
         "config_manager": config_manager,
@@ -78,14 +78,14 @@ def mock_components():
 def test_agent_coordinator_init(mock_components):
     """Test AgentCoordinator initialization."""
     coordinator = AgentCoordinator(
-        mock_components["omoc_bridge"],
+        mock_components["agent_bridge"],
         mock_components["context_provider"],
         mock_components["task_scoper"],
         mock_components["config_manager"],
         mock_components["state_manager"]
     )
     
-    assert coordinator.omoc_bridge == mock_components["omoc_bridge"]
+    assert coordinator.agent_bridge == mock_components["agent_bridge"]
     assert coordinator.active_agents == {}
 
 
@@ -93,7 +93,7 @@ def test_agent_coordinator_init(mock_components):
 async def test_start_orchestrator(mock_components):
     """Test starting orchestrator."""
     coordinator = AgentCoordinator(
-        mock_components["omoc_bridge"],
+        mock_components["agent_bridge"],
         mock_components["context_provider"],
         mock_components["task_scoper"],
         mock_components["config_manager"],
@@ -104,32 +104,32 @@ async def test_start_orchestrator(mock_components):
     
     assert success == True
     assert "orchestrator" in coordinator.active_agents
-    mock_components["omoc_bridge"].start_agent_mission.assert_called_once()
+    mock_components["agent_bridge"].start_agent_mission.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_start_worker_agent(mock_components):
     """Test starting worker agent."""
     coordinator = AgentCoordinator(
-        mock_components["omoc_bridge"],
+        mock_components["agent_bridge"],
         mock_components["context_provider"],
         mock_components["task_scoper"],
         mock_components["config_manager"],
         mock_components["state_manager"]
     )
     
-    success = await coordinator.start_worker_agent("task-1", "sisyphus")
+    success = await coordinator.start_worker_agent("task-1", "coder")
     
     assert success == True
     assert "task-1" in coordinator.active_agents
-    mock_components["omoc_bridge"].start_agent_mission.assert_called_once()
+    mock_components["agent_bridge"].start_agent_mission.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_stop_agent(mock_components):
     """Test stopping agent."""
     coordinator = AgentCoordinator(
-        mock_components["omoc_bridge"],
+        mock_components["agent_bridge"],
         mock_components["context_provider"],
         mock_components["task_scoper"],
         mock_components["config_manager"],
@@ -137,7 +137,7 @@ async def test_stop_agent(mock_components):
     )
     
     # Start agent first
-    await coordinator.start_worker_agent("task-1", "sisyphus")
+    await coordinator.start_worker_agent("task-1", "coder")
     
     # Stop agent
     success = await coordinator.stop_agent("task-1")
@@ -149,7 +149,7 @@ async def test_stop_agent(mock_components):
 def test_get_active_agents(mock_components):
     """Test getting active agents."""
     coordinator = AgentCoordinator(
-        mock_components["omoc_bridge"],
+        mock_components["agent_bridge"],
         mock_components["context_provider"],
         mock_components["task_scoper"],
         mock_components["config_manager"],
@@ -157,8 +157,8 @@ def test_get_active_agents(mock_components):
     )
     
     # Manually add active agent
-    coordinator.active_agents["task-1"] = {"agent_type": "sisyphus", "status": "active"}
+    coordinator.active_agents["task-1"] = {"agent_type": "coder", "status": "active"}
     
     active = coordinator.get_active_agents()
     assert "task-1" in active
-    assert active["task-1"]["agent_type"] == "sisyphus"
+    assert active["task-1"]["agent_type"] == "coder"

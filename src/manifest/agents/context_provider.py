@@ -1,5 +1,5 @@
 """
-Context Provider - Provides tiered context to OMOC for agents.
+Context Provider - Provides tiered context to agents.
 Implements the Tiered Orchestration system:
 - Tier 0: The Law (manifest-policy.md)
 - Tier 1: The Intent (intent.json, architecture.json)
@@ -13,7 +13,7 @@ from manifest.agents.task_scoper import TaskScoper
 
 
 class ContextProvider:
-    """Provides tiered context to OMOC for agents."""
+    """Provides tiered context to agents."""
     
     def __init__(self, manifest_dir: Path = None, task_scoper: Optional[TaskScoper] = None):
         self.manifest_dir = manifest_dir or Path(".manifest")
@@ -24,7 +24,7 @@ class ContextProvider:
         self.blueprint_file = self.manifest_dir / "blueprint.json"
     
     def get_orchestrator_context(self) -> Dict[str, Any]:
-        """Context for orchestrator (Prometheus)."""
+        """Context for orchestrator."""
         context = {
             "tier": "orchestrator",
             "tier_0": self._load_tier_0(),

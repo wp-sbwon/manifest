@@ -56,7 +56,7 @@ class ContainerManager:
         
         Args:
             task_id: Task identifier
-            agent_type: Type of agent (prometheus, sisyphus, test, review)
+            agent_type: Type of agent (orchestrator, planner, coder, test, review)
             environment: Environment variables
             volumes: Volume mappings
             network: Docker network name
