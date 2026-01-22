@@ -31,7 +31,7 @@
             "file": "app.py",
             "lines": 550,
             "responsibility": "TUI 애플리케이션 진입점 및 뷰 관리",
-            "dependencies": ["config", "state_manager", "omoc_bridge", "drift_auditor", "widgets"],
+            "dependencies": ["config", "state_manager", "agent_bridge", "drift_auditor", "widgets"],
             "status": "complete"
           },
           {
@@ -76,15 +76,15 @@
             "status": "complete"
           },
           {
-            "id": "omoc_bridge",
-            "file": "omoc_bridge.py",
+            "id": "agent_bridge",
+            "file": "agent_bridge.py",
             "lines": 200,
-            "responsibility": "OMOC 프로세스와의 IPC 통신",
+            "responsibility": "Agent 시스템과의 직접 통합",
             "features": [
               "json_message_protocol",
               "async_message_handling",
               "command_interface",
-              "standalone_mode"
+              "agent_system_integration"
             ],
             "commands": ["start_mission", "get_status", "promote_task", "get_agent_output"],
             "status": "complete"
@@ -126,7 +126,7 @@
         "ManifestApp.on_mount()",
         "ConfigManager.has_all_keys() 체크",
         "StateManager.load_state_async() 로드",
-        "OMOCBridge.start() 연결 시도",
+        "AgentBridge.start() 초기화",
         "Intent/Blueprint 데이터 로드",
         "각 뷰 업데이트",
         "DriftAuditor.audit_project() 실행"
@@ -136,7 +136,7 @@
         "입력 클리어",
         "StateManager.add_chat_message()",
         "process_command()",
-        "명령 파싱 또는 OMOCBridge 통신",
+        "명령 파싱 또는 AgentBridge 통신",
         "상태 저장",
         "입력 필드 포커스 복원"
       ],
@@ -272,7 +272,7 @@
       "core_infrastructure",
       "configuration_system",
       "state_management",
-      "omoc_bridge",
+      "agent_bridge",
       "drift_auditor",
       "custom_widgets",
       "5_view_workspace",
@@ -295,7 +295,7 @@
     "unimplemented_features": [
       {
         "feature": "multi_agent_squad_system",
-        "description": "Prometheus (Planner), Sisyphus (Coder) 등 에이전트 통합",
+        "description": "Orchestrator, Planner, Coder 등 에이전트 통합",
         "priority": "high"
       },
       {
@@ -314,8 +314,8 @@
         "priority": "medium"
       },
       {
-        "feature": "enhanced_omoc_protocol",
-        "description": "완전한 OMOC 프로토콜 구현",
+        "feature": "agent_system_integration",
+        "description": "완전한 Agent 시스템 통합",
         "priority": "low"
       }
     ]
@@ -337,7 +337,7 @@
       {
         "file": "test_bridge.py",
         "type": "unit",
-        "coverage": "omoc_bridge_protocol",
+        "coverage": "agent_bridge_protocol",
         "status": "complete"
       },
       {
@@ -402,7 +402,7 @@
     "short_term": [
       "Multi-Agent System basic structure",
       "Context Injection Hooks prototype",
-      "Enhanced OMOC Protocol"
+      "Agent System Integration"
     ],
     "medium_term": [
       "Structural Spec-First Management",
@@ -430,7 +430,7 @@
       "app.py",
       "config.py",
       "state_manager.py",
-      "omoc_bridge.py",
+      "agent_bridge.py",
       "drift_auditor.py",
       "widgets.py",
       "bootstrap_ui.py"

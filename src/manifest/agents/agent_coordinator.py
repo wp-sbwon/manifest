@@ -1,10 +1,10 @@
 """
-Agent Coordinator - Coordinates agents through OMOC with task boundaries.
+Agent Coordinator - Coordinates agents with task boundaries.
 Manages orchestrator and worker agent lifecycle with proper scoping.
 Supports both direct execution and Docker container execution.
 """
 from typing import Dict, Any, Optional
-from manifest.bridge.omoc_bridge import OMOCBridge
+from manifest.bridge.agent_bridge import AgentBridge
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.task_scoper import TaskScoper
 from manifest.agents.container_manager import ContainerManager
@@ -13,27 +13,27 @@ from manifest.core.state_manager import StateManager
 
 
 class AgentCoordinator:
-    """Coordinates agents through OMOC bridge."""
+    """Coordinates agents through agent bridge."""
     
     def __init__(
         self,
-        omoc_bridge: OMOCBridge,
+        agent_bridge: AgentBridge,
         context_provider: ContextProvider,
         task_scoper: TaskScoper,
         config_manager: ConfigManager,
         state_manager: StateManager
     ):
-        self.omoc_bridge = omoc_bridge
+        self.agent_bridge = agent_bridge
         self.context_provider = context_provider
         self.task_scoper = task_scoper
         self.config_manager = config_manager
         self.state_manager = state_manager
         self.active_agents: Dict[str, Dict[str, Any]] = {}  # task_id -> agent info
         
-        # Access to OMOC components
-        self.terminal_router = omoc_bridge.terminal_router
-        self.orchestrator = omoc_bridge.orchestrator
-        self.agent_manager = omoc_bridge.agent_manager
+        # Access to agent components
+        self.terminal_router = agent_bridge.terminal_router
+        self.orchestrator = agent_bridge.orchestrator
+        self.agent_manager = agent_bridge.agent_manager
         
         # Container manager for Docker-based agent execution
         self.container_manager = ContainerManager()
@@ -47,7 +47,7 @@ class AgentCoordinator:
             self.state_sync = None
     
     async def start_orchestrator(self, mission_description: str) -> bool:
-        """Start orchestrator (Prometheus) via OMOC."""
+        """Start orchestrator via agent bridge."""
         # Get orchestrator context (Tier 0-1)
         context = self.context_provider.get_orchestrator_context()
         
@@ -55,21 +55,21 @@ class AgentCoordinator:
         context["mission_description"] = mission_description
         
         # Get model config for orchestrator
-        model_config = self.config_manager.get_agent_model_config("prometheus")
+        model_config = self.config_manager.get_agent_model_config("orchestrator")
         
-        # Start via OMOC bridge
-        success = await self.omoc_bridge.start_agent_mission(
+        # Start via agent bridge
+        success = await self.agent_bridge.start_agent_mission(
             task_id="orchestrator",
-            agent_type="prometheus",
+            agent_type="orchestrator",
             context=context,
             model_config=model_config
         )
         
         if success:
             self.active_agents["orchestrator"] = {
-                "agent_type": "prometheus",
+                "agent_type": "orchestrator",
                 "status": "active",
-                "channel": "squad-orchestrator-prometheus"
+                "channel": "squad-orchestrator-orchestrator"
             }
             # Update state
             self.state_manager.set_last_action(f"Started orchestrator: {mission_description}")
@@ -88,7 +88,7 @@ class AgentCoordinator:
         
         Args:
             task_id: Task identifier
-            agent_type: Type of agent (prometheus, sisyphus, test, review)
+            agent_type: Type of agent (orchestrator, planner, coder, test, review)
             use_container: Whether to use Docker container (None = auto-detect)
         """
         # Validate task exists
@@ -157,8 +157,8 @@ class AgentCoordinator:
                 # Fall back to direct execution if container fails
                 print(f"Failed to start container, falling back to direct execution")
         
-        # Start via OMOC bridge (direct execution)
-        success = await self.omoc_bridge.start_agent_mission(
+        # Start via agent bridge (direct execution)
+        success = await self.agent_bridge.start_agent_mission(
             task_id=task_id,
             agent_type=agent_type,
             context=context,
@@ -208,8 +208,8 @@ class AgentCoordinator:
             # Stop container
             success = await self.container_manager.stop_agent_container(task_id)
         else:
-            # Stop via OMOC bridge
-            success = await self.omoc_bridge.stop_agent(task_id)
+            # Stop via agent bridge
+            success = await self.agent_bridge.stop_agent(task_id)
         
         if success:
             # Update task status
@@ -251,8 +251,8 @@ class AgentCoordinator:
             else:
                 return {"status": "not_active", "data": {}}
         else:
-            # Get status via OMOC bridge
-            status = await self.omoc_bridge.get_agent_status(task_id)
+            # Get status via agent bridge
+            status = await self.agent_bridge.get_agent_status(task_id)
             if status:
                 status["data"]["execution_mode"] = "direct"
             return status
@@ -278,8 +278,8 @@ class AgentCoordinator:
         # Request planner review
         planner_request = synchronizer.request_planner_review(conflict_issue)
         
-        # Send to OMOC for planner review
-        # This would integrate with OMOC bridge to send to Prometheus (planner)
+        # Send to agent bridge for planner review
+        # This would integrate with agent bridge to send to planner
         # For now, we'll update the task with conflict information
         tasks = self.state_manager.get_task_checklist()
         for task in tasks:
@@ -293,7 +293,7 @@ class AgentCoordinator:
                 await self.state_manager.save_state()
                 break
         
-        # TODO: Integrate with OMOC bridge to actually send to planner
-        # await self.omoc_bridge.send_to_planner(planner_request)
+        # TODO: Integrate with agent bridge to actually send to planner
+        # await self.agent_bridge.send_to_planner(planner_request)
         
         return True

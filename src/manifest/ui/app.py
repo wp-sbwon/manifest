@@ -13,7 +13,7 @@ from textual.binding import Binding
 
 from manifest.core.config import get_config_manager
 from manifest.core.state_manager import StateManager
-from manifest.bridge.omoc_bridge import OMOCBridge
+from manifest.bridge.agent_bridge import AgentBridge
 from manifest.audit.drift_auditor import DriftAuditor
 from manifest.audit.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
 from manifest.audit.blueprint_comparator import BlueprintComparator
@@ -163,7 +163,7 @@ class ManifestApp(App):
         super().__init__()
         self.config = get_config_manager()
         self.state_manager = StateManager()
-        self.omoc_bridge: Optional[OMOCBridge] = None
+        self.agent_bridge: Optional[AgentBridge] = None
         self.drift_auditor = DriftAuditor()
         self.blueprint_synchronizer = BlueprintSynchronizer()
         self.blueprint_comparator = BlueprintComparator()
@@ -282,20 +282,20 @@ class ManifestApp(App):
         # Initialize task tree
         await self.update_task_tree()
         
-        # Try to connect to OMOC
-        if self.omoc_bridge is None:
+        # Initialize agent bridge
+        if self.agent_bridge is None:
             config_manager = get_config_manager()
-            self.omoc_bridge = OMOCBridge(self.state_manager, config_manager)
-            await self.omoc_bridge.start()
-            if self.omoc_bridge.is_connected:
-                self.query_one("#log-main", RichLog).write("[bold green]OMOC bridge initialized.[/]")
+            self.agent_bridge = AgentBridge(self.state_manager, config_manager)
+            await self.agent_bridge.start()
+            if self.agent_bridge.is_connected:
+                self.query_one("#log-main", RichLog).write("[bold green]Agent bridge initialized.[/]")
             else:
-                self.query_one("#log-main", RichLog).write("[bold yellow]OMOC initialization failed.[/]")
+                self.query_one("#log-main", RichLog).write("[bold yellow]Agent bridge initialization failed.[/]")
         
-        # Initialize agent coordinator (works in both OMOC and standalone mode)
-        if self.omoc_bridge and self.omoc_bridge.is_connected:
+        # Initialize agent coordinator
+        if self.agent_bridge and self.agent_bridge.is_connected:
             self.agent_coordinator = AgentCoordinator(
-                self.omoc_bridge,
+                self.agent_bridge,
                 self.context_provider,
                 self.task_scoper,
                 self.config,
@@ -692,17 +692,17 @@ class ManifestApp(App):
                     await self.update_project_view()
                     log.write("[bold green]Data reloaded.[/]")
                 elif command == "status":
-                    if self.omoc_bridge and self.omoc_bridge.is_connected:
-                        status = await self.omoc_bridge.get_status()
+                    if self.agent_bridge and self.agent_bridge.is_connected:
+                        status = await self.agent_bridge.get_status()
                         log.write(f"[bold green]Status: {status}[/]")
                     else:
-                        log.write("[bold yellow]OMOC not connected.[/]")
+                        log.write("[bold yellow]Agent bridge not connected.[/]")
                 elif command == "start_agent" or command.startswith("start_agent"):
                     # Format: /start_agent <task_id> <agent_type>
                     parts = user_input.split()
                     if len(parts) >= 3:
                         task_id = parts[2]
-                        agent_type = parts[3] if len(parts) > 3 else "sisyphus"
+                        agent_type = parts[3] if len(parts) > 3 else "coder"
                         if self.agent_coordinator:
                             log.write(f"[bold green]Starting {agent_type} agent for task {task_id}...[/]")
                             success = await self.agent_coordinator.start_worker_agent(task_id, agent_type)
@@ -748,10 +748,10 @@ class ManifestApp(App):
                     log.write(f"[bold yellow]Unknown command: {command}[/]")
             else:
                 # Regular AI interaction
-                if self.omoc_bridge and self.omoc_bridge.is_connected:
-                    # Send to OMOC
-                    log.write("[bold green]Processing with OMOC...[/]")
-                    # In real implementation, this would send to OMOC and get response
+                if self.agent_bridge and self.agent_bridge.is_connected:
+                    # Send to agent bridge
+                    log.write("[bold green]Processing with agent system...[/]")
+                    # In real implementation, this would send to agent bridge and get response
                     self.state_manager.add_chat_message("main", "assistant", f"Processing: {user_input}")
                     await self.state_manager.save_state()
                 else:
@@ -774,8 +774,8 @@ class ManifestApp(App):
     async def on_task_approved(self, message: GateController.Approved):
         """Handle task approval."""
         task_id = message.task_id
-        if self.omoc_bridge and self.omoc_bridge.is_connected:
-            await self.omoc_bridge.promote_task(task_id, "approved")
+        if self.agent_bridge and self.agent_bridge.is_connected:
+            await self.agent_bridge.promote_task(task_id, "approved")
         log = self.query_one("#log-main", RichLog)
         log.write(f"[bold green]Task {task_id} approved.[/]")
         await self.state_manager.save_state()
@@ -875,8 +875,8 @@ class ManifestApp(App):
 
     async def on_unmount(self) -> None:
         """Cleanup on app exit."""
-        if self.omoc_bridge:
-            await self.omoc_bridge.stop()
+        if self.agent_bridge:
+            await self.agent_bridge.stop()
         await self.state_manager.save_state()
 
 

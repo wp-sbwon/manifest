@@ -130,12 +130,17 @@ class ConfigManager:
         return {
             "version": "1.0",
             "agent_models": {
-                "prometheus": {
+                "orchestrator": {
                     "provider": "anthropic",
                     "model": "claude-3-5-sonnet-20241022",
                     "use_default_key": True
                 },
-                "sisyphus": {
+                "planner": {
+                    "provider": "anthropic",
+                    "model": "claude-3-5-sonnet-20241022",
+                    "use_default_key": True
+                },
+                "coder": {
                     "provider": "anthropic",
                     "model": "claude-3-5-sonnet-20241022",
                     "use_default_key": True

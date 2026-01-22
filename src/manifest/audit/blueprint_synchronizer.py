@@ -186,7 +186,7 @@ class BlueprintSynchronizer:
         self,
         conflict_issue: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Request planner (Prometheus) to review conflict and set flag."""
+        """Request planner to review conflict and set flag."""
         return {
             "action": "planner_review",
             "conflict_issue": conflict_issue,

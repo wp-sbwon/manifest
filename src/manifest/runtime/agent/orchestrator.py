@@ -1,16 +1,14 @@
 """
-OMOC Orchestrator - Agent orchestration system from OMOC.
-Integrates Prometheus (planner) agent logic from OMOC.
+Orchestrator - Agent orchestration system.
 """
 from typing import Dict, Any, Optional, List
 from manifest.core.state_manager import StateManager
-from manifest.omoc.agent.prometheus_prompt import get_prometheus_prompt, PROMETHEUS_SYSTEM_PROMPT
+from manifest.runtime.agent.orchestrator_prompt import get_orchestrator_prompt, ORCHESTRATOR_SYSTEM_PROMPT
 
 
 class Orchestrator:
     """
-    OMOC Orchestrator for managing agent missions.
-    Uses Prometheus (planner) agent logic from OMOC.
+    Orchestrator for managing agent missions.
     """
     
     def __init__(self, state_manager: StateManager):
@@ -22,7 +20,7 @@ class Orchestrator:
         """
         self.state_manager = state_manager
         self.active_missions: Dict[str, Dict[str, Any]] = {}
-        self.system_prompt = PROMETHEUS_SYSTEM_PROMPT
+        self.system_prompt = ORCHESTRATOR_SYSTEM_PROMPT
     
     async def start_mission(self, task_id: str, mission_description: str) -> bool:
         """
@@ -43,11 +41,11 @@ class Orchestrator:
             "tier_1": self._get_tier_1_context(state)
         }
         
-        # Generate prompt using OMOC's Prometheus prompt
-        prompt = get_prometheus_prompt(
+        # Generate prompt using orchestrator prompt
+        prompt = get_orchestrator_prompt(
             mission_description=mission_description,
             context=context,
-            available_agents=["sisyphus", "test", "review"]
+            available_agents=["planner", "coder", "test", "review"]
         )
         
         self.active_missions[task_id] = {

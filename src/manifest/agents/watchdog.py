@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime, timedelta
 from pathlib import Path
 from manifest.core.state_manager import StateManager
-from manifest.omoc.router.terminal_router import TerminalRouter
+from manifest.runtime.router.terminal_router import TerminalRouter
 
 
 class AgentWatchdog:

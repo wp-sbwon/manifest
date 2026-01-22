@@ -1,6 +1,6 @@
 """
-Bridge modules - OMOC IPC communication.
+Bridge modules - Agent system integration.
 """
-from manifest.bridge.omoc_bridge import OMOCBridge
+from manifest.bridge.agent_bridge import AgentBridge
 
-__all__ = ["OMOCBridge"]
+__all__ = ["AgentBridge"]

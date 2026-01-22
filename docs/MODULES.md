@@ -205,7 +205,7 @@ Bootstrap mode application for initial setup.
 
 **Location**: `src/manifest/agents/agent_coordinator.py`
 
-**Purpose**: Coordinates agents through OMOC with task boundaries.
+**Purpose**: Coordinates agents with task boundaries.
 
 #### Classes
 
@@ -216,7 +216,7 @@ Manages orchestrator and worker agent lifecycle.
 **Initialization**:
 ```python
 AgentCoordinator(
-    omoc_bridge: OMOCBridge,
+    agent_bridge: AgentBridge,
     context_provider: ContextProvider,
     task_scoper: TaskScoper,
     config_manager: ConfigManager,
@@ -227,7 +227,7 @@ AgentCoordinator(
 **Methods**:
 
 - `start_orchestrator(mission_description: str) -> Awaitable[bool]`
-  - Starts orchestrator (Prometheus) agent
+  - Starts orchestrator agent
   - Returns True if successful
 
 - `start_worker_agent(
@@ -236,7 +236,7 @@ AgentCoordinator(
     mission_description: str
 ) -> Awaitable[bool]`
   - Starts worker agent on a task
-  - Agent types: "sisyphus", "test", "review"
+  - Agent types: "planner", "coder", "test", "review"
   - Returns True if successful
 
 - `stop_agent(task_id: str) -> Awaitable[bool]`
@@ -247,7 +247,7 @@ AgentCoordinator(
 
 **Location**: `src/manifest/agents/context_provider.py`
 
-**Purpose**: Provides tiered context to OMOC for agents.
+**Purpose**: Provides tiered context to agents.
 
 #### Classes
 
@@ -299,15 +299,15 @@ Manages task scope and file boundaries.
 
 ## Bridge Modules
 
-### `manifest.omoc`
+### `manifest.runtime`
 
-OMOC (Oh My Open Code) integration modules.
+Runtime agent system modules.
 
-#### `manifest.omoc.router.terminal_router`
+#### `manifest.runtime.router.terminal_router`
 
-**Location**: `src/manifest/omoc/router/terminal_router.py`
+**Location**: `src/manifest/runtime/router/terminal_router.py`
 
-**Purpose**: OpenCode router for terminal command execution.
+**Purpose**: Terminal command execution router.
 
 ##### `TerminalRouter`
 
@@ -319,15 +319,15 @@ Routes terminal commands through OpenCode router system.
 - `cancel_command(command_id)`: Cancel a running command
 - `is_command_running(command_id)`: Check if a command is running
 
-#### `manifest.omoc.agent`
+#### `manifest.runtime.agent`
 
-OMOC agent system integration.
+Runtime agent system integration.
 
 ##### `Orchestrator`
 
-**Location**: `src/manifest/omoc/agent/orchestrator.py`
+**Location**: `src/manifest/runtime/agent/orchestrator.py`
 
-Agent orchestration system from OMOC.
+Agent orchestration system.
 
 **Methods**:
 - `start_mission(task_id, mission_description)`: Start a new mission
@@ -336,9 +336,9 @@ Agent orchestration system from OMOC.
 
 ##### `AgentManager`
 
-**Location**: `src/manifest/omoc/agent/manager.py`
+**Location**: `src/manifest/runtime/agent/manager.py`
 
-Manages agent lifecycle from OMOC.
+Manages agent lifecycle.
 
 **Methods**:
 - `create_agent(agent_type, context, model_config, task_id)`: Create a new agent
@@ -367,35 +367,31 @@ Manages Docker containers for agent execution with lifecycle management, monitor
 - `cleanup_all()`: Stop and remove all managed containers
 - `is_docker_available()`: Check if Docker is available
 
-### `manifest.bridge.omoc_bridge`
+### `manifest.bridge.agent_bridge`
 
-**Location**: `src/manifest/bridge/omoc_bridge.py`
+**Location**: `src/manifest/bridge/agent_bridge.py`
 
-**Purpose**: IPC engine for communicating with OMOC process.
+**Purpose**: Direct integration with agent system.
 
 #### Classes
 
-##### `OMOCBridge`
+##### `AgentBridge`
 
-IPC bridge to OMOC via standard I/O pipes.
+Agent system integration bridge.
 
 **Initialization**:
 ```python
-OMOCBridge(omoc_command: List[str] = None)
+AgentBridge(state_manager: StateManager, config_manager: Optional[ConfigManager] = None)
 ```
 
 **Methods**:
 
 - `start_mission(mission_description: str) -> Awaitable[bool]`
-  - Starts a mission in OMOC
+  - Starts a mission
   - Returns True if successful
 
-- `send_message(message: Dict[str, Any]) -> Awaitable[Optional[Dict[str, Any]]]`
-  - Sends message to OMOC
-  - Returns response if available
-
 - `get_status() -> Awaitable[Optional[Dict[str, Any]]]`
-  - Gets current OMOC status
+  - Gets current mission status
   - Returns status dictionary
 
 - `promote_task(task_id: str) -> Awaitable[bool]`
@@ -408,11 +404,11 @@ OMOCBridge(omoc_command: List[str] = None)
     context: Dict[str, Any],
     model_config: Dict[str, Any]
 ) -> Awaitable[bool]`
-  - Starts agent mission in OMOC
+  - Starts agent mission
   - Returns True if successful
 
 - `stop_agent(task_id: str) -> Awaitable[bool]`
-  - Stops agent in OMOC
+  - Stops agent
   - Returns True if successful
 
 - `get_agent_status(task_id: str) -> Awaitable[Optional[Dict[str, Any]]]`
@@ -481,7 +477,7 @@ Enum for conflict severity.
 app.py
 ├── config
 ├── state_manager
-├── omoc_bridge
+    ├── agent_bridge
 │   └── state_manager
 ├── drift_auditor
 ├── widgets
@@ -491,7 +487,7 @@ app.py
 ├── context_provider
 │   └── task_scoper
 └── agent_coordinator
-    ├── omoc_bridge
+    ├── agent_bridge
     ├── context_provider
     ├── task_scoper
     ├── config

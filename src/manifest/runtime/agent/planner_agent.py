@@ -1,16 +1,16 @@
 """
-Prometheus Agent - Planner/Orchestrator agent implementation.
+Planner Agent - Detailed task planning and blueprint creation.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
-from manifest.omoc.agent.executor import AgentExecutor
-from manifest.omoc.agent.prometheus_prompt import get_prometheus_prompt
+from manifest.runtime.agent.executor import AgentExecutor
+from manifest.runtime.agent.planner_prompt import get_planner_prompt
 from manifest.core.state_manager import StateManager
 
 
-class PrometheusAgent:
+class PlannerAgent:
     """
-    Prometheus agent - Strategic planning consultant.
-    Plans work but does not implement.
+    Planner agent - Detailed planning consultant.
+    Creates detailed work plans and blueprints but does not implement.
     """
     
     def __init__(
@@ -20,7 +20,7 @@ class PrometheusAgent:
         state_manager: StateManager
     ):
         """
-        Initialize Prometheus agent.
+        Initialize Planner agent.
         
         Args:
             agent_id: Agent identifier
@@ -34,15 +34,15 @@ class PrometheusAgent:
     
     async def plan(
         self,
-        mission_description: str,
+        task_description: str,
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
         """
-        Create a work plan for the mission.
+        Create a detailed work plan for the task.
         
         Args:
-            mission_description: Mission description
+            task_description: Task description
             context: Tiered context
             model_config: Model configuration
             
@@ -50,16 +50,16 @@ class PrometheusAgent:
             Planning output chunks
         """
         # Generate prompt
-        prompt = get_prometheus_prompt(
-            mission_description=mission_description,
+        prompt = get_planner_prompt(
+            task_description=task_description,
             context=context,
-            available_agents=context.get("available_agents", ["sisyphus", "test", "review"])
+            available_agents=context.get("available_agents", ["coder", "test", "review"])
         )
         
         # Execute agent
         async for chunk in self.executor.execute_agent(
             agent_id=self.agent_id,
-            agent_type="prometheus",
+            agent_type="planner",
             prompt=prompt,
             model_config=model_config,
             context=context,
@@ -78,6 +78,6 @@ class PrometheusAgent:
     
     async def _save_response(self, content: str):
         """Save agent response to state."""
-        channel = f"squad-{self.agent_id}-prometheus"
+        channel = f"squad-{self.agent_id}-planner"
         self.state_manager.add_chat_message(channel, "assistant", content)
         await self.state_manager.save_state()

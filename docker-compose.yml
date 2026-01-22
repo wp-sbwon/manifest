@@ -19,37 +19,55 @@ services:
       - manifest-network
 
   # Agent services - each agent runs in its own container
-  agent-prometheus:
+  agent-orchestrator:
     build:
       context: .
       dockerfile: Dockerfile.agent
-    container_name: manifest-agent-prometheus
+    container_name: manifest-agent-orchestrator
     volumes:
       - .:/app
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app/src
-      - AGENT_TYPE=prometheus
+      - AGENT_TYPE=orchestrator
       - AGENT_MODE=container
-    command: ["python", "-m", "manifest.agents.prometheus"]
+    command: ["python", "-m", "manifest.agents.orchestrator"]
     networks:
       - manifest-network
     depends_on:
       - app
 
-  agent-sisyphus:
+  agent-planner:
     build:
       context: .
       dockerfile: Dockerfile.agent
-    container_name: manifest-agent-sisyphus
+    container_name: manifest-agent-planner
     volumes:
       - .:/app
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONPATH=/app/src
-      - AGENT_TYPE=sisyphus
+      - AGENT_TYPE=planner
       - AGENT_MODE=container
-    command: ["python", "-m", "manifest.agents.sisyphus"]
+    command: ["python", "-m", "manifest.agents.planner"]
+    networks:
+      - manifest-network
+    depends_on:
+      - app
+
+  agent-coder:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    container_name: manifest-agent-coder
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app/src
+      - AGENT_TYPE=coder
+      - AGENT_MODE=container
+    command: ["python", "-m", "manifest.agents.coder"]
     networks:
       - manifest-network
     depends_on:

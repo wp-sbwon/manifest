@@ -23,8 +23,8 @@ All tasks from the implementation plan have been completed. The Manifest TUI MVP
 - Session resumption with "Next Action" prompts
 - Async and sync save/load operations
 
-### 4. OMOC Bridge ✅
-- **omoc_bridge.py**: IPC pipe engine for OMOC communication
+### 4. Agent Bridge ✅
+- **agent_bridge.py**: Direct integration with agent system
 - JSON-based message protocol
 - Async message handling
 - Command interface: `start_mission()`, `get_status()`, `promote_task()`, `get_agent_output()`
@@ -60,7 +60,7 @@ All tasks from the implementation plan have been completed. The Manifest TUI MVP
 ### 8. Testing ✅
 - **tests/test_state_manager.py**: State persistence tests
 - **tests/test_drift_auditor.py**: Drift detection tests
-- **tests/test_bridge.py**: OMOC bridge protocol tests
+- **tests/test_agent_bridge.py**: Agent bridge protocol tests
 - **tests/test_app.py**: Integration tests
 - **run_tests.sh**: Test runner script
 
@@ -72,7 +72,7 @@ manifest/
 ├── bootstrap_ui.py        # API key configuration TUI
 ├── config.py              # Configuration & API key management
 ├── state_manager.py       # State persistence
-├── omoc_bridge.py         # OMOC IPC bridge
+├── agent_bridge.py         # Agent system integration
 ├── drift_auditor.py       # Architecture drift detection
 ├── widgets.py             # Custom Textual widgets
 ├── requirements.txt       # Python dependencies
@@ -147,8 +147,8 @@ On first run, if API keys are missing, the app enters bootstrap mode with a TUI 
 - AST-based code structure comparison
 - Severity-based conflict reporting
 
-### OMOC Integration
-- IPC pipe communication
+### Agent System Integration
+- Direct agent system integration
 - Async message handling
 - Command interface for mission control
 
@@ -156,14 +156,14 @@ On first run, if API keys are missing, the app enters bootstrap mode with a TUI 
 
 The core implementation is complete. Future enhancements could include:
 - Full multi-agent squad system integration
-- Enhanced OMOC protocol implementation
+- Enhanced agent system features
 - More sophisticated drift resolution
 - Advanced git integration features
 - Performance optimizations
 
 ## Notes
 
-- OMOC bridge will work in standalone mode if OMOC is not available
+- Agent system is directly integrated
 - Git integration requires GitPython (optional)
 - All state is persisted in `.manifest/` directory
 - API keys are encrypted and stored locally

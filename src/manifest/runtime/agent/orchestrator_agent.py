@@ -1,16 +1,16 @@
 """
-Sisyphus Agent - Coder/Implementer agent implementation.
+Orchestrator Agent - Mission coordination and task delegation.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
-from manifest.omoc.agent.executor import AgentExecutor
-from manifest.omoc.agent.sisyphus_prompt import get_sisyphus_prompt
+from manifest.runtime.agent.executor import AgentExecutor
+from manifest.runtime.agent.orchestrator_prompt import get_orchestrator_prompt
 from manifest.core.state_manager import StateManager
 
 
-class SisyphusAgent:
+class OrchestratorAgent:
     """
-    Sisyphus agent - SF Bay Area engineer.
-    Implements code following plans and best practices.
+    Orchestrator agent - Mission-level coordination.
+    Coordinates missions and delegates tasks to appropriate agents.
     """
     
     def __init__(
@@ -20,7 +20,7 @@ class SisyphusAgent:
         state_manager: StateManager
     ):
         """
-        Initialize Sisyphus agent.
+        Initialize Orchestrator agent.
         
         Args:
             agent_id: Agent identifier
@@ -32,37 +32,34 @@ class SisyphusAgent:
         self.state_manager = state_manager
         self.message_history: List[Dict[str, str]] = []
     
-    async def implement(
+    async def coordinate(
         self,
-        task_description: str,
+        mission_description: str,
         context: Dict[str, Any],
-        task_scope: Optional[Dict[str, Any]],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
         """
-        Implement the task.
+        Coordinate a mission by delegating tasks.
         
         Args:
-            task_description: Task description
+            mission_description: Mission description
             context: Tiered context
-            task_scope: Task scope (components, files, allowed modifications)
             model_config: Model configuration
             
         Yields:
-            Implementation output chunks
+            Coordination output chunks
         """
         # Generate prompt
-        prompt = get_sisyphus_prompt(
-            task_description=task_description,
+        prompt = get_orchestrator_prompt(
+            mission_description=mission_description,
             context=context,
-            task_scope=task_scope,
-            available_tools=context.get("available_tools", [])
+            available_agents=context.get("available_agents", ["planner", "coder", "test", "review"])
         )
         
         # Execute agent
         async for chunk in self.executor.execute_agent(
             agent_id=self.agent_id,
-            agent_type="sisyphus",
+            agent_type="orchestrator",
             prompt=prompt,
             model_config=model_config,
             context=context,
@@ -81,6 +78,6 @@ class SisyphusAgent:
     
     async def _save_response(self, content: str):
         """Save agent response to state."""
-        channel = f"squad-{self.agent_id}-sisyphus"
+        channel = f"squad-{self.agent_id}-orchestrator"
         self.state_manager.add_chat_message(channel, "assistant", content)
         await self.state_manager.save_state()

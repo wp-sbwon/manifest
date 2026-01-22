@@ -75,11 +75,11 @@ def test_get_orchestrator_context(temp_manifest_dir):
 def test_get_worker_context(temp_manifest_dir):
     """Test getting worker context."""
     provider = ContextProvider(temp_manifest_dir)
-    context = provider.get_worker_context("task-1", "sisyphus")
+    context = provider.get_worker_context("task-1", "coder")
     
     assert context["tier"] == "worker"
     assert context["task_id"] == "task-1"
-    assert context["agent_type"] == "sisyphus"
+    assert context["agent_type"] == "coder"
     assert "tier_0" in context
     assert "tier_2" in context
     assert "tier_3" in context

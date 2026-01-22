@@ -42,7 +42,7 @@
             "name": "app.py",
             "type": "main_application",
             "responsibility": "TUI application entry point and view management",
-            "dependencies": ["config", "state_manager", "omoc_bridge", "drift_auditor", "widgets"],
+            "dependencies": ["config", "state_manager", "agent_bridge", "drift_auditor", "widgets"],
             "lines_of_code": 550,
             "status": "complete",
             "note": "File reference for implementation details"
@@ -87,12 +87,12 @@
             ]
           },
           {
-            "id": "omoc_bridge",
-            "name": "OMOC Bridge",
+            "id": "agent_bridge",
+            "name": "Agent Bridge",
             "status": "complete",
-            "requirements": ["REQ-03: IPC Communication"],
+            "requirements": ["REQ-03: Agent System Integration"],
             "classes": [
-              {"name": "OMOCBridge", "file": "omoc_bridge.py", "methods": ["start", "stop", "send_message", "receive_message"]}
+              {"name": "AgentBridge", "file": "agent_bridge.py", "methods": ["start", "stop", "start_mission", "get_status"]}
             ]
           },
           {
@@ -123,10 +123,10 @@
             "note": "File reference for implementation details"
           },
           {
-            "id": "omoc_bridge",
-            "name": "omoc_bridge.py",
-            "type": "ipc_bridge",
-            "responsibility": "IPC pipe engine for OMOC communication",
+            "id": "agent_bridge",
+            "name": "agent_bridge.py",
+            "type": "agent_bridge",
+            "responsibility": "Direct integration with agent system",
             "dependencies": ["state_manager"],
             "features": [
               "json_message_protocol",
@@ -320,7 +320,7 @@
       "core_infrastructure",
       "configuration_system",
       "state_management",
-      "omoc_bridge",
+      "agent_bridge",
       "drift_auditor",
       "custom_widgets",
       "5_view_workspace",
@@ -344,7 +344,7 @@
       "context_injection_hooks",
       "structural_spec_first_management",
       "shadow_manager",
-      "enhanced_omoc_protocol"
+      "agent_system_integration"
     ]
   },
   "testing": {
@@ -403,7 +403,7 @@
     "short_term": [
       "Multi-Agent System basic structure",
       "Context Injection Hooks prototype",
-      "Enhanced OMOC Protocol"
+      "Agent System Integration"
     ],
     "medium_term": [
       "Structural Spec-First Management",
@@ -433,7 +433,7 @@
       ],
       "dependencies": [
         "Multi-Agent System 기본 구조 완성",
-        "OMOC Bridge와의 통합",
+        "Agent Bridge와의 통합",
         "State Manager 확장"
       ],
       "note": "후순위 - Multi-agent 시스템 뼈대 구현 후 구현 예정"

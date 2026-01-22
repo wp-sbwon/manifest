@@ -47,7 +47,7 @@ class AgentExecutor:
         
         Args:
             agent_id: Agent identifier
-            agent_type: Type of agent (prometheus, sisyphus, etc.)
+            agent_type: Type of agent (orchestrator, planner, coder, etc.)
             prompt: Agent prompt (system + user prompt)
             model_config: Model configuration (provider, model, api_key)
             context: Additional context

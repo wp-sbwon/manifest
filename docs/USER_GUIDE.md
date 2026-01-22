@@ -1,168 +1,102 @@
 # Manifest User Guide
 
-## Introduction
+## Overview
 
-Manifest is an **AI-Native Orchestration IDE** that helps developers manage complex software projects by providing visual truth, tiered context management, and architecture drift detection.
+Manifest is an AI-Native Orchestration IDE that helps developers manage complex software projects through a structured, blueprint-first approach.
 
-## Getting Started
+## Quick Start
 
-### Installation
+1. **Installation**:
+```bash
+git clone <repository>
+cd manifest
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-See [DEV_SETUP.md](./DEV_SETUP.md) for detailed installation instructions.
+2. **First Run**:
+```bash
+PYTHONPATH=src python -m manifest
+```
 
-### Quick Start
+The app will check for API keys. If missing, it will prompt you to configure them.
 
-1. **Setup environment:**
-   ```bash
-   ./scripts/setup.sh
-   source venv/bin/activate
-   ```
-
-2. **Run Manifest:**
-   ```bash
-   PYTHONPATH=src python -m manifest
-   ```
-
-## User Interface
+## Core Concepts
 
 ### Views
 
-Manifest provides 7 main views accessible via tabs:
+Manifest provides 5 main views:
 
-#### 1. Architect (Intention)
-- **Purpose**: View and manage project intentions and features
-- **Shows**: Sprint information, feature list, requirements status
-- **Use Case**: Planning and tracking feature development
+1. **Architect View**: Shows high-level intent and requirements
+2. **Blueprint View**: Displays technical design and API contracts
+3. **Inspector View**: Three modes for verification
+   - Visual: UI matching
+   - Data: Execution traces
+   - Drift: Architecture conflicts
+4. **Mission Control**: Task management and approval gates
+5. **History View**: Git timeline integration
 
-#### 2. Blueprint
-- **Purpose**: Visual representation of system architecture
-- **Shows**: Component zones (client, server, data), component relationships
-- **Use Case**: Understanding system structure and dependencies
+### Agent System
 
-#### 3. Inspector (Verification)
-- **Purpose**: Verify implementation against design
-- **Shows**: Drift conflicts, component status, verification results
-- **Use Case**: Detecting architectural violations
+Manifest uses a multi-agent system:
 
-#### 4. Mission Control
-- **Purpose**: Manage active missions and tasks
-- **Shows**: Mission tree, task checklist, agent assignments
-- **Use Case**: Coordinating development work
-
-#### 5. History
-- **Purpose**: View chat history and interactions
-- **Shows**: Conversation history with agents
-- **Use Case**: Reviewing past decisions and context
-
-#### 6. Feature Explorer
-- **Purpose**: Explore features and their components
-- **Shows**: Feature tree, methods, classes per feature
-- **Use Case**: Understanding feature implementation
-
-#### 7. Project Info
-- **Purpose**: Project metadata and status
-- **Shows**: Project information, status, metrics
-- **Use Case**: Overview of project health
-
-### Navigation
-
-- **Tab Navigation**: Use `Tab` key or click on tab headers
-- **Input Field**: Bottom of screen for commands
-- **Quit**: Press `q` or type `/quit`
+- **Orchestrator**: Mission coordination and task delegation
+- **Planner**: Detailed task planning and blueprint creation
+- **Coder**: Code implementation
+- **Test**: Test writing and execution
+- **Review**: Code review
 
 ## Commands
 
 ### Basic Commands
 
-- `/help` - Show help message
-- `/quit` or `q` - Exit application
-- `/clear` - Clear chat history
-
-### Mission Commands
-
-- `/start_mission <description>` - Start a new mission
-- `/promote_task <task_id>` - Promote a task to next stage
+- `/audit` - Run architecture drift detection
+- `/reload` - Reload all views
 - `/status` - Get current mission status
 
 ### Agent Commands
 
 - `/start_agent <task_id> <agent_type>` - Start an agent on a task
-  - Agent types: `prometheus`, `sisyphus`, `test`, `review`
+  - Agent types: `orchestrator`, `planner`, `coder`, `test`, `review`
 - `/stop_agent <task_id>` - Stop an agent working on a task
 - `/agent_status <task_id>` - Get agent status
 
 ### View Commands
 
-- `/view <view_name>` - Switch to a specific view
-  - View names: `architect`, `blueprint`, `inspector`, `mission_control`, `history`, `feature_explorer`, `project_info`
-
-## Working with Missions
-
-### Starting a Mission
-
-1. Type `/start_mission` followed by a description
-2. Mission will be created and displayed in Mission Control view
-3. Tasks will be automatically generated based on the mission
-
-### Managing Tasks
-
-Tasks appear in the Mission Control view with status indicators:
-- **Pending**: Not yet started
-- **WIP**: Work in progress
-- **Done**: Completed
-- **Blocked**: Blocked by dependencies
-
-### Agent Assignment
-
-Assign agents to tasks:
-```bash
-/start_agent TASK-01 sisyphus
-```
-
-This starts a Sisyphus (coder) agent working on task TASK-01.
-
-## Architecture Drift Detection
-
-The Inspector view shows architecture drift conflicts:
-
-- **ERROR**: Critical violations that must be fixed
-- **WARNING**: Potential issues to review
-- **INFO**: Informational notes
-
-Drift detection runs automatically when:
-- Files are modified
-- Blueprint is updated
-- Manual refresh is triggered
-
-## State Management
-
-Manifest automatically saves your state:
-- Mission tree
-- Task checklist
-- Chat history
-- Agent assignments
-
-State is persisted in `.manifest/state.json` and restored on next launch.
+- Switch views using `Tab` key or mouse clicks
+- Use `Ctrl+1` through `Ctrl+5` for quick view switching
 
 ## Configuration
 
 ### API Keys
 
-Manifest requires API keys for AI providers:
-- Anthropic (Claude)
-- OpenAI (GPT)
-- Google (Gemini)
+Configure API keys in `.manifest/keys.json`:
 
-Keys are stored encrypted in `.manifest/keys.json`.
+```json
+{
+  "anthropic": "sk-ant-...",
+  "openai": "sk-...",
+  "google": "..."
+}
+```
 
-### Agent Model Configuration
+### Agent Models
 
 Configure which models agents use in `.manifest/agent_config.json`:
 
 ```json
 {
   "agent_models": {
-    "prometheus": {
+    "orchestrator": {
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20241022"
+    },
+    "planner": {
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20241022"
+    },
+    "coder": {
       "provider": "anthropic",
       "model": "claude-3-5-sonnet-20241022"
     }
@@ -170,54 +104,46 @@ Configure which models agents use in `.manifest/agent_config.json`:
 }
 ```
 
-## Tips and Best Practices
+## Agent Assignment
 
-1. **Regular State Saves**: State is auto-saved, but you can manually save with `/save`
+Assign agents to tasks:
+```bash
+/start_agent TASK-01 coder
+```
 
-2. **Use Feature Explorer**: Explore features to understand code organization
+This starts a coder agent working on task TASK-01.
 
-3. **Monitor Drift**: Check Inspector view regularly for architecture violations
+## Architecture Drift Detection
 
-4. **Agent Coordination**: Use Mission Control to coordinate multiple agents
+Manifest continuously monitors code structure against the blueprint:
 
-5. **Context Awareness**: Manifest provides tiered context - agents only see what they need
+1. **Automatic Detection**: Runs on file changes
+2. **Conflict Classification**: Errors, Warnings, Info
+3. **Resolution Workflow**: Review, approve, or reject changes
 
 ## Troubleshooting
 
-### Application Won't Start
-
-- Check Python version: `python3 --version` (requires 3.9+)
-- Verify dependencies: `pip install -r requirements.txt`
-- Check PYTHONPATH: `export PYTHONPATH=src`
-
-### Import Errors
-
-- Ensure you're using `PYTHONPATH=src` when running
-- Verify virtual environment is activated
-- Check that all dependencies are installed
-
-### State Not Loading
+### State Issues
 
 - Check `.manifest/state.json` exists
 - Verify file permissions
 - Check JSON syntax is valid
 
-### OMOC Connection Issues
+### Agent Bridge Connection Issues
 
-- Verify OMOC process is running
-- Check pipe communication
+- Verify agent bridge is initialized
+- Check agent system communication
 - Review error messages in History view
 
-## Keyboard Shortcuts
+### Drift Detection Issues
 
-- `q` - Quit application
-- `Tab` - Navigate between views
-- `Enter` - Submit command in input field
-- `Esc` - Cancel input
+- Ensure `blueprint.json` is up to date
+- Check AST parsing is working
+- Review conflict reports in Inspector view
 
-## Getting Help
+## Best Practices
 
-- Type `/help` in the application
-- Check [ARCHITECTURE.md](./ARCHITECTURE.md) for technical details
-- Review [API.md](./API.md) for developer documentation
-- See [DEV_SETUP.md](./DEV_SETUP.md) for setup issues
+1. **Blueprint-First**: Always update blueprint before code changes
+2. **Task Scoping**: Use task scoping to limit agent access
+3. **Regular Audits**: Run `/audit` regularly to catch drift early
+4. **Session Management**: Use session resumption for long missions

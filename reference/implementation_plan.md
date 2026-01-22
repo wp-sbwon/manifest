@@ -1,6 +1,6 @@
 # Manifest TUI MVP: Final Implementation Plan
 
-Manifest is an **AI-Native Orchestration IDE** designed to solve "Code Blindness" by elevating the developer to a **Conductor**. This plan achieves **Phase 1: TUI MVP** by integrating **Oh My Open Code (OMOC)** as the back-end engine and building a high-fidelity **Textual-based interface**.
+Manifest is an **AI-Native Orchestration IDE** designed to solve "Code Blindness" by elevating the developer to a **Conductor**. This plan achieves **Phase 1: TUI MVP** by integrating agent system as the back-end engine and building a high-fidelity **Textual-based interface**.
 
 ## User Review Required
 
@@ -13,12 +13,12 @@ Manifest is an **AI-Native Orchestration IDE** designed to solve "Code Blindness
 > **Manifest Context Engine (Tiered Orchestration)**: 
 > Context is no longer a dump of all files. Manifest manages what an agent sees based on the Mission Stage.
 > - **Tier 0 (The Law)**: `.claude/rules/manifest-policy.md` is forced into EVERY agent.
-> - **Tier 1 (The Intent)**: `architecture.json` and high-level goals are provided to the **Planner (Prometheus)**.
-> - **Tier 2 (The Blueprint)**: Relevant `blueprint.json` nodes and their structural specs are provided to the **Coder (Sisyphus)**.
+> - **Tier 1 (The Intent)**: `architecture.json` and high-level goals are provided to the **Planner**.
+> - **Tier 2 (The Blueprint)**: Relevant `blueprint.json` nodes and their structural specs are provided to the **Coder**.
 > - **Tier 3 (Surgical Code)**: Full file contents are ONLY provided for files referenced in the `blueprint.json` or specifically requested by the agent via `LSP/AST-Grep` exploration.
 
 > [!IMPORTANT]
-> **Context Injection Hooks**: The `omoc_bridge.py` will actively intercept agent prompts to inject "Visual Reality" updates.
+> **Context Injection Hooks**: The `agent_bridge.py` will actively intercept agent prompts to inject "Visual Reality" updates.
 > - Example: "Dependency Node [AuthAPI] is currently in GHOST status; do not attempt to call its real endpoints yet."
 
 > [!IMPORTANT]
@@ -28,15 +28,15 @@ Manifest is an **AI-Native Orchestration IDE** designed to solve "Code Blindness
 > - **Logical Explorer**: The TUI's **Feature Explorer** view will group files by **Feature Logic** rather than just physical path, bridging the gap between intention and file system.
 
 > [!IMPORTANT]
-> **Validation Gate**: The `omoc_bridge.py` will act as a strict validator. Any agent action that modifies architecture without matching the JSON schema will be automatically rejected and the agent will be "Locked" until the spec is corrected.
+> **Validation Gate**: The `agent_bridge.py` will act as a strict validator. Any agent action that modifies architecture without matching the JSON schema will be automatically rejected and the agent will be "Locked" until the spec is corrected.
 
 ## Proposed Changes
 
 ### 1. Core Orchestrator (The Command Center)
 The central Python engine that manages state, IPC, and agent squads.
 
-#### [NEW] [omoc_bridge.py](file:///Users/wonseongbae/Documents/GoogleAG/Manifest/omoc_bridge.py)
-- **IPC Pipe Engine**: Interface with OMOC via standard I/O pipes (as per PRD) for maximum speed.
+#### [NEW] [agent_bridge.py](file:///Users/wonseongbae/Documents/GoogleAG/Manifest/agent_bridge.py)
+- **Agent System Integration**: Direct integration with agent system for maximum speed.
 - **State Persistence (Continuation Enforcer)**: 
     - Serialize Mission Tree, Task Checklist, and Chat History to `.manifest/state.json`.
     - Handle session resumption with "Next Action" prompts.
@@ -85,13 +85,13 @@ Layered chat context for focused collaboration.
 ---
 
 ### 4. Agent & Spec Integration
-Tuning OMOC to work within the Manifest "Visual Truth" framework.
+Tuning agent system to work within the Manifest "Visual Truth" framework.
 
-#### [MODIFY] [oh-my-opencode/](file:///Users/wonseongbae/Documents/GoogleAG/Manifest/oh-my-opencode/)
+#### [MODIFY] [runtime/](file:///Users/wonseongbae/Documents/GoogleAG/Manifest/runtime/)
 - **Custom Hook: Post-Action Audit**: Trigger Drift Auditor after every agent tool use.
 - **Checkpoint Hook**: Force agents to report internal to-dos before every action.
 - **Structured Testing Skill**: Report shadow test results in Manifest-readable JSON.
-- **Prometheus Policy**: Restrict agents to "Blueprint-first" modifications.
+- **Planner Policy**: Restrict agents to "Blueprint-first" modifications.
 
 ## Verification Plan
 
