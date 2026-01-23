@@ -389,10 +389,13 @@ class AgentCoordinator:
         }
     
     async def _start_task_worker_squad(self, task_id: str) -> bool:
-        """Start Worker Squad for a task (internal helper)."""
-        # This will be called by execute_worker_squad
-        # For now, just start the first agent (planner)
-        return await self.start_worker_agent(task_id, "planner")
+        """
+        Start Worker Squad for a task (internal helper).
+        Executes the full Worker Squad workflow in background.
+        """
+        # Execute full Worker Squad workflow in background (non-blocking)
+        asyncio.create_task(self.execute_worker_squad(task_id))
+        return True
     
     async def execute_worker_squad(self, task_id: str) -> Dict[str, Any]:
         """
