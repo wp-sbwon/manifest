@@ -169,3 +169,130 @@ class TaskScoper:
             "requirement_count": len(context.get("requirements", [])),
             "allowed_directories": context.get("allowed_modifications", [])
         }
+    
+    def validate_task_granularity(self, task_id: str) -> Dict[str, Any]:
+        """
+        Validate task granularity against rules.
+        
+        Returns:
+            Dict with validation result:
+            {
+                "valid": bool,
+                "warnings": List[str],
+                "errors": List[str],
+                "file_count": int,
+                "component_count": int
+            }
+        """
+        context = self.get_task_context(task_id)
+        files = context.get("files", [])
+        components = context.get("components", [])
+        
+        file_count = len(files)
+        component_count = len(components)
+        
+        warnings = []
+        errors = []
+        
+        # Load granularity rules
+        granularity_file = Path(".claude/rules/task-granularity.md")
+        if granularity_file.exists():
+            rules_content = granularity_file.read_text(encoding="utf-8")
+            
+            # Check file count limits
+            if file_count > 12:
+                errors.append(f"Task modifies {file_count} files (max: 12). Task must be split.")
+            elif file_count > 7:
+                warnings.append(f"Task modifies {file_count} files (recommended max: 7). Consider splitting.")
+            
+            # Check component count
+            if component_count > 3:
+                warnings.append(f"Task spans {component_count} components. Consider splitting if components are unrelated.")
+        
+        return {
+            "valid": len(errors) == 0,
+            "warnings": warnings,
+            "errors": errors,
+            "file_count": file_count,
+            "component_count": component_count
+        }
+    
+    def can_execute_in_parallel(self, task_id_1: str, task_id_2: str) -> bool:
+        """
+        Check if two tasks can be executed in parallel.
+        
+        Returns:
+            True if tasks can run in parallel (no file overlap, no dependencies)
+        """
+        context_1 = self.get_task_context(task_id_1)
+        context_2 = self.get_task_context(task_id_2)
+        
+        files_1 = set(context_1.get("files", []))
+        files_2 = set(context_2.get("files", []))
+        
+        # Check file overlap
+        if files_1 & files_2:
+            return False
+        
+        # Check component dependencies
+        components_1 = {c.get("id") for c in context_1.get("components", [])}
+        components_2 = {c.get("id") for c in context_2.get("components", [])}
+        
+        # If tasks share components, they might have dependencies
+        if components_1 & components_2:
+            # Check if components are tightly coupled (would need more sophisticated analysis)
+            # For now, if they share components, assume they can't run in parallel
+            return False
+        
+        return True
+    
+    def validate_parallel_execution(self, task_ids: List[str]) -> Dict[str, Any]:
+        """
+        Validate if a list of tasks can be executed in parallel.
+        
+        Returns:
+            Dict with validation result:
+            {
+                "can_parallelize": bool,
+                "conflicts": List[Dict[str, str]],  # [{"task1": "task-1", "task2": "task-2", "reason": "..."}]
+                "parallel_groups": List[List[str]]  # Groups of tasks that can run in parallel
+            }
+        """
+        conflicts = []
+        parallel_groups = []
+        remaining_tasks = task_ids.copy()
+        
+        # Build conflict graph
+        conflict_pairs = []
+        for i, task_id_1 in enumerate(task_ids):
+            for task_id_2 in task_ids[i+1:]:
+                if not self.can_execute_in_parallel(task_id_1, task_id_2):
+                    conflict_pairs.append((task_id_1, task_id_2))
+                    conflicts.append({
+                        "task1": task_id_1,
+                        "task2": task_id_2,
+                        "reason": "File overlap or component dependency"
+                    })
+        
+        # Group tasks that can run in parallel (greedy algorithm)
+        while remaining_tasks:
+            current_group = [remaining_tasks.pop(0)]
+            
+            for task_id in remaining_tasks[:]:
+                can_add = True
+                for group_task in current_group:
+                    if (task_id, group_task) in conflict_pairs or (group_task, task_id) in conflict_pairs:
+                        can_add = False
+                        break
+                
+                if can_add:
+                    current_group.append(task_id)
+                    remaining_tasks.remove(task_id)
+            
+            parallel_groups.append(current_group)
+        
+        return {
+            "can_parallelize": len(conflicts) == 0,
+            "conflicts": conflicts,
+            "parallel_groups": parallel_groups
+        }

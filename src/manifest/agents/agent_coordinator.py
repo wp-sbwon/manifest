@@ -3,7 +3,8 @@ Agent Coordinator - Coordinates agents with task boundaries.
 Manages orchestrator and worker agent lifecycle with proper scoping.
 Supports both direct execution and Docker container execution.
 """
-from typing import Dict, Any, Optional
+import asyncio
+from typing import Dict, Any, Optional, List
 from manifest.bridge.agent_bridge import AgentBridge
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.task_scoper import TaskScoper
@@ -297,3 +298,276 @@ class AgentCoordinator:
         # await self.agent_bridge.send_to_planner(planner_request)
         
         return True
+    
+    async def start_sprint(self, sprint_id: str, max_parallel: int = 10) -> Dict[str, Any]:
+        """
+        Start a Sprint by executing all tasks in parallel.
+        
+        Args:
+            sprint_id: Sprint ID
+            max_parallel: Maximum number of tasks to run in parallel
+            
+        Returns:
+            Dict with execution results:
+            {
+                "success": bool,
+                "started_tasks": List[str],
+                "failed_tasks": List[str],
+                "parallel_groups": List[List[str]]
+            }
+        """
+        # Get Sprint tasks
+        tasks = self.state_manager.get_task_checklist()
+        sprint_tasks = [t for t in tasks if t.get("sprint_id") == sprint_id]
+        
+        if not sprint_tasks:
+            return {
+                "success": False,
+                "error": f"No tasks found for sprint {sprint_id}",
+                "started_tasks": [],
+                "failed_tasks": [],
+                "parallel_groups": []
+            }
+        
+        # Validate parallel execution
+        task_ids = [t.get("id") for t in sprint_tasks]
+        validation = self.task_scoper.validate_parallel_execution(task_ids)
+        
+        if not validation["can_parallelize"]:
+            # Log conflicts but continue (user/Orchestrator should have validated)
+            print(f"Warning: Parallel execution conflicts detected: {validation['conflicts']}")
+        
+        # Group tasks for parallel execution
+        parallel_groups = validation.get("parallel_groups", [task_ids])
+        
+        # Start tasks in parallel (respecting max_parallel limit)
+        started_tasks = []
+        failed_tasks = []
+        
+        for group in parallel_groups:
+            # Limit parallel execution
+            limited_group = group[:max_parallel]
+            
+            # Start all tasks in this group in parallel
+            results = await asyncio.gather(
+                *[self._start_task_worker_squad(task_id) for task_id in limited_group],
+                return_exceptions=True
+            )
+            
+            for task_id, result in zip(limited_group, results):
+                if isinstance(result, Exception):
+                    failed_tasks.append(task_id)
+                    print(f"Failed to start task {task_id}: {result}")
+                elif result:
+                    started_tasks.append(task_id)
+                else:
+                    failed_tasks.append(task_id)
+        
+        return {
+            "success": len(failed_tasks) == 0,
+            "started_tasks": started_tasks,
+            "failed_tasks": failed_tasks,
+            "parallel_groups": parallel_groups
+        }
+    
+    async def _start_task_worker_squad(self, task_id: str) -> bool:
+        """Start Worker Squad for a task (internal helper)."""
+        # This will be called by execute_worker_squad
+        # For now, just start the first agent (planner)
+        return await self.start_worker_agent(task_id, "planner")
+    
+    async def execute_worker_squad(self, task_id: str) -> Dict[str, Any]:
+        """
+        Execute Worker Squad workflow for a task.
+        
+        Worker Squad flow:
+        1. Planner: Create plan
+        2. Coder: Implement code
+        3. Test: Write and run tests
+        4. Debug: Fix bugs if tests fail (iterative)
+        5. Self Review: Verify plan compliance
+        6. Approver: Final approval
+        
+        Args:
+            task_id: Task ID
+            
+        Returns:
+            Dict with execution results:
+            {
+                "success": bool,
+                "stages": {
+                    "planner": {...},
+                    "coder": {...},
+                    "test": {...},
+                    "debug": {...},
+                    "self_review": {...},
+                    "approver": {...}
+                }
+            }
+        """
+        stages = {}
+        
+        # 1. Planner
+        planner_success = await self._execute_planner_stage(task_id)
+        stages["planner"] = {
+            "status": "completed" if planner_success else "failed",
+            "output": ""
+        }
+        if not planner_success:
+            return {"success": False, "stages": stages}
+        
+        # 2. Coder
+        coder_success = await self._execute_coder_stage(task_id)
+        stages["coder"] = {
+            "status": "completed" if coder_success else "failed",
+            "output": ""
+        }
+        if not coder_success:
+            return {"success": False, "stages": stages}
+        
+        # 3. Test
+        test_result = await self._execute_test_stage(task_id)
+        stages["test"] = test_result
+        
+        # 4. Debug (iterative if tests fail)
+        debug_iterations = 0
+        max_debug_iterations = 5
+        while test_result.get("status") == "failed" and debug_iterations < max_debug_iterations:
+            debug_result = await self._execute_debug_stage(task_id, test_result)
+            stages["debug"] = debug_result
+            debug_iterations += 1
+            
+            if debug_result.get("status") == "completed":
+                # Re-run tests after debug
+                test_result = await self._execute_test_stage(task_id)
+                stages["test"] = test_result
+            else:
+                break
+        
+        if test_result.get("status") == "failed":
+            return {"success": False, "stages": stages, "error": "Tests failed after max debug iterations"}
+        
+        # 5. Self Review
+        self_review_result = await self._execute_self_review_stage(task_id)
+        stages["self_review"] = self_review_result
+        
+        # 6. Approver
+        approver_result = await self._execute_approver_stage(task_id, self_review_result)
+        stages["approver"] = approver_result
+        
+        # If approver rejects, go back to coder
+        max_approver_iterations = 3
+        approver_iterations = 0
+        while approver_result.get("decision") == "rejected" and approver_iterations < max_approver_iterations:
+            # Go back to coder
+            coder_success = await self._execute_coder_stage(task_id, approver_result.get("feedback", ""))
+            stages["coder"] = {
+                "status": "completed" if coder_success else "failed",
+                "output": "",
+                "iteration": approver_iterations + 1
+            }
+            
+            if not coder_success:
+                return {"success": False, "stages": stages, "error": "Coder failed after approver rejection"}
+            
+            # Re-run self review and approver
+            self_review_result = await self._execute_self_review_stage(task_id)
+            stages["self_review"] = self_review_result
+            
+            approver_result = await self._execute_approver_stage(task_id, self_review_result)
+            stages["approver"] = approver_result
+            approver_iterations += 1
+        
+        if approver_result.get("decision") != "approved":
+            return {"success": False, "stages": stages, "error": "Approver did not approve after max iterations"}
+        
+        return {
+            "success": True,
+            "stages": stages
+        }
+    
+    async def _execute_planner_stage(self, task_id: str) -> bool:
+        """Execute Planner stage."""
+        return await self.start_worker_agent(task_id, "planner")
+    
+    async def _execute_coder_stage(self, task_id: str, feedback: str = "") -> bool:
+        """Execute Coder stage."""
+        # If feedback provided, add it to context
+        if feedback:
+            # Update task with feedback
+            tasks = self.state_manager.get_task_checklist()
+            task = next((t for t in tasks if t.get("id") == task_id), None)
+            if task:
+                if "worker_squad" not in task:
+                    task["worker_squad"] = {}
+                task["worker_squad"]["approver_feedback"] = feedback
+                self.state_manager.set_task_checklist(tasks)
+        
+        return await self.start_worker_agent(task_id, "coder")
+    
+    async def _execute_test_stage(self, task_id: str) -> Dict[str, Any]:
+        """Execute Test stage."""
+        success = await self.start_worker_agent(task_id, "test")
+        return {
+            "status": "completed" if success else "failed",
+            "test_results": {}
+        }
+    
+    async def _execute_debug_stage(self, task_id: str, test_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute Debug stage."""
+        success = await self.start_worker_agent(task_id, "debug")
+        return {
+            "status": "completed" if success else "failed",
+            "issues_fixed": []
+        }
+    
+    async def _execute_self_review_stage(self, task_id: str) -> Dict[str, Any]:
+        """Execute Self Review stage (Coder self-review)."""
+        # Self review is done by Coder agent
+        # This is a placeholder - actual implementation would call coder's self_review method
+        return {
+            "status": "completed",
+            "plan_compliance": True,
+            "findings": []
+        }
+    
+    async def _execute_approver_stage(self, task_id: str, self_review_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute Approver stage."""
+        success = await self.start_worker_agent(task_id, "approver")
+        return {
+            "status": "completed" if success else "failed",
+            "decision": "approved" if success else "pending",
+            "feedback": ""
+        }
+    
+    async def review_project_requirements(self, task_id: str) -> Dict[str, Any]:
+        """
+        Review project-level requirements compliance.
+        
+        Args:
+            task_id: Task ID that completed Worker Squad
+            
+        Returns:
+            Dict with review results:
+            {
+                "requirements_met": bool,
+                "findings": List[str],
+                "recommendations": List[str]
+            }
+        """
+        # Start Project Review Agent
+        success = await self.start_worker_agent(task_id, "project_review")
+        
+        if success:
+            # Get review results (would be from agent output)
+            return {
+                "requirements_met": True,
+                "findings": [],
+                "recommendations": []
+            }
+        
+        return {
+            "requirements_met": False,
+            "findings": ["Project review agent failed to start"],
+            "recommendations": []
+        }

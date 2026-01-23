@@ -32,7 +32,10 @@ class AgentManager:
             "planner": PLANNER_IDENTITY,
             "coder": CODER_IDENTITY,
             "test": "Test agent",
-            "review": "Review agent"
+            "review": "Review agent",
+            "debug": "Debug agent",
+            "approver": "Approver agent",
+            "project_review": "Project Review agent"
         }
         self.executor = executor
     
@@ -71,6 +74,15 @@ class AgentManager:
         elif agent_type == "coder" and self.executor:
             from manifest.runtime.agent.coder_agent import CoderAgent
             agent_instance = CoderAgent(agent_id, self.executor, self.state_manager)
+        elif agent_type == "debug" and self.executor:
+            from manifest.runtime.agent.debug_agent import DebugAgent
+            agent_instance = DebugAgent(agent_id, self.executor, self.state_manager)
+        elif agent_type == "approver" and self.executor:
+            from manifest.runtime.agent.approver_agent import ApproverAgent
+            agent_instance = ApproverAgent(agent_id, self.executor, self.state_manager)
+        elif agent_type == "project_review" and self.executor:
+            from manifest.runtime.agent.project_review_agent import ProjectReviewAgent
+            agent_instance = ProjectReviewAgent(agent_id, self.executor, self.state_manager)
         
         # Create agent object
         agent = {
