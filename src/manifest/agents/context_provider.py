@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from manifest.agents.task_scoper import TaskScoper
 from manifest.agents.skills_manager import SkillsManager
+from manifest.core.state_manager import StateManager
 
 
 class ContextProvider:
