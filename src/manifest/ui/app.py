@@ -662,6 +662,19 @@ class ManifestApp(App):
                 # Trigger conflict workflow (will be handled by agent coordinator)
                 await self.handle_blueprint_conflict(mismatch_report)
         
+        # Check for structural changes and suggest Blueprint updates
+        try:
+            suggestions = self.structure_manager.check_and_suggest_updates()
+            if suggestions:
+                drift_log.write(f"[bold yellow]Blueprint Update Suggestions: {len(suggestions)}[/]")
+                for suggestion in suggestions[:5]:  # Show first 5
+                    drift_log.write(f"  • {suggestion.suggestion_type}: {suggestion.reason}")
+                if len(suggestions) > 5:
+                    drift_log.write(f"  ... and {len(suggestions) - 5} more suggestions")
+        except Exception as e:
+            # Silently fail if structure manager has issues
+            pass
+        
         # Show drift mode if there are conflicts
         if all_conflicts:
             visual_pane = self.query_one("#insp-visual")
