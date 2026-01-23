@@ -448,9 +448,21 @@ class StateManager:
         self,
         status: Optional[str] = None,
         stage: Optional[str] = None,
-        sprint_id: Optional[str] = None
+        sprint_id: Optional[str] = None,
+        agent_type: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """Find tasks matching criteria."""
+        """
+        Find tasks matching criteria.
+        
+        Args:
+            status: Filter by status (pending, in_progress, done, blocked, approved, cancelled)
+            stage: Filter by stage (planning, implementation, testing, review, pending)
+            sprint_id: Filter by sprint ID
+            agent_type: Filter by agent type (planner, coder, test, etc.)
+            
+        Returns:
+            List of matching tasks
+        """
         tasks = self.get_task_checklist()
         filtered = tasks
         
@@ -460,8 +472,42 @@ class StateManager:
             filtered = [t for t in filtered if t.get("stage") == stage]
         if sprint_id:
             filtered = [t for t in filtered if t.get("sprint_id") == sprint_id]
+        if agent_type:
+            filtered = [t for t in filtered if t.get("agent", {}).get("type") == agent_type]
         
         return filtered
+    
+    def delete_task(self, task_id: str) -> bool:
+        """
+        Delete a task.
+        
+        Args:
+            task_id: Task ID to delete
+            
+        Returns:
+            True if task was deleted, False if not found
+        """
+        tasks = self.get_task_checklist()
+        original_count = len(tasks)
+        tasks = [t for t in tasks if t.get("id") != task_id]
+        
+        if len(tasks) < original_count:
+            self.set_task_checklist(tasks)
+            return True
+        return False
+    
+    def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific task by ID.
+        
+        Args:
+            task_id: Task ID
+            
+        Returns:
+            Task dictionary or None if not found
+        """
+        tasks = self.get_task_checklist()
+        return next((t for t in tasks if t.get("id") == task_id), None)
     
     def save_worker_squad_stage(
         self,

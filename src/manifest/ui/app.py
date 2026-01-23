@@ -564,8 +564,19 @@ class ManifestApp(App):
                 }
             ]
         
-        task_tree = self.query_one("#task-tree", TaskTree)
-        task_tree.load_tasks(tasks)
+        # Update sidebar task tree
+        try:
+            task_tree = self.query_one("#task-tree", TaskTree)
+            task_tree.load_tasks(tasks)
+        except Exception:
+            pass
+        
+        # Update project view task tree
+        try:
+            task_tree_view = self.query_one("#task-tree-view", TaskTreeView)
+            task_tree_view.load_tasks(tasks)
+        except Exception:
+            pass
 
     async def update_history_view(self):
         """Update the History view with git timeline."""
@@ -896,6 +907,96 @@ class ManifestApp(App):
                     await self.show_sprint_history()
                 elif command == "orchestrator" or command.startswith("orchestrator"):
                     await self.show_orchestrator_chat()
+                elif command == "create_task" or command.startswith("create_task"):
+                    # Format: /create_task <name> [description] [stage] [status] [sprint_id]
+                    parts = user_input.split(maxsplit=5)
+                    if len(parts) >= 2:
+                        name = parts[2] if len(parts) > 2 else "New Task"
+                        description = parts[3] if len(parts) > 3 else ""
+                        stage = parts[4] if len(parts) > 4 else "planning"
+                        status = parts[5] if len(parts) > 5 else "pending"
+                        sprint_id = parts[6] if len(parts) > 6 else None
+                        
+                        task_id = self.state_manager.create_task(
+                            name=name,
+                            description=description,
+                            stage=stage,
+                            status=status,
+                            sprint_id=sprint_id
+                        )
+                        await self.state_manager.save_state()
+                        await self._load_project_data()
+                        log.write(f"[bold green]Task created: {task_id} - {name}[/]")
+                    else:
+                        log.write("[bold yellow]Usage: /create_task <name> [description] [stage] [status] [sprint_id][/]")
+                elif command == "update_task" or command.startswith("update_task"):
+                    # Format: /update_task <task_id> [name=value] [description=value] [status=value] [stage=value]
+                    parts = user_input.split(maxsplit=2)
+                    if len(parts) >= 3:
+                        task_id = parts[2]
+                        updates = {}
+                        # Parse key=value pairs
+                        update_str = parts[3] if len(parts) > 3 else ""
+                        for pair in update_str.split():
+                            if "=" in pair:
+                                key, value = pair.split("=", 1)
+                                if key in ["name", "description", "status", "stage"]:
+                                    updates[key] = value
+                        
+                        if updates:
+                            success = self.state_manager.update_task(task_id, **updates)
+                            if success:
+                                await self.state_manager.save_state()
+                                await self._load_project_data()
+                                log.write(f"[bold green]Task {task_id} updated.[/]")
+                            else:
+                                log.write(f"[bold red]Task {task_id} not found.[/]")
+                        else:
+                            log.write("[bold yellow]No updates specified. Usage: /update_task <task_id> [name=value] [status=value] ...[/]")
+                    else:
+                        log.write("[bold yellow]Usage: /update_task <task_id> [name=value] [description=value] [status=value] [stage=value][/]")
+                elif command == "delete_task" or command.startswith("delete_task"):
+                    # Format: /delete_task <task_id>
+                    parts = user_input.split()
+                    if len(parts) >= 3:
+                        task_id = parts[2]
+                        success = self.state_manager.delete_task(task_id)
+                        if success:
+                            await self.state_manager.save_state()
+                            await self._load_project_data()
+                            log.write(f"[bold green]Task {task_id} deleted.[/]")
+                        else:
+                            log.write(f"[bold red]Task {task_id} not found.[/]")
+                    else:
+                        log.write("[bold yellow]Usage: /delete_task <task_id>[/]")
+                elif command == "list_tasks" or command.startswith("list_tasks"):
+                    # Format: /list_tasks [status] [stage] [sprint_id]
+                    parts = user_input.split()
+                    status = None
+                    stage = None
+                    sprint_id = None
+                    
+                    # Parse optional filters
+                    for i in range(2, len(parts)):
+                        part = parts[i]
+                        if part.startswith("status="):
+                            status = part.split("=", 1)[1]
+                        elif part.startswith("stage="):
+                            stage = part.split("=", 1)[1]
+                        elif part.startswith("sprint="):
+                            sprint_id = part.split("=", 1)[1]
+                    
+                    tasks = self.state_manager.find_tasks(status=status, stage=stage, sprint_id=sprint_id)
+                    if tasks:
+                        log.write(f"[bold green]Found {len(tasks)} task(s):[/]")
+                        for task in tasks:
+                            task_id = task.get("id", "unknown")
+                            name = task.get("name", "Unnamed")
+                            task_status = task.get("status", "pending")
+                            task_stage = task.get("stage", "planning")
+                            log.write(f"  • {task_id}: {name} [{task_status}] [{task_stage}]")
+                    else:
+                        log.write("[bold yellow]No tasks found.[/]")
                 elif command == "approve_sprint" or command.startswith("approve_sprint"):
                     parts = user_input.split()
                     if len(parts) >= 3:
