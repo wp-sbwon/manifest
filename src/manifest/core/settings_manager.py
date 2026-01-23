@@ -202,6 +202,39 @@ class SettingsManager:
             print(f"Error saving AGENTS.md: {e}")
             return False
     
+    # Structural Spec-First Management Settings
+    def get_spec_first_settings(self) -> Dict[str, Any]:
+        """Get Spec-First Management settings."""
+        settings_file = self.manifest_dir / "spec_first_settings.json"
+        if settings_file.exists():
+            try:
+                with open(settings_file, "r") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        
+        # Default settings
+        return {
+            "auto_sync_enabled": False,
+            "realtime_sync_enabled": False,
+            "auto_apply_blueprint_updates": False,
+            "auto_apply_code_changes": False,
+            "backup_before_apply": True,
+            "max_backups": 5
+        }
+    
+    def save_spec_first_settings(self, settings: Dict[str, Any]) -> bool:
+        """Save Spec-First Management settings."""
+        try:
+            settings_file = self.manifest_dir / "spec_first_settings.json"
+            self.manifest_dir.mkdir(parents=True, exist_ok=True)
+            with open(settings_file, "w") as f:
+                json.dump(settings, f, indent=2)
+            return True
+        except Exception as e:
+            print(f"Error saving spec-first settings: {e}")
+            return False
+    
     # Validation
     def validate_settings(self) -> Dict[str, Any]:
         """Validate all settings."""
