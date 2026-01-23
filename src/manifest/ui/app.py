@@ -675,6 +675,41 @@ class ManifestApp(App):
             # Silently fail if structure manager has issues
             pass
         
+        # Check for Blueprint changes and suggest code updates
+        try:
+            code_suggestions, impact = self.structure_manager.check_blueprint_and_suggest_code_changes()
+            if code_suggestions:
+                drift_log.write(f"[bold cyan]Code Change Suggestions: {len(code_suggestions)}[/]")
+                for suggestion in code_suggestions[:5]:  # Show first 5
+                    drift_log.write(f"  • {suggestion.suggestion_type}: {suggestion.action}")
+                    drift_log.write(f"    Reason: {suggestion.reason}")
+                if len(code_suggestions) > 5:
+                    drift_log.write(f"  ... and {len(code_suggestions) - 5} more suggestions")
+                
+                # Show impact analysis
+                if impact:
+                    affected_files = impact.get("affected_files", [])
+                    breaking_changes = impact.get("breaking_changes", [])
+                    migration_steps = impact.get("migration_steps", [])
+                    
+                    if affected_files:
+                        drift_log.write(f"[bold yellow]Affected Files: {len(affected_files)}[/]")
+                        for file_path in affected_files[:5]:
+                            drift_log.write(f"  • {file_path}")
+                    
+                    if breaking_changes:
+                        drift_log.write(f"[bold red]Breaking Changes: {len(breaking_changes)}[/]")
+                        for change in breaking_changes[:3]:
+                            drift_log.write(f"  • {change.get('description', 'Unknown')}")
+                    
+                    if migration_steps:
+                        drift_log.write(f"[bold green]Migration Plan: {len(migration_steps)} steps[/]")
+                        for step in migration_steps:
+                            drift_log.write(f"  Step {step.get('step', '?')}: {step.get('action', 'Unknown')} (Priority: {step.get('priority', 'unknown')})")
+        except Exception as e:
+            # Silently fail if structure manager has issues
+            pass
+        
         # Show drift mode if there are conflicts
         if all_conflicts:
             visual_pane = self.query_one("#insp-visual")

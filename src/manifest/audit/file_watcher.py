@@ -181,3 +181,26 @@ class FileWatcher:
             self._last_check = datetime.now()
         
         return changed_files
+    
+    def check_blueprint_changes(self) -> bool:
+        """
+        Check if Blueprint file has changed.
+        
+        Returns:
+            True if Blueprint file has changed
+        """
+        blueprint_file = self.project_root / ".manifest" / "blueprint.json"
+        if not blueprint_file.exists():
+            return False
+        
+        try:
+            # Get file modification time
+            mtime = datetime.fromtimestamp(blueprint_file.stat().st_mtime)
+            
+            # Check if modified since last check
+            if self._last_check is None or mtime > self._last_check:
+                return True
+        except Exception:
+            pass
+        
+        return False

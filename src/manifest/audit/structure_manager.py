@@ -201,21 +201,110 @@ class StructureManager:
         
         return suggestions
     
+    def detect_blueprint_changes(
+        self,
+        previous_blueprint: Optional[Dict[str, Any]] = None,
+        current_blueprint: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Detect changes between previous and current Blueprint.
+        
+        Args:
+            previous_blueprint: Previous Blueprint (optional, will load if not provided)
+            current_blueprint: Current Blueprint (optional, will load if not provided)
+            
+        Returns:
+            Dict with detected changes:
+            {
+                "new_components": [...],
+                "modified_components": [...],
+                "deleted_components": [...],
+                "new_contracts": [...],
+                "modified_contracts": [...],
+                "deleted_contracts": [...]
+            }
+        """
+        if previous_blueprint is None:
+            # Try to load from backup or use empty
+            previous_blueprint = self._load_previous_blueprint() or {"components": [], "contracts": []}
+        
+        if current_blueprint is None:
+            current_blueprint = self._load_blueprint()
+        
+        changes = {
+            "new_components": [],
+            "modified_components": [],
+            "deleted_components": [],
+            "new_contracts": [],
+            "modified_contracts": [],
+            "deleted_contracts": []
+        }
+        
+        # Compare components
+        prev_components = {c.get("id"): c for c in previous_blueprint.get("components", [])}
+        curr_components = {c.get("id"): c for c in current_blueprint.get("components", [])}
+        
+        # Find new components
+        for comp_id, comp in curr_components.items():
+            if comp_id not in prev_components:
+                changes["new_components"].append(comp)
+            else:
+                # Check if modified (simple comparison)
+                prev_comp = prev_components[comp_id]
+                if (comp.get("methods") != prev_comp.get("methods") or
+                    comp.get("attributes") != prev_comp.get("attributes")):
+                    changes["modified_components"].append(comp)
+        
+        # Find deleted components
+        for comp_id in prev_components:
+            if comp_id not in curr_components:
+                changes["deleted_components"].append(prev_components[comp_id])
+        
+        # Compare contracts
+        prev_contracts = {
+            (c.get("from_id"), c.get("to_id"), c.get("type")): c
+            for c in previous_blueprint.get("contracts", [])
+        }
+        curr_contracts = {
+            (c.get("from_id"), c.get("to_id"), c.get("type")): c
+            for c in current_blueprint.get("contracts", [])
+        }
+        
+        # Find new contracts
+        for contract_key, contract in curr_contracts.items():
+            if contract_key not in prev_contracts:
+                changes["new_contracts"].append(contract)
+            else:
+                # Check if modified
+                prev_contract = prev_contracts[contract_key]
+                if contract.get("symbols") != prev_contract.get("symbols"):
+                    changes["modified_contracts"].append(contract)
+        
+        # Find deleted contracts
+        for contract_key in prev_contracts:
+            if contract_key not in curr_contracts:
+                changes["deleted_contracts"].append(prev_contracts[contract_key])
+        
+        return changes
+    
     def suggest_code_changes(
         self,
-        blueprint_changes: Dict[str, Any],
+        blueprint_changes: Optional[Dict[str, Any]] = None,
         current_code_blueprint: Optional[Dict[str, Any]] = None
     ) -> List[CodeChangeSuggestion]:
         """
         Generate suggestions to change code based on Blueprint changes.
         
         Args:
-            blueprint_changes: Dict with changed components/contracts
+            blueprint_changes: Dict with changed components/contracts (optional, will detect if not provided)
             current_code_blueprint: Current code-extracted blueprint (optional)
             
         Returns:
             List of code change suggestions
         """
+        if blueprint_changes is None:
+            blueprint_changes = self.detect_blueprint_changes()
+        
         if current_code_blueprint is None:
             current_code_blueprint = self._load_code_blueprint()
         
@@ -227,12 +316,13 @@ class StructureManager:
             file_path = component.get("file", "")
             if not file_path or not Path(file_path).exists():
                 # Component doesn't exist in code - suggest creating it
+                suggested_path = self._suggest_file_path(component)
                 suggestions.append(CodeChangeSuggestion(
                     suggestion_type="create_file",
-                    file_path=file_path or self._suggest_file_path(component),
-                    action=f"Create {component.get('type', 'component')} {component.get('name', '')}",
+                    file_path=suggested_path,
+                    action=f"Create {component.get('type', 'component')} {component.get('name', '')} with methods: {', '.join(component.get('methods', []))}",
                     blueprint_component_id=component.get("id", ""),
-                    reason=f"Component defined in Blueprint but not found in code",
+                    reason=f"Component '{component.get('name', '')}' defined in Blueprint but not found in code",
                     affected_components=[component.get("id", "")]
                 ))
             else:
@@ -245,28 +335,266 @@ class StructureManager:
                     suggestions.append(CodeChangeSuggestion(
                         suggestion_type="add_class",
                         file_path=file_path,
-                        action=f"Add class {component.get('name', '')}",
+                        action=f"Add class {component.get('name', '')} with methods: {', '.join(component.get('methods', []))}",
                         blueprint_component_id=component.get("id", ""),
-                        reason=f"Component defined in Blueprint but missing in code",
+                        reason=f"Component '{component.get('name', '')}' defined in Blueprint but missing in code file",
                         affected_components=[component.get("id", "")]
                     ))
+                else:
+                    # Component exists but might need method/attribute updates
+                    existing_methods = set(existing.get("methods", []))
+                    blueprint_methods = set(component.get("methods", []))
+                    missing_methods = blueprint_methods - existing_methods
+                    
+                    if missing_methods:
+                        suggestions.append(CodeChangeSuggestion(
+                            suggestion_type="add_method",
+                            file_path=file_path,
+                            action=f"Add methods to {component.get('name', '')}: {', '.join(missing_methods)}",
+                            blueprint_component_id=component.get("id", ""),
+                            reason=f"Component '{component.get('name', '')}' is missing methods defined in Blueprint",
+                            affected_components=[component.get("id", "")]
+                        ))
+        
+        # Check for modified components
+        modified_components = blueprint_changes.get("modified_components", [])
+        for component in modified_components:
+            file_path = component.get("file", "")
+            if file_path and Path(file_path).exists():
+                existing = self._find_component_in_blueprint(
+                    component.get("id", ""),
+                    current_code_blueprint
+                )
+                if existing:
+                    existing_methods = set(existing.get("methods", []))
+                    blueprint_methods = set(component.get("methods", []))
+                    missing_methods = blueprint_methods - existing_methods
+                    extra_methods = existing_methods - blueprint_methods
+                    
+                    if missing_methods:
+                        suggestions.append(CodeChangeSuggestion(
+                            suggestion_type="add_method",
+                            file_path=file_path,
+                            action=f"Add methods: {', '.join(missing_methods)}",
+                            blueprint_component_id=component.get("id", ""),
+                            reason=f"Component '{component.get('name', '')}' needs methods from updated Blueprint",
+                            affected_components=[component.get("id", "")]
+                        ))
         
         # Check for new contracts (dependencies)
         new_contracts = blueprint_changes.get("new_contracts", [])
         for contract in new_contracts:
             from_id = contract.get("from_id", "")
             to_id = contract.get("to_id", "")
+            contract_type = contract.get("type", "dependency")
             
-            suggestions.append(CodeChangeSuggestion(
-                suggestion_type="add_import",
-                file_path=self._get_file_for_component(from_id),
-                action=f"Import {to_id}",
-                blueprint_component_id=from_id,
-                reason=f"Contract defined in Blueprint: {from_id} → {to_id}",
-                affected_components=[from_id, to_id]
-            ))
+            from_file = self._get_file_for_component(from_id)
+            to_file = self._get_file_for_component(to_id)
+            
+            if from_file and to_file:
+                # Determine import path
+                to_component = self._find_component_in_blueprint(to_id, self._load_blueprint())
+                if to_component:
+                    module_path = to_component.get("module_path", "")
+                    component_name = to_component.get("name", "")
+                    
+                    suggestions.append(CodeChangeSuggestion(
+                        suggestion_type="add_import",
+                        file_path=from_file,
+                        action=f"Import {component_name} from {module_path}",
+                        blueprint_component_id=from_id,
+                        reason=f"Contract defined in Blueprint: {from_id} → {to_id} ({contract_type})",
+                        affected_components=[from_id, to_id]
+                    ))
         
         return suggestions
+    
+    def analyze_impact(
+        self,
+        blueprint_changes: Dict[str, Any],
+        current_code_blueprint: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Analyze impact of Blueprint changes on existing code.
+        
+        Args:
+            blueprint_changes: Dict with changed components/contracts
+            current_code_blueprint: Current code-extracted blueprint (optional)
+            
+        Returns:
+            Dict with impact analysis:
+            {
+                "affected_files": [...],
+                "affected_components": [...],
+                "breaking_changes": [...],
+                "safe_changes": [...],
+                "migration_steps": [...]
+            }
+        """
+        if current_code_blueprint is None:
+            current_code_blueprint = self._load_code_blueprint()
+        
+        impact = {
+            "affected_files": set(),
+            "affected_components": [],
+            "breaking_changes": [],
+            "safe_changes": [],
+            "migration_steps": []
+        }
+        
+        # Analyze new components
+        for component in blueprint_changes.get("new_components", []):
+            file_path = component.get("file", "")
+            if file_path:
+                impact["affected_files"].add(file_path)
+            impact["affected_components"].append(component.get("id", ""))
+            impact["safe_changes"].append({
+                "type": "new_component",
+                "component_id": component.get("id", ""),
+                "description": f"New component '{component.get('name', '')}' - safe to add"
+            })
+        
+        # Analyze modified components
+        for component in blueprint_changes.get("modified_components", []):
+            file_path = component.get("file", "")
+            if file_path:
+                impact["affected_files"].add(file_path)
+            
+            component_id = component.get("id", "")
+            impact["affected_components"].append(component_id)
+            
+            # Check if it's a breaking change (removed methods)
+            existing = self._find_component_in_blueprint(component_id, current_code_blueprint)
+            if existing:
+                existing_methods = set(existing.get("methods", []))
+                blueprint_methods = set(component.get("methods", []))
+                removed_methods = existing_methods - blueprint_methods
+                
+                if removed_methods:
+                    impact["breaking_changes"].append({
+                        "type": "removed_methods",
+                        "component_id": component_id,
+                        "methods": list(removed_methods),
+                        "description": f"Component '{component.get('name', '')}' has removed methods: {', '.join(removed_methods)}"
+                    })
+        
+        # Analyze deleted components
+        for component in blueprint_changes.get("deleted_components", []):
+            file_path = component.get("file", "")
+            if file_path:
+                impact["affected_files"].add(file_path)
+            
+            component_id = component.get("id", "")
+            impact["breaking_changes"].append({
+                "type": "deleted_component",
+                "component_id": component_id,
+                "description": f"Component '{component.get('name', '')}' was deleted from Blueprint"
+            })
+        
+        # Analyze new contracts
+        for contract in blueprint_changes.get("new_contracts", []):
+            from_file = self._get_file_for_component(contract.get("from_id", ""))
+            to_file = self._get_file_for_component(contract.get("to_id", ""))
+            
+            if from_file:
+                impact["affected_files"].add(from_file)
+            if to_file:
+                impact["affected_files"].add(to_file)
+            
+            impact["safe_changes"].append({
+                "type": "new_contract",
+                "from_id": contract.get("from_id", ""),
+                "to_id": contract.get("to_id", ""),
+                "description": f"New dependency: {contract.get('from_id', '')} → {contract.get('to_id', '')}"
+            })
+        
+        # Convert sets to lists for JSON serialization
+        impact["affected_files"] = list(impact["affected_files"])
+        
+        # Generate migration steps
+        impact["migration_steps"] = self._generate_migration_steps(blueprint_changes, impact)
+        
+        return impact
+    
+    def _generate_migration_steps(
+        self,
+        blueprint_changes: Dict[str, Any],
+        impact: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate step-by-step migration plan.
+        
+        Args:
+            blueprint_changes: Detected Blueprint changes
+            impact: Impact analysis result
+            
+        Returns:
+            List of migration steps
+        """
+        steps = []
+        step_num = 1
+        
+        # Step 1: Handle breaking changes first (deletions)
+        deleted = blueprint_changes.get("deleted_components", [])
+        if deleted:
+            steps.append({
+                "step": step_num,
+                "type": "breaking",
+                "action": "Review and remove deleted components",
+                "components": [c.get("id", "") for c in deleted],
+                "priority": "high"
+            })
+            step_num += 1
+        
+        # Step 2: Handle removed methods
+        breaking = [c for c in impact["breaking_changes"] if c["type"] == "removed_methods"]
+        if breaking:
+            steps.append({
+                "step": step_num,
+                "type": "breaking",
+                "action": "Update code to remove deprecated methods",
+                "details": breaking,
+                "priority": "high"
+            })
+            step_num += 1
+        
+        # Step 3: Add new components
+        new_components = blueprint_changes.get("new_components", [])
+        if new_components:
+            steps.append({
+                "step": step_num,
+                "type": "addition",
+                "action": "Create new components",
+                "components": [c.get("id", "") for c in new_components],
+                "priority": "medium"
+            })
+            step_num += 1
+        
+        # Step 4: Update modified components
+        modified = blueprint_changes.get("modified_components", [])
+        if modified:
+            steps.append({
+                "step": step_num,
+                "type": "modification",
+                "action": "Update existing components",
+                "components": [c.get("id", "") for c in modified],
+                "priority": "medium"
+            })
+            step_num += 1
+        
+        # Step 5: Add new contracts (dependencies)
+        new_contracts = blueprint_changes.get("new_contracts", [])
+        if new_contracts:
+            steps.append({
+                "step": step_num,
+                "type": "dependency",
+                "action": "Add imports and dependencies",
+                "contracts": [f"{c.get('from_id', '')} → {c.get('to_id', '')}" for c in new_contracts],
+                "priority": "low"
+            })
+            step_num += 1
+        
+        return steps
     
     def apply_blueprint_update(
         self,
