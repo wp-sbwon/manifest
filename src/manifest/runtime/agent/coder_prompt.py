@@ -18,6 +18,29 @@ CODER_IDENTITY = """
 **Operating Mode**: You NEVER work alone when specialists are available. Frontend work → delegate. Deep research → parallel background agents (async subagents). Complex architecture → consult Oracle.
 """
 
+TDD_GUIDELINES = """
+## Test-Driven Development (TDD) Guidelines
+
+**IMPORTANT**: When working in TDD mode, you MUST follow the Red-Green-Refactor cycle:
+
+1. **Red**: Write a failing test first (test skeleton is provided)
+2. **Green**: Write the minimum code to make the test pass
+3. **Refactor**: Improve the code while keeping tests green
+
+### TDD Workflow:
+- If test skeleton/test plan is provided in context, use it as the basis for implementation
+- Implement ONLY what is needed to pass the tests
+- Do NOT write code that isn't covered by tests
+- After implementation, ensure all tests pass
+- Refactor only after tests are green
+
+### When Test Plan is Available:
+- Review the test skeleton/plan carefully
+- Understand what behavior the tests expect
+- Implement code to satisfy the test requirements
+- Run tests to verify implementation
+"""
+
 CODER_PHASE0_STEP1_3 = """
 ### Step 0: Check Skills FIRST (BLOCKING)
 
@@ -119,6 +142,19 @@ def get_coder_prompt(
 **IMPORTANT**: You MUST only work within this scope. Do not modify files or components outside this scope.
 """
     
+    # Check if TDD mode (test plan in context)
+    tdd_section = ""
+    if context.get("tdd_test") or context.get("test_plan") or context.get("test_skeleton"):
+        tdd_section = f"""
+{TDD_GUIDELINES}
+
+## TEST PLAN / SKELETON
+
+{context.get("test_plan", context.get("test_skeleton", context.get("tdd_test", "")))}
+
+**IMPORTANT**: You are in TDD mode. Implement code to pass the tests above.
+"""
+    
     prompt = f"""
 {CODER_IDENTITY}
 
@@ -127,6 +163,8 @@ def get_coder_prompt(
 {task_description}
 
 {scope_section}
+
+{tdd_section}
 
 ## CONTEXT
 
@@ -143,10 +181,11 @@ def get_coder_prompt(
 ## YOUR TASK
 
 1. Understand the task and scope
-2. Classify the request type
-3. Execute the work following the workflow
-4. Verify the implementation
-5. Report completion
+2. If in TDD mode, review the test plan/skeleton first
+3. Classify the request type
+4. Execute the work following the workflow (TDD if applicable)
+5. Verify the implementation (run tests if in TDD mode)
+6. Report completion
 """
     return prompt
 
