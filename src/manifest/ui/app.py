@@ -263,6 +263,11 @@ class ManifestApp(App):
                         yield RichLog(id="log-main", markup=True)
                     # Squad channels will be added dynamically when missions start
                 
+                # Channel selector (horizontal container with buttons)
+                with Horizontal(id="channel-selector"):
+                    yield Button("Manifest AI", id="btn-channel-main", variant="primary")
+                    # Squad channel buttons will be added dynamically
+                
                 yield Input(placeholder="Enter command...", id="global-input")
 
         yield Footer()
@@ -337,16 +342,10 @@ class ManifestApp(App):
             self.intent_data = {"version": "1.0", "sprint": "", "features": []}
 
     async def load_blueprint_data(self):
-        """Load blueprint.json data."""
+        """Load blueprint.json data with metadata."""
+        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
         blueprint_file = self.manifest_dir / "blueprint.json"
-        if blueprint_file.exists():
-            try:
-                with open(blueprint_file, "r") as f:
-                    self.blueprint_data = json.load(f)
-            except Exception:
-                self.blueprint_data = {"version": "1.0", "zones": {}, "components": [], "contracts": []}
-        else:
-            self.blueprint_data = {"version": "1.0", "zones": {}, "components": [], "contracts": []}
+        self.blueprint_data = load_blueprint_with_metadata(blueprint_file, "llm_design", False)
 
     async def load_project_data(self):
         """Load project.json data (strict doc > view).
@@ -603,7 +602,9 @@ class ManifestApp(App):
         bottom_up_blueprint = self.drift_auditor.generate_bottom_up_blueprint(Path("src"))
         
         # Load top-down blueprint
-        top_down_blueprint = self._load_blueprint_sync()
+        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
+        blueprint_file = self.manifest_dir / "blueprint.json"
+        top_down_blueprint = load_blueprint_with_metadata(blueprint_file, "llm_design", False)
         
         # Compare blueprints
         blueprint_conflicts = self.blueprint_comparator.compare_blueprints(
@@ -905,13 +906,30 @@ class ManifestApp(App):
             return tab_id
         
         try:
-            chat_tabs = self.query_one("#chat-tabs", TabbedContent)
+            # Create channel button in selector
+            channel_selector = self.query_one("#channel-selector", Horizontal)
             
-            # Create new TabPane dynamically
-            # Note: Textual doesn't support dynamic TabPane creation easily
-            # We'll track channels and display in main log for now
-            # Full implementation would require Textual's dynamic widget support
-            self.squad_channels[channel_name] = tab_id
+            # Create button for this channel
+            button_id = f"btn-channel-{channel_name}"
+            channel_button = Button(
+                f"{agent_type.title()} ({task_id[:8]})",
+                id=button_id,
+                variant="default"
+            )
+            
+            # Mount button
+            await channel_selector.mount(channel_button)
+            
+            # Track channel
+            self.squad_channels[channel_name] = {
+                "tab_id": tab_id,
+                "button_id": button_id,
+                "task_id": task_id,
+                "agent_type": agent_type
+            }
+            
+            # Set up button click handler
+            self.set_timer(0.1, lambda: self._setup_channel_button(button_id, channel_name))
             
             # Load existing chat history if any
             history = self.state_manager.get_chat_history(channel_name)
@@ -923,6 +941,58 @@ class ManifestApp(App):
         except Exception as e:
             print(f"Error creating squad channel: {e}")
             return None
+    
+    def _setup_channel_button(self, button_id: str, channel_name: str):
+        """Set up click handler for channel button."""
+        try:
+            button = self.query_one(f"#{button_id}", Button)
+            button.on_click = lambda: self._switch_channel(channel_name)
+        except Exception:
+            pass
+    
+    async def _switch_channel(self, channel_name: str):
+        """Switch to a different chat channel."""
+        # Update active channel
+        self.active_channel = channel_name
+        
+        # Update button states
+        for ch_name, ch_info in self.squad_channels.items():
+            button_id = ch_info.get("button_id")
+            if button_id:
+                try:
+                    button = self.query_one(f"#{button_id}", Button)
+                    if ch_name == channel_name:
+                        button.variant = "primary"
+                    else:
+                        button.variant = "default"
+                except Exception:
+                    pass
+        
+        # Update main button
+        main_button = self.query_one("#btn-channel-main", Button)
+        if channel_name == "main":
+            main_button.variant = "primary"
+        else:
+            main_button.variant = "default"
+        
+        # Refresh log display
+        await self._refresh_channel_log(channel_name)
+    
+    async def _refresh_channel_log(self, channel_name: str):
+        """Refresh log display for current channel."""
+        log = self.query_one("#log-main", RichLog)
+        log.clear()
+        
+        # Load chat history for this channel
+        history = self.state_manager.get_chat_history(channel_name)
+        for msg in history:
+            role = msg.get("role", "assistant")
+            content = msg.get("content", "")
+            
+            if role == "user":
+                log.write(f"[bold blue]User:[/] {content}")
+            else:
+                log.write(f"[bold green]Assistant:[/] {content}")
     
     async def update_squad_channels(self):
         """Update squad channels based on active tasks."""

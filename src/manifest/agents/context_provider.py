@@ -113,15 +113,9 @@ class ContextProvider:
         else:
             tier_1["intent"] = {"version": "1.0", "sprint": "", "features": []}
         
-        # Load architecture.json
-        if self.architecture_file.exists():
-            try:
-                with open(self.architecture_file, "r") as f:
-                    tier_1["architecture"] = json.load(f)
-            except Exception:
-                tier_1["architecture"] = {"version": "1.0", "features": [], "requirements": [], "goals": []}
-        else:
-            tier_1["architecture"] = {"version": "1.0", "features": [], "requirements": [], "goals": []}
+        # Load architecture.json with metadata
+        from manifest.audit.architecture_metadata import load_architecture_with_metadata
+        tier_1["architecture"] = load_architecture_with_metadata(self.architecture_file)
         
         return tier_1
     

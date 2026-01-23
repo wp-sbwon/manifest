@@ -21,10 +21,10 @@ class Component:
     methods: List[str] = field(default_factory=list)
     attributes: List[str] = field(default_factory=list)
     module_path: str = ""
-    methodology: Optional[str] = None  # e.g., "TDD", "BDD"
-    algorithm: Optional[str] = None  # e.g., "Dijkstra", "BFS"
-    design_pattern: Optional[str] = None  # e.g., "Strategy", "Factory"
-    complexity: Optional[str] = None  # e.g., "O(n log n)"
+    # Note: methodology removed - it's a development methodology, not product logic
+    algorithm: Optional[str] = None  # e.g., "Dijkstra", "BFS" (product logic only)
+    design_pattern: Optional[str] = None  # e.g., "Strategy", "Factory" (product logic only)
+    complexity: Optional[str] = None  # e.g., "O(n log n)" (product logic only)
     notes: Optional[str] = None
 
 
@@ -97,6 +97,23 @@ class CodeExtractor:
             
             # Extract entities
             entities = self._identify_entities(tree, file_path, module_path)
+            
+            # Extract metadata (algorithm, design_pattern, complexity) for each entity
+            for entity in entities:
+                # Extract algorithm from code structure
+                algorithm = self._extract_algorithm_from_code(tree, entity)
+                if algorithm:
+                    entity.algorithm = algorithm
+                
+                # Extract design pattern from structure
+                design_pattern = self._extract_design_pattern_from_structure(tree, entity, entities)
+                if design_pattern:
+                    entity.design_pattern = design_pattern
+                
+                # Analyze complexity
+                complexity = self._analyze_complexity_from_code(tree, entity)
+                if complexity:
+                    entity.complexity = complexity
             
             # Extract relationships
             relationships = self._infer_relationships(tree, file_path, module_path, entities)
@@ -303,6 +320,219 @@ class CodeExtractor:
         # If no entity found, return None (caller should handle)
         return None
     
+    def _extract_algorithm_from_code(self, tree: ast.AST, entity: Component) -> Optional[str]:
+        """
+        Extract algorithm from actual code structure patterns (conservative approach).
+        Only returns if high confidence.
+        """
+        # Check imports for algorithm libraries
+        imports = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                if node.module:
+                    imports.add(node.module)
+                    for alias in node.names:
+                        imports.add(alias.name)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    imports.add(alias.name)
+        
+        # Check for algorithm-specific imports
+        import_str = " ".join(imports).lower()
+        if "dijkstra" in import_str or "networkx" in import_str:
+            # Check if entity uses networkx.dijkstra_path or similar
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Call):
+                    if isinstance(node.func, ast.Attribute):
+                        if "dijkstra" in node.func.attr.lower():
+                            return "Dijkstra"
+        
+        # Check function/class name patterns
+        name_lower = entity.name.lower()
+        if "dijkstra" in name_lower:
+            return "Dijkstra"
+        if "bfs" in name_lower or "breadth" in name_lower:
+            return "BFS"
+        if "dfs" in name_lower or "depth" in name_lower:
+            return "DFS"
+        if "quicksort" in name_lower or "quick_sort" in name_lower:
+            return "Quicksort"
+        if "mergesort" in name_lower or "merge_sort" in name_lower:
+            return "Mergesort"
+        
+        # Check for data structure patterns that indicate algorithms
+        # Priority queue + distance dict -> Dijkstra-like
+        has_heapq = "heapq" in import_str
+        has_distance_tracking = False
+        
+        # Look for distance/cost tracking patterns in the entity's code
+        entity_node = None
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+                if node.name == entity.name:
+                    entity_node = node
+                    break
+        
+        if entity_node:
+            # Check for distance/cost tracking
+            for node in ast.walk(entity_node):
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            if "distance" in target.id.lower() or "cost" in target.id.lower():
+                                has_distance_tracking = True
+                                break
+            
+            if has_heapq and has_distance_tracking:
+                return "Dijkstra"
+        
+        return None
+    
+    def _extract_design_pattern_from_structure(self, tree: ast.AST, entity: Component, 
+                                             all_entities: List[Component]) -> Optional[str]:
+        """
+        Extract design pattern from code structure analysis (conservative approach).
+        """
+        # Find the entity's AST node
+        entity_node = None
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+                if node.name == entity.name:
+                    entity_node = node
+                    break
+        
+        if not entity_node:
+            return None
+        
+        # Singleton Pattern: __new__ override
+        if isinstance(entity_node, ast.ClassDef):
+            has_new = False
+            for item in entity_node.body:
+                if isinstance(item, ast.FunctionDef) and item.name == "__new__":
+                    has_new = True
+                    break
+            if has_new:
+                return "Singleton"
+            
+            # Factory Pattern: create_* or make_* methods
+            create_methods = []
+            for item in entity_node.body:
+                if isinstance(item, ast.FunctionDef):
+                    if item.name.startswith("create_") or item.name.startswith("make_"):
+                        create_methods.append(item.name)
+            if len(create_methods) >= 2:
+                return "Factory"
+            
+            # Strategy Pattern: Interface + multiple implementations
+            # Check if this class has abstract methods (ABC)
+            has_abstract = False
+            for base in entity_node.bases:
+                if isinstance(base, ast.Name):
+                    if "ABC" in base.id or "Abstract" in base.id:
+                        has_abstract = True
+                        break
+            
+            if has_abstract:
+                # Check for abstract methods
+                for item in entity_node.body:
+                    if isinstance(item, ast.FunctionDef):
+                        for decorator in item.decorator_list:
+                            if isinstance(decorator, ast.Name):
+                                if "abstractmethod" in decorator.id.lower():
+                                    return "Strategy"
+            
+            # Check if multiple classes implement the same interface
+            # (simplified check - would need more context in production)
+            if entity.type == "class":
+                # Check for interface-like patterns
+                if len(entity.methods) > 0:
+                    # Look for other entities with similar method signatures
+                    similar_count = 0
+                    for other_entity in all_entities:
+                        if other_entity.id != entity.id and other_entity.type == "class":
+                            # Check if they share methods (simplified)
+                            shared_methods = set(entity.methods) & set(other_entity.methods)
+                            if len(shared_methods) >= 2:
+                                similar_count += 1
+                    if similar_count >= 2:
+                        return "Strategy"
+        
+        return None
+    
+    def _analyze_complexity_from_code(self, tree: ast.AST, entity: Component) -> Optional[str]:
+        """
+        Analyze code complexity from loop structures (conservative approach).
+        """
+        # Find the entity's AST node
+        entity_node = None
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+                if node.name == entity.name:
+                    entity_node = node
+                    break
+        
+        if not entity_node:
+            return None
+        
+        # Count nested loops
+        max_nesting = 0
+        current_nesting = 0
+        
+        def count_nesting(node: ast.AST, level: int = 0):
+            nonlocal max_nesting
+            if isinstance(node, (ast.For, ast.While)):
+                level += 1
+                max_nesting = max(max_nesting, level)
+            for child in ast.iter_child_nodes(node):
+                count_nesting(child, level)
+        
+        count_nesting(entity_node)
+        
+        # Simple heuristics
+        if max_nesting == 0:
+            # No loops - could be O(1) or O(n) depending on operations
+            # Check for recursion
+            has_recursion = self._has_recursion(tree, entity)
+            if has_recursion:
+                return "O(n)"  # Conservative estimate
+            return None  # Too uncertain
+        elif max_nesting == 1:
+            return "O(n)"
+        elif max_nesting == 2:
+            return "O(n²)"
+        elif max_nesting >= 3:
+            return "O(n³)"
+        
+        return None
+    
+    def _has_recursion(self, tree: ast.AST, entity: Component) -> bool:
+        """Check for recursive function calls."""
+        # Find the entity's AST node
+        entity_node = None
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+                if node.name == entity.name:
+                    entity_node = node
+                    break
+        
+        if not entity_node:
+            return False
+        
+        # Get function names in this entity
+        function_names = set()
+        for node in ast.walk(entity_node):
+            if isinstance(node, ast.FunctionDef):
+                function_names.add(node.name)
+        
+        # Check for self-recursive calls
+        for node in ast.walk(entity_node):
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name):
+                    if node.func.id in function_names:
+                        return True
+        
+        return False
+    
     def _generate_blueprint(self) -> Dict[str, Any]:
         """Generate blueprint.json from extracted components and contracts."""
         # Organize components by zone (simplified - can be enhanced)
@@ -329,9 +559,8 @@ class CodeExtractor:
             if comp.attributes:
                 comp_dict["attributes"] = comp.attributes
             
-            # Add metadata fields if present
-            if comp.methodology:
-                comp_dict["methodology"] = comp.methodology
+            # Add metadata fields if present (only product logic, not methodology)
+            # Note: methodology is excluded as it's a development methodology, not product logic
             if comp.algorithm:
                 comp_dict["algorithm"] = comp.algorithm
             if comp.design_pattern:
@@ -364,20 +593,22 @@ class CodeExtractor:
                 contract_dict["symbols"] = contract.symbols
             blueprint_contracts.append(contract_dict)
         
+        from datetime import datetime
+        
         return {
             "version": "1.0",
             "source": "code_extraction",
+            "ground_truth": True,
+            "last_updated": datetime.utcnow().isoformat(),
+            "extraction_method": "ast_parsing",
             "zones": zones,
             "components": blueprint_components,
             "contracts": blueprint_contracts
         }
     
     def save_blueprint(self, blueprint: Dict[str, Any], output_path: Path) -> bool:
-        """Save blueprint to file."""
-        try:
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(output_path, "w", encoding="utf-8") as f:
-                json.dump(blueprint, f, indent=2, ensure_ascii=False)
-            return True
-        except Exception:
-            return False
+        """Save blueprint to file with metadata."""
+        from manifest.audit.blueprint_metadata import save_blueprint_with_metadata
+        return save_blueprint_with_metadata(
+            blueprint, output_path, "code_extraction", True, "ast_parsing"
+        )
