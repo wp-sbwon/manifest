@@ -6,25 +6,42 @@ import asyncio
 import subprocess
 from typing import Dict, Any, Optional, AsyncIterator
 from pathlib import Path
+from manifest.runtime.opencode_adapter import OpenCodeAdapter
 
 
 class TerminalRouter:
     """
     Routes terminal commands through OpenCode router system.
     Terminal command execution router.
+    Uses OpenCodeAdapter for OpenCode integration with fallback.
     """
     
-    def __init__(self, working_dir: Optional[Path] = None, watchdog=None):
+    def __init__(
+        self,
+        working_dir: Optional[Path] = None,
+        watchdog=None,
+        use_opencode: Optional[bool] = None
+    ):
         """
         Initialize terminal router.
         
         Args:
             working_dir: Working directory for command execution
             watchdog: Optional watchdog instance for monitoring
+            use_opencode: Force use of OpenCode (True) or internal (False).
+                         If None, auto-detect based on availability.
         """
         self.working_dir = working_dir or Path.cwd()
         self.active_commands: Dict[str, subprocess.Popen] = {}
         self.watchdog = watchdog
+        
+        # Initialize OpenCode adapter with shared active_commands and watchdog
+        self.opencode_adapter = OpenCodeAdapter(
+            working_dir=working_dir,
+            use_opencode=use_opencode,
+            active_commands=self.active_commands,  # Share active_commands
+            watchdog=watchdog  # Share watchdog
+        )
     
     async def execute_command(
         self,
@@ -35,6 +52,7 @@ class TerminalRouter:
     ) -> Dict[str, Any]:
         """
         Execute a terminal command through the router.
+        Uses OpenCodeAdapter which handles OpenCode integration with fallback.
         
         Args:
             command: Command to execute
@@ -43,7 +61,7 @@ class TerminalRouter:
             stream: Whether to stream output
             
         Returns:
-            Dict with 'stdout', 'stderr', 'returncode', 'command_id'
+            Dict with 'stdout', 'stderr', 'returncode', 'command_id', 'backend'
         """
         full_command = [command] + (args or [])
         command_id = f"cmd_{id(full_command)}"
@@ -52,35 +70,18 @@ class TerminalRouter:
         if self.watchdog:
             self.watchdog.register_command(command_id)
         
-        try:
-            if stream:
-                return await self._execute_streaming(full_command, command_id, timeout)
-            else:
-                return await self._execute_buffered(full_command, command_id, timeout)
-        except asyncio.TimeoutError:
-            # Kill the process if timeout
-            if command_id in self.active_commands:
-                try:
-                    self.active_commands[command_id].kill()
-                except:
-                    pass
-                del self.active_commands[command_id]
-            
-            return {
-                "stdout": "",
-                "stderr": "Command timed out",
-                "returncode": -1,
-                "command_id": command_id,
-                "timeout": True
-            }
-        except Exception as e:
-            return {
-                "stdout": "",
-                "stderr": str(e),
-                "returncode": -1,
-                "command_id": command_id,
-                "error": True
-            }
+        # Use OpenCode adapter (handles OpenCode integration and fallback)
+        result = await self.opencode_adapter.execute_command(
+            command=command,
+            args=args,
+            timeout=timeout,
+            stream=stream
+        )
+        
+        # Ensure command_id is set
+        result["command_id"] = command_id
+        
+        return result
     
     async def _execute_buffered(
         self,
@@ -189,29 +190,13 @@ class TerminalRouter:
     ) -> AsyncIterator[str]:
         """
         Stream command output line by line.
+        Uses OpenCode adapter if available.
         
         Yields:
             Output lines as they are produced
         """
-        full_command = [command] + (args or [])
-        
-        process = await asyncio.create_subprocess_exec(
-            *full_command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            cwd=str(self.working_dir)
-        )
-        
-        try:
-            if process.stdout:
-                async for line in process.stdout:
-                    yield line.decode('utf-8', errors='replace')
-            
-            await process.wait()
-        finally:
-            if process.returncode is None:
-                process.terminate()
-                await process.wait()
+        async for line in self.opencode_adapter.stream_command_output(command, args):
+            yield line
     
     def cancel_command(self, command_id: str) -> bool:
         """
@@ -237,3 +222,7 @@ class TerminalRouter:
         
         process = self.active_commands[command_id]
         return process.returncode is None
+    
+    def is_opencode_available(self) -> bool:
+        """Check if OpenCode is available and being used."""
+        return self.opencode_adapter.is_opencode_available()

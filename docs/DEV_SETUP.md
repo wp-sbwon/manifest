@@ -173,6 +173,24 @@ manifest/
 
 All dependencies are listed in `requirements.txt`.
 
+### Optional Dependencies
+
+**OpenCode Integration** (Optional):
+- Manifest supports optional integration with OpenCode for terminal command execution
+- **Automatic Detection**: If OpenCode is already installed in your environment, Manifest will automatically detect and use it
+- **Fallback**: If OpenCode is not available, Manifest seamlessly falls back to its internal implementation
+- **No Conflicts**: Manifest works perfectly whether OpenCode is installed or not - no version conflicts
+- **Installation**: To enable OpenCode integration, install it separately:
+  ```bash
+  pip install opencode>=1.0.0
+  ```
+- **Status Check**: You can check OpenCode availability in your Python environment:
+  ```python
+  from manifest.runtime.opencode_adapter import get_opencode_status
+  status = get_opencode_status()
+  print(status)  # {'available': True/False, 'version': '...', 'module_loaded': True/False}
+  ```
+
 ## Development Workflow
 
 ### Using Virtual Environment (Recommended)

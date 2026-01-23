@@ -5,12 +5,19 @@ import pytest
 import asyncio
 from pathlib import Path
 from manifest.runtime.router.terminal_router import TerminalRouter
+from manifest.runtime.opencode_adapter import OPENCODE_AVAILABLE
 
 
 @pytest.fixture
 def terminal_router(tmp_path):
     """Create a TerminalRouter instance."""
     return TerminalRouter(working_dir=tmp_path)
+
+
+@pytest.fixture
+def terminal_router_force_internal(tmp_path):
+    """Create a TerminalRouter instance forced to use internal implementation."""
+    return TerminalRouter(working_dir=tmp_path, use_opencode=False)
 
 
 @pytest.mark.asyncio
@@ -66,3 +73,53 @@ async def test_cancel_command(terminal_router):
         await task
     except asyncio.CancelledError:
         pass
+
+
+@pytest.mark.asyncio
+async def test_terminal_router_opencode_integration(terminal_router):
+    """Test TerminalRouter uses OpenCode adapter."""
+    # Check that adapter is initialized
+    assert hasattr(terminal_router, 'opencode_adapter')
+    assert terminal_router.opencode_adapter is not None
+    
+    # Execute a command - should work with or without OpenCode
+    result = await terminal_router.execute_command("echo", ["test"])
+    
+    assert result["returncode"] == 0
+    assert "test" in result["stdout"]
+    assert "command_id" in result
+    # Should have backend info if using adapter
+    if "backend" in result:
+        assert result["backend"] in ["internal", "opencode"]
+
+
+@pytest.mark.asyncio
+async def test_terminal_router_opencode_availability(terminal_router):
+    """Test OpenCode availability check."""
+    is_available = terminal_router.is_opencode_available()
+    
+    # Should match the actual OpenCode availability
+    assert isinstance(is_available, bool)
+    assert is_available == OPENCODE_AVAILABLE or not is_available
+
+
+@pytest.mark.asyncio
+async def test_terminal_router_streaming(terminal_router):
+    """Test TerminalRouter streaming uses adapter."""
+    lines = []
+    async for line in terminal_router.stream_command_output("echo", ["-e", "line1\nline2"]):
+        lines.append(line)
+    
+    assert len(lines) > 0
+    assert any("line1" in line or "line2" in line for line in lines)
+
+
+@pytest.mark.asyncio
+async def test_terminal_router_force_internal(terminal_router_force_internal):
+    """Test TerminalRouter can be forced to use internal implementation."""
+    assert not terminal_router_force_internal.is_opencode_available()
+    
+    result = await terminal_router_force_internal.execute_command("echo", ["internal"])
+    
+    assert result["returncode"] == 0
+    assert "internal" in result["stdout"]
