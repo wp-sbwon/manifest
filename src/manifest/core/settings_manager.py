@@ -235,6 +235,36 @@ class SettingsManager:
             print(f"Error saving spec-first settings: {e}")
             return False
     
+    # Shadow Manager Settings
+    def get_shadow_settings(self) -> Dict[str, Any]:
+        """Get Shadow Manager settings."""
+        settings_file = self.manifest_dir / "shadow_settings.json"
+        if settings_file.exists():
+            try:
+                with open(settings_file, "r") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        
+        # Default settings
+        return {
+            "use_shadow_processes": False,  # Default: direct execution
+            "auto_cleanup_hours": 24,
+            "max_concurrent_shadows": 10
+        }
+    
+    def save_shadow_settings(self, settings: Dict[str, Any]) -> bool:
+        """Save Shadow Manager settings."""
+        try:
+            settings_file = self.manifest_dir / "shadow_settings.json"
+            self.manifest_dir.mkdir(parents=True, exist_ok=True)
+            with open(settings_file, "w") as f:
+                json.dump(settings, f, indent=2)
+            return True
+        except Exception as e:
+            print(f"Error saving shadow settings: {e}")
+            return False
+    
     # Validation
     def validate_settings(self) -> Dict[str, Any]:
         """Validate all settings."""

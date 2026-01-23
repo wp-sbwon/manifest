@@ -1127,6 +1127,36 @@ class ManifestApp(App):
                             log.write("[bold yellow]Usage: /apply_blueprint_update <index>[/]")
                     else:
                         log.write("[bold yellow]Usage: /apply_blueprint_update <index>[/]")
+                elif command == "shadow_status" or command.startswith("shadow_status"):
+                    # Show shadow process status
+                    if self.agent_bridge and self.agent_bridge.shadow_manager:
+                        processes = self.agent_bridge.shadow_manager.list_active_processes()
+                        if processes:
+                            log.write(f"[bold cyan]Active Shadow Processes: {len(processes)}[/]")
+                            for proc in processes[:10]:  # Show first 10
+                                status_icon = "✅" if proc["status"] == "completed" else "⚡" if proc["status"] == "running" else "❌"
+                                log.write(f"  {status_icon} {proc['process_id']}: {proc['agent_type']} [{proc['status']}]")
+                                if proc.get("end_time"):
+                                    log.write(f"    Completed: {proc['end_time']}")
+                        else:
+                            log.write("[bold yellow]No active shadow processes.[/]")
+                    else:
+                        log.write("[bold yellow]Shadow Manager not available.[/]")
+                elif command == "shadow_stop" or command.startswith("shadow_stop"):
+                    # Stop a shadow process
+                    parts = user_input.split()
+                    if len(parts) >= 3:
+                        process_id = parts[2]
+                        if self.agent_bridge and self.agent_bridge.shadow_manager:
+                            success = await self.agent_bridge.shadow_manager.stop_shadow_process(process_id)
+                            if success:
+                                log.write(f"[bold green]Shadow process {process_id} stopped.[/]")
+                            else:
+                                log.write(f"[bold red]Failed to stop shadow process {process_id}.[/]")
+                        else:
+                            log.write("[bold yellow]Shadow Manager not available.[/]")
+                    else:
+                        log.write("[bold yellow]Usage: /shadow_stop <process_id>[/]")
                 else:
                     log.write(f"[bold yellow]Unknown command: {command}[/]")
             else:
