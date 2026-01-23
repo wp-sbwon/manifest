@@ -31,5 +31,12 @@
     "anthropic": "claude-3-5-sonnet-20241022",
     "openai": "gpt-4-turbo-preview",
     "google": "gemini-pro"
+  },
+  "agent_skills": {
+    "orchestrator": [],
+    "planner": [],
+    "coder": [],
+    "test": [],
+    "review": []
   }
 }

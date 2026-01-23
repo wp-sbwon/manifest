@@ -19,6 +19,7 @@ from manifest.audit.blueprint_synchronizer import BlueprintSynchronizer, Conflic
 from manifest.audit.blueprint_comparator import BlueprintComparator
 from manifest.ui.widgets import RequirementMap, ArchitectureGraph, FeatureTree, TaskTree, GateController
 from manifest.ui.bootstrap_ui import run_bootstrap
+from manifest.ui.settings_screen import SettingsScreen
 from manifest.agents.task_scoper import TaskScoper
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.agent_coordinator import AgentCoordinator
@@ -157,6 +158,7 @@ class ManifestApp(App):
         ("i", "toggle_inspector", "Toggle Inspector"),
         ("h", "show_history", "Show History"),
         ("p", "show_project", "Show Project Info"),
+        ("ctrl+comma", "open_settings", "Open Settings"),
     ]
 
     def __init__(self):
@@ -644,6 +646,15 @@ class ManifestApp(App):
         """Switch to project info view."""
         tabs = self.query_one("#design-tabs", TabbedContent)
         tabs.active = "tab-project"
+    
+    def action_open_settings(self, initial_tab: str = "api_keys") -> None:
+        """Open settings screen."""
+        settings_screen = SettingsScreen(
+            manifest_dir=self.manifest_dir,
+            project_root=Path.cwd(),
+            initial_tab=initial_tab
+        )
+        self.push_screen(settings_screen)
 
     @on(Input.Submitted, "#global-input")
     async def on_input_submitted(self, event: Input.Submitted) -> None:
@@ -744,6 +755,20 @@ class ManifestApp(App):
                         log.write(f"[bold green]Conflict {conflict_id} {action}.[/]")
                     else:
                         log.write("[bold red]Usage: /resolve_conflict <conflict_id> <approved|rejected>[/]")
+                elif command == "config" or command.startswith("config"):
+                    # Format: /config [tab_name]
+                    parts = user_input.split()
+                    initial_tab = parts[2] if len(parts) > 2 else "api_keys"
+                    # Map tab names
+                    tab_map = {
+                        "api_keys": "api_keys",
+                        "keys": "api_keys",
+                        "models": "models",
+                        "skills": "skills",
+                        "policy": "policy"
+                    }
+                    tab = tab_map.get(initial_tab, "api_keys")
+                    self.action_open_settings(tab)
                 else:
                     log.write(f"[bold yellow]Unknown command: {command}[/]")
             else:
