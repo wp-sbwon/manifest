@@ -2,6 +2,14 @@
 Hooks System
 Context injection hooks and workflow automation.
 """
-# from .context_hooks import ContextHooks
+from manifest.runtime.hooks.prompt_hooks import (
+    PromptHook,
+    VisualRealityHook,
+    HookManager
+)
 
-__all__ = []  # Will be populated when hooks are implemented
+__all__ = [
+    "PromptHook",
+    "VisualRealityHook",
+    "HookManager"
+]
