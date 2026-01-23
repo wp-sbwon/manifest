@@ -1022,15 +1022,65 @@ class ManifestApp(App):
                 else:
                     log.write(f"[bold yellow]Unknown command: {command}[/]")
             else:
-                # Regular AI interaction
-                if self.agent_bridge and self.agent_bridge.is_connected:
-                    # Send to agent bridge
-                    log.write("[bold green]Processing with agent system...[/]")
-                    # In real implementation, this would send to agent bridge and get response
-                    self.state_manager.add_chat_message("main", "assistant", f"Processing: {user_input}")
-                    await self.state_manager.save_state()
+                # Regular AI interaction - send to Orchestrator
+                if self.agent_bridge and self.agent_bridge.is_connected and self.agent_coordinator:
+                    # Get orchestrator context
+                    context = self.context_provider.get_orchestrator_context()
+                    
+                    # Get model config
+                    config_manager = get_config_manager()
+                    model_config = config_manager.get_agent_model_config("orchestrator")
+                    
+                    # Create orchestrator agent
+                    orchestrator_agent = await self.agent_bridge.agent_manager.create_agent(
+                        agent_type="orchestrator",
+                        context=context,
+                        model_config=model_config,
+                        task_id="main-orchestrator"
+                    )
+                    
+                    if orchestrator_agent and orchestrator_agent.get("instance"):
+                        # Add user message to history
+                        orchestrator_instance = orchestrator_agent["instance"]
+                        orchestrator_instance.message_history.append({
+                            "role": "user",
+                            "content": user_input
+                        })
+                        
+                        # Process with orchestrator
+                        log.write("[bold green]Processing with Orchestrator...[/]")
+                        response_content = ""
+                        
+                        async for chunk in orchestrator_instance.coordinate(
+                            mission_description=user_input,
+                            context=context,
+                            model_config=model_config
+                        ):
+                            if chunk.get("type") == "chunk":
+                                content = chunk.get("content", "")
+                                response_content += content
+                                # Stream to UI (RichLog doesn't support end parameter, so write each chunk)
+                                log.write(content)
+                            elif chunk.get("type") == "complete":
+                                content = chunk.get("content", "")
+                                if content and content != response_content:
+                                    # Write remaining content if any
+                                    remaining = content[len(response_content):]
+                                    if remaining:
+                                        log.write(remaining)
+                                    response_content = content
+                            elif chunk.get("type") == "error":
+                                error_msg = chunk.get("content", "Unknown error")
+                                log.write(f"[bold red]Error: {error_msg}[/]")
+                        
+                        # Save complete response
+                        if response_content:
+                            self.state_manager.add_chat_message("main", "assistant", response_content)
+                            await self.state_manager.save_state()
+                    else:
+                        log.write("[bold yellow]Failed to create orchestrator agent.[/]")
                 else:
-                    # Simulate response
+                    # Fallback: simulate response
                     log.write(f"[bold green]Manifest AI:[/] Analyzing '{user_input}'. Check inspector for real-time status.")
                     self.state_manager.add_chat_message("main", "assistant", f"Analyzing: {user_input}")
                     await self.state_manager.save_state()
