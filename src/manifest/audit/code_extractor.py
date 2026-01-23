@@ -21,6 +21,11 @@ class Component:
     methods: List[str] = field(default_factory=list)
     attributes: List[str] = field(default_factory=list)
     module_path: str = ""
+    methodology: Optional[str] = None  # e.g., "TDD", "BDD"
+    algorithm: Optional[str] = None  # e.g., "Dijkstra", "BFS"
+    design_pattern: Optional[str] = None  # e.g., "Strategy", "Factory"
+    complexity: Optional[str] = None  # e.g., "O(n log n)"
+    notes: Optional[str] = None
 
 
 @dataclass
@@ -323,6 +328,18 @@ class CodeExtractor:
                 comp_dict["methods"] = comp.methods
             if comp.attributes:
                 comp_dict["attributes"] = comp.attributes
+            
+            # Add metadata fields if present
+            if comp.methodology:
+                comp_dict["methodology"] = comp.methodology
+            if comp.algorithm:
+                comp_dict["algorithm"] = comp.algorithm
+            if comp.design_pattern:
+                comp_dict["design_pattern"] = comp.design_pattern
+            if comp.complexity:
+                comp_dict["complexity"] = comp.complexity
+            if comp.notes:
+                comp_dict["notes"] = comp.notes
             
             blueprint_components.append(comp_dict)
             

@@ -4,8 +4,9 @@ Manages session state, mission tree, task checklist, and chat history.
 """
 import json
 import aiofiles
+import subprocess
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 
@@ -207,6 +208,9 @@ class StateManager:
     def save_sprint(self, sprint_data: Dict[str, Any]) -> bool:
         """Save Sprint to file."""
         try:
+            # Ensure test data structure exists
+            sprint_data = self._ensure_sprint_test_structure(sprint_data)
+            
             sprints_dir = self.get_sprints_dir()
             sprints_dir.mkdir(parents=True, exist_ok=True)
             sprint_id = sprint_data.get("id", "unknown")
@@ -221,6 +225,9 @@ class StateManager:
     async def save_sprint_async(self, sprint_data: Dict[str, Any]) -> bool:
         """Save Sprint to file asynchronously."""
         try:
+            # Ensure test data structure exists
+            sprint_data = self._ensure_sprint_test_structure(sprint_data)
+            
             sprints_dir = self.get_sprints_dir()
             sprints_dir.mkdir(parents=True, exist_ok=True)
             sprint_id = sprint_data.get("id", "unknown")
@@ -241,10 +248,70 @@ class StateManager:
         
         try:
             with open(sprint_file, "r", encoding="utf-8") as f:
-                return json.load(f)
+                sprint_data = json.load(f)
+                # Ensure test data structure exists (for backward compatibility)
+                return self._ensure_sprint_test_structure(sprint_data)
         except Exception as e:
             print(f"Error loading Sprint: {e}")
             return None
+    
+    def _ensure_sprint_test_structure(self, sprint_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Ensure Sprint data has test structure (integration_tests, e2e_tests).
+        
+        Args:
+            sprint_data: Sprint data dictionary
+            
+        Returns:
+            Sprint data with test structure ensured
+        """
+        # Initialize integration_tests if not exists
+        if "integration_tests" not in sprint_data:
+            sprint_data["integration_tests"] = {
+                "status": "pending",
+                "test_files": [],
+                "test_cases": [],
+                "test_skeleton": "",
+                "test_plan": "",
+                "written_at": None,
+                "execution_results": []
+            }
+        else:
+            # Ensure all required fields exist
+            integration_tests = sprint_data["integration_tests"]
+            if "status" not in integration_tests:
+                integration_tests["status"] = "pending"
+            if "test_files" not in integration_tests:
+                integration_tests["test_files"] = []
+            if "test_cases" not in integration_tests:
+                integration_tests["test_cases"] = []
+            if "execution_results" not in integration_tests:
+                integration_tests["execution_results"] = []
+        
+        # Initialize e2e_tests if not exists
+        if "e2e_tests" not in sprint_data:
+            sprint_data["e2e_tests"] = {
+                "status": "pending",
+                "test_files": [],
+                "test_cases": [],
+                "test_skeleton": "",
+                "test_plan": "",
+                "written_at": None,
+                "execution_results": []
+            }
+        else:
+            # Ensure all required fields exist
+            e2e_tests = sprint_data["e2e_tests"]
+            if "status" not in e2e_tests:
+                e2e_tests["status"] = "pending"
+            if "test_files" not in e2e_tests:
+                e2e_tests["test_files"] = []
+            if "test_cases" not in e2e_tests:
+                e2e_tests["test_cases"] = []
+            if "execution_results" not in e2e_tests:
+                e2e_tests["execution_results"] = []
+        
+        return sprint_data
     
     def list_sprints(self) -> List[str]:
         """List all Sprint IDs."""
@@ -369,6 +436,10 @@ class StateManager:
                 task["stage"] = "completed"
                 task["updated_at"] = datetime.now().isoformat()
                 task["completed_at"] = datetime.now().isoformat()
+                
+                # Save Git diff when task is completed
+                self.save_task_git_diff(task_id)
+                
                 self.set_task_checklist(tasks)
                 return True
         return False
@@ -391,3 +462,137 @@ class StateManager:
             filtered = [t for t in filtered if t.get("sprint_id") == sprint_id]
         
         return filtered
+    
+    def save_worker_squad_stage(
+        self,
+        task_id: str,
+        stage: str,
+        stage_result: Dict[str, Any]
+    ) -> bool:
+        """
+        Save Worker Squad stage result.
+        
+        Args:
+            task_id: Task ID
+            stage: Stage name (planner, tdd_test, coder, test, debug, self_review, approver)
+            stage_result: Stage result dictionary
+            
+        Returns:
+            True if saved successfully
+        """
+        tasks = self.get_task_checklist()
+        task = next((t for t in tasks if t.get("id") == task_id), None)
+        if not task:
+            return False
+        
+        # Initialize worker_squad_stages if not exists
+        if "worker_squad_stages" not in task:
+            task["worker_squad_stages"] = {}
+        
+        # Add timestamp to stage result
+        stage_result_with_timestamp = {
+            **stage_result,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Save stage result
+        task["worker_squad_stages"][stage] = stage_result_with_timestamp
+        
+        # Update task updated_at
+        task["updated_at"] = datetime.now().isoformat()
+        
+        self.set_task_checklist(tasks)
+        return True
+    
+    async def save_worker_squad_stage_async(
+        self,
+        task_id: str,
+        stage: str,
+        stage_result: Dict[str, Any]
+    ) -> bool:
+        """Save Worker Squad stage result asynchronously."""
+        result = self.save_worker_squad_stage(task_id, stage, stage_result)
+        if result:
+            await self.save_state()
+        return result
+    
+    def get_task_git_diff(self, task_id: str) -> Optional[str]:
+        """
+        Get Git diff for a task.
+        
+        Args:
+            task_id: Task ID
+            
+        Returns:
+            Git diff string or None if Git is not available or no changes
+        """
+        try:
+            # Check if Git is available
+            result = subprocess.run(
+                ["git", "status", "--porcelain"],
+                capture_output=True,
+                text=True,
+                cwd=self.manifest_dir.parent if self.manifest_dir.parent.exists() else Path.cwd()
+            )
+            
+            if result.returncode != 0:
+                # Git not available or not a Git repository
+                return None
+            
+            # Get diff of unstaged changes
+            diff_result = subprocess.run(
+                ["git", "diff"],
+                capture_output=True,
+                text=True,
+                cwd=self.manifest_dir.parent if self.manifest_dir.parent.exists() else Path.cwd()
+            )
+            
+            if diff_result.returncode == 0 and diff_result.stdout.strip():
+                return diff_result.stdout
+            else:
+                # Try staged changes
+                diff_staged_result = subprocess.run(
+                    ["git", "diff", "--staged"],
+                    capture_output=True,
+                    text=True,
+                    cwd=self.manifest_dir.parent if self.manifest_dir.parent.exists() else Path.cwd()
+                )
+                
+                if diff_staged_result.returncode == 0 and diff_staged_result.stdout.strip():
+                    return diff_staged_result.stdout
+            
+            return None
+        except Exception as e:
+            # Git not available or error
+            return None
+    
+    def save_task_git_diff(self, task_id: str) -> bool:
+        """
+        Save Git diff for a task.
+        
+        Args:
+            task_id: Task ID
+            
+        Returns:
+            True if saved successfully
+        """
+        tasks = self.get_task_checklist()
+        task = next((t for t in tasks if t.get("id") == task_id), None)
+        if not task:
+            return False
+        
+        # Get Git diff
+        git_diff = self.get_task_git_diff(task_id)
+        
+        # Initialize changes if not exists
+        if "changes" not in task:
+            task["changes"] = {}
+        
+        # Save Git diff
+        task["changes"]["git_diff"] = git_diff
+        task["changes"]["git_diff_timestamp"] = datetime.now().isoformat()
+        
+        # Update task
+        task["updated_at"] = datetime.now().isoformat()
+        self.set_task_checklist(tasks)
+        return True

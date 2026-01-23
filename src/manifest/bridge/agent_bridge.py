@@ -150,7 +150,8 @@ class AgentBridge:
         task_id: str,
         agent_type: str,
         context: Dict[str, Any],
-        model_config: Dict[str, Any]
+        model_config: Dict[str, Any],
+        stage: Optional[str] = None
     ) -> bool:
         """
         Start an agent mission with scoped context and model config.
@@ -160,6 +161,7 @@ class AgentBridge:
             agent_type: Type of agent (orchestrator, planner, coder, test, review)
             context: Agent context (tiered context)
             model_config: Model configuration
+            stage: Optional stage (planner, tdd_test, coder, test, etc.)
         """
         # Create agent using agent manager
         agent = await self.agent_manager.create_agent(
@@ -178,9 +180,18 @@ class AgentBridge:
                 channel,
                 "assistant",
                 f"[{agent_type.upper()}] Agent started for task {task_id}\n"
+                f"Stage: {stage or 'default'}\n"
                 f"Context tiers: {', '.join([k for k in context.keys() if k.startswith('tier_')])}\n"
                 f"Model: {model_config.get('model', 'default')}"
             )
+            
+            # Call agent-specific methods based on stage and agent type
+            agent_instance = agent.get("instance")
+            if agent_instance:
+                # Start agent execution in background
+                asyncio.create_task(self._execute_agent_method(
+                    agent_instance, agent_type, task_id, context, model_config, stage
+                ))
             
             self._active_agents[task_id] = {
                 "agent": agent,
@@ -188,12 +199,167 @@ class AgentBridge:
                 "status": "active",
                 "channel": channel,
                 "context": context,
-                "model_config": model_config
+                "model_config": model_config,
+                "stage": stage
             }
             
             await self.state_manager.save_state()
         
         return success
+    
+    async def _execute_agent_method(
+        self,
+        agent_instance: Any,
+        agent_type: str,
+        task_id: str,
+        context: Dict[str, Any],
+        model_config: Dict[str, Any],
+        stage: Optional[str] = None
+    ):
+        """Execute agent-specific method based on type and stage."""
+        try:
+            if agent_type == "test":
+                # Test agent: call appropriate method based on stage
+                if stage == "tdd_test":
+                    # TDD mode: write tests first
+                    async for chunk in agent_instance.write_tdd_tests(task_id, context, model_config):
+                        # Save chunks to channel
+                        channel = f"squad-{task_id}-test"
+                        if chunk.get("type") == "chunk":
+                            self.state_manager.add_chat_message(
+                                channel, "assistant", chunk.get("content", "")
+                            )
+                        elif chunk.get("type") == "complete":
+                            self.state_manager.add_chat_message(
+                                channel, "assistant", chunk.get("content", "")
+                            )
+                            await self.state_manager.save_state()
+                else:
+                    # Test execution mode: run tests
+                    async for chunk in agent_instance.run_tests(task_id, context, model_config):
+                        # Save chunks to channel
+                        channel = f"squad-{task_id}-test"
+                        if chunk.get("type") == "chunk":
+                            self.state_manager.add_chat_message(
+                                channel, "assistant", chunk.get("content", "")
+                            )
+                        elif chunk.get("type") == "complete":
+                            self.state_manager.add_chat_message(
+                                channel, "assistant", chunk.get("content", "")
+                            )
+                            await self.state_manager.save_state()
+            elif agent_type == "planner":
+                # Planner agent: call plan method
+                task_description = context.get("task_description", "Plan the task")
+                async for chunk in agent_instance.plan(task_description, context, model_config):
+                    channel = f"squad-{task_id}-planner"
+                    if chunk.get("type") == "chunk":
+                        self.state_manager.add_chat_message(
+                            channel, "assistant", chunk.get("content", "")
+                        )
+                    elif chunk.get("type") == "complete":
+                        self.state_manager.add_chat_message(
+                            channel, "assistant", chunk.get("content", "")
+                        )
+                        await self.state_manager.save_state()
+            elif agent_type == "coder":
+                # Coder agent: call implement method
+                task_description = context.get("task_description", "Implement the task")
+                task_scope = context.get("task_scope", {})
+                async for chunk in agent_instance.implement(task_description, context, task_scope, model_config):
+                    channel = f"squad-{task_id}-coder"
+                    if chunk.get("type") == "chunk":
+                        self.state_manager.add_chat_message(
+                            channel, "assistant", chunk.get("content", "")
+                        )
+                    elif chunk.get("type") == "complete":
+                        self.state_manager.add_chat_message(
+                            channel, "assistant", chunk.get("content", "")
+                        )
+                        await self.state_manager.save_state()
+            elif agent_type == "integration_test":
+                # Integration Test agent: call appropriate method based on stage
+                sprint_id = context.get("sprint_id")
+                if stage == "sprint_tdd_test" and sprint_id:
+                    # TDD mode: write integration tests first (Sprint scope)
+                    async for chunk in agent_instance.write_tdd_tests(sprint_id, context, model_config):
+                        channel = f"sprint-{sprint_id}-integration_test"
+                        if chunk.get("type") == "chunk":
+                            self.state_manager.add_chat_message(
+                                channel, "assistant", chunk.get("content", "")
+                            )
+                        elif chunk.get("type") == "complete":
+                            self.state_manager.add_chat_message(
+                                channel, "assistant", chunk.get("content", "")
+                            )
+                            await self.state_manager.save_state()
+                else:
+                    # Test execution mode: run integration tests
+                    sprint_id = context.get("sprint_id")
+                    if sprint_id:
+                        async for chunk in agent_instance.run_integration_tests(sprint_id, task_id, context, model_config):
+                            channel = f"sprint-{sprint_id}-integration_test"
+                            if chunk.get("type") == "chunk":
+                                self.state_manager.add_chat_message(
+                                    channel, "assistant", chunk.get("content", "")
+                                )
+                            elif chunk.get("type") == "complete":
+                                self.state_manager.add_chat_message(
+                                    channel, "assistant", chunk.get("content", "")
+                                )
+                                await self.state_manager.save_state()
+            elif agent_type == "e2e_test":
+                # E2E Test agent: call appropriate method based on stage
+                sprint_id = context.get("sprint_id")
+                if stage == "sprint_tdd_test" and sprint_id:
+                    # TDD mode: write E2E tests first (Sprint scope)
+                    async for chunk in agent_instance.write_tdd_tests(sprint_id, context, model_config):
+                        channel = f"sprint-{sprint_id}-e2e_test"
+                        if chunk.get("type") == "chunk":
+                            self.state_manager.add_chat_message(
+                                channel, "assistant", chunk.get("content", "")
+                            )
+                        elif chunk.get("type") == "complete":
+                            self.state_manager.add_chat_message(
+                                channel, "assistant", chunk.get("content", "")
+                            )
+                            await self.state_manager.save_state()
+                else:
+                    # Test execution mode: run E2E tests
+                    sprint_id = context.get("sprint_id")
+                    task_id_param = context.get("task_id", task_id)
+                    if sprint_id and task_id_param:
+                        async for chunk in agent_instance.run_e2e_tests(sprint_id=sprint_id, task_id=task_id_param, context=context, model_config=model_config):
+                            channel = f"sprint-{sprint_id}-e2e_test"
+                            if chunk.get("type") == "chunk":
+                                self.state_manager.add_chat_message(
+                                    channel, "assistant", chunk.get("content", "")
+                                )
+                            elif chunk.get("type") == "complete":
+                                self.state_manager.add_chat_message(
+                                    channel, "assistant", chunk.get("content", "")
+                                )
+                                await self.state_manager.save_state()
+                    elif task_id:
+                        # Fallback to task-level E2E test (existing behavior)
+                        async for chunk in agent_instance.run_e2e_tests(task_id, context, model_config):
+                            channel = f"squad-{task_id}-e2e_test"
+                            if chunk.get("type") == "chunk":
+                                self.state_manager.add_chat_message(
+                                    channel, "assistant", chunk.get("content", "")
+                                )
+                            elif chunk.get("type") == "complete":
+                                self.state_manager.add_chat_message(
+                                    channel, "assistant", chunk.get("content", "")
+                                )
+                                await self.state_manager.save_state()
+            # Other agent types can be added here as needed
+        except Exception as e:
+            channel = f"squad-{task_id}-{agent_type}"
+            self.state_manager.add_chat_message(
+                channel, "system", f"Error executing agent: {str(e)}"
+            )
+            await self.state_manager.save_state()
     
     async def get_agent_status(self, task_id: str) -> Dict[str, Any]:
         """

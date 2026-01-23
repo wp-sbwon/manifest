@@ -17,11 +17,12 @@ from manifest.agents.skills_manager import SkillsManager
 class ContextProvider:
     """Provides tiered context to agents."""
     
-    def __init__(self, manifest_dir: Path = None, task_scoper: Optional[TaskScoper] = None, project_root: Path = None):
+    def __init__(self, manifest_dir: Path = None, task_scoper: Optional[TaskScoper] = None, project_root: Path = None, state_manager: Optional[StateManager] = None):
         self.manifest_dir = manifest_dir or Path(".manifest")
         self.project_root = project_root or Path.cwd()
         self.task_scoper = task_scoper or TaskScoper(manifest_dir)
         self.skills_manager = SkillsManager(manifest_dir, self.project_root)
+        self.state_manager = state_manager or StateManager(manifest_dir)
         self.policy_file = Path(".claude/rules/manifest-policy.md")
         self.intent_file = self.manifest_dir / "intent.json"
         self.architecture_file = self.manifest_dir / "architecture.json"
@@ -205,6 +206,186 @@ class ContextProvider:
             "allowed_modifications": task_context.get("allowed_modifications", [])
         }
     
+    def get_stage_specific_context(
+        self,
+        task_id: str,
+        agent_type: str,
+        stage: str,
+        previous_stages: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Get stage-specific context for worker agents.
+        
+        Args:
+            task_id: Task ID
+            agent_type: Agent type
+            stage: Current stage (planner, tdd_test, coder, test, debug, self_review, approver)
+            previous_stages: Results from previous stages
+            
+        Returns:
+            Dict with stage-specific context
+        """
+        previous_stages = previous_stages or {}
+        task_context = self.task_scoper.get_task_context(task_id)
+        task_scope = {
+            "components": task_context.get("components", []),
+            "allowed_files": task_context.get("files", []),
+            "allowed_modifications": task_context.get("allowed_modifications", []),
+            "requirements": task_context.get("requirements", [])
+        }
+        
+        base_context = {
+            "tier": "worker",
+            "task_id": task_id,
+            "agent_type": agent_type,
+            "stage": stage,
+            "tier_0": self._load_tier_0(),
+            "task_scope": task_scope,
+            "skills": self.get_skills_context(agent_type, task_scope),
+            "version": "1.0"
+        }
+        
+        # Stage-specific context
+        if stage == "planner":
+            # Planner: Tier 0, Tier 1, Task Scope
+            base_context["tier_1"] = self._load_tier_1()
+        
+        elif stage == "tdd_test":
+            # TDD Test: Tier 0, Planner plan, Task Scope
+            planner_output = previous_stages.get("planner", {})
+            base_context["planner_plan"] = planner_output.get("output", planner_output.get("plan", ""))
+            base_context["task_description"] = self._get_task_description(task_id)
+            base_context["previous_stages"] = previous_stages
+        
+        elif stage == "coder":
+            # Coder: Tier 0, Tier 2, Tier 3, Planner plan, Test skeleton
+            base_context["tier_2"] = self._load_tier_2_scoped(task_context)
+            base_context["tier_3"] = self._load_tier_3_scoped(task_context)
+            
+            planner_output = previous_stages.get("planner", {})
+            base_context["planner_plan"] = planner_output.get("output", planner_output.get("plan", ""))
+            
+            tdd_test_output = previous_stages.get("tdd_test", {})
+            base_context["test_plan"] = tdd_test_output.get("test_plan", "")
+            base_context["test_skeleton"] = tdd_test_output.get("test_skeleton", "")
+            base_context["tdd_test"] = tdd_test_output
+        
+        elif stage == "test":
+            # Test: Tier 0, Coder output, Test skeleton
+            coder_output = previous_stages.get("coder", {})
+            base_context["coder_output"] = coder_output.get("output", "")
+            base_context["files_modified"] = coder_output.get("files_modified", [])
+            
+            tdd_test_output = previous_stages.get("tdd_test", {})
+            base_context["test_plan"] = tdd_test_output.get("test_plan", "")
+            base_context["test_skeleton"] = tdd_test_output.get("test_skeleton", "")
+        
+        elif stage == "debug":
+            # Debug: Tier 0, Test results, Coder output, Error messages
+            test_output = previous_stages.get("test", {})
+            base_context["test_results"] = test_output.get("test_results", {})
+            base_context["test_errors"] = test_output.get("errors", [])
+            
+            coder_output = previous_stages.get("coder", {})
+            base_context["coder_output"] = coder_output.get("output", "")
+            base_context["files_modified"] = coder_output.get("files_modified", [])
+        
+        elif stage == "self_review":
+            # Self Review: Tier 0, Planner plan, Coder output, Test results
+            planner_output = previous_stages.get("planner", {})
+            base_context["planner_plan"] = planner_output.get("output", planner_output.get("plan", ""))
+            
+            coder_output = previous_stages.get("coder", {})
+            base_context["coder_output"] = coder_output.get("output", "")
+            base_context["files_modified"] = coder_output.get("files_modified", [])
+            
+            test_output = previous_stages.get("test", {})
+            base_context["test_results"] = test_output.get("test_results", {})
+        
+        elif stage == "approver":
+            # Approver: Tier 0, Planner plan, Coder output, Test results, Self Review
+            planner_output = previous_stages.get("planner", {})
+            base_context["planner_plan"] = planner_output.get("output", planner_output.get("plan", ""))
+            
+            coder_output = previous_stages.get("coder", {})
+            base_context["coder_output"] = coder_output.get("output", "")
+            base_context["files_modified"] = coder_output.get("files_modified", [])
+            
+            test_output = previous_stages.get("test", {})
+            base_context["test_results"] = test_output.get("test_results", {})
+            
+            self_review_output = previous_stages.get("self_review", {})
+            base_context["self_review"] = self_review_output
+        
+        return base_context
+    
+    def _get_task_description(self, task_id: str) -> str:
+        """Get task description from state."""
+        # This would need state_manager, but to avoid circular dependency,
+        # we'll return a placeholder. In practice, this should be injected.
+        return f"Task {task_id}"
+    
+    def get_sprint_context(self, sprint_id: str) -> Dict[str, Any]:
+        """
+        Get Sprint-level context for Integration/E2E test writing.
+        
+        Args:
+            sprint_id: Sprint ID
+            
+        Returns:
+            Dict with Sprint-level context including:
+            - Tier 0: Policy & Principles
+            - Tier 1: PRD, Architecture, Blueprint
+            - Sprint tasks information
+            - Sprint metadata
+        """
+        # Load Sprint data
+        sprint_data = self.state_manager.load_sprint(sprint_id)
+        
+        if not sprint_data:
+            # Return minimal context if Sprint doesn't exist
+            return {
+                "tier": "sprint",
+                "sprint_id": sprint_id,
+                "tier_0": self._load_tier_0(),
+                "tier_1": self._load_tier_1(),
+                "sprint_data": None,
+                "sprint_tasks": [],
+                "version": "1.0"
+            }
+        
+        # Get Sprint tasks
+        tasks = self.state_manager.get_task_checklist()
+        sprint_tasks = [t for t in tasks if t.get("sprint_id") == sprint_id]
+        
+        # Load PRD
+        prd_data = self.state_manager.load_prd()
+        
+        # Build Tier 1 with PRD included
+        tier_1 = self._load_tier_1()
+        if prd_data:
+            tier_1["prd"] = prd_data
+        
+        # Include Blueprint in Tier 1
+        blueprint = self._load_tier_2_scoped({})  # Full blueprint for Sprint context
+        if blueprint:
+            tier_1["blueprint"] = blueprint
+        
+        context = {
+            "tier": "sprint",
+            "sprint_id": sprint_id,
+            "sprint_name": sprint_data.get("name", ""),
+            "sprint_description": sprint_data.get("description", ""),
+            "tier_0": self._load_tier_0(),
+            "tier_1": tier_1,
+            "sprint_data": sprint_data,
+            "sprint_tasks": sprint_tasks,
+            "task_count": len(sprint_tasks),
+            "version": "1.0"
+        }
+        
+        return context
+    
     def get_context_summary(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Get a summary of context for logging/debugging."""
         summary = {
@@ -225,5 +406,8 @@ class ContextProvider:
             summary["file_count"] = len(task_scope.get("allowed_files", []))
             tier_3 = context.get("tier_3", {})
             summary["loaded_files_count"] = tier_3.get("file_count", 0)
+        elif context.get("tier") == "sprint":
+            summary["sprint_id"] = context.get("sprint_id")
+            summary["task_count"] = context.get("task_count", 0)
         
         return summary
