@@ -1254,7 +1254,7 @@ class ManifestApp(App):
     async def _process_orchestrator_response(self, response: str, log: RichLog):
         """
         Process orchestrator response and extract actionable items.
-        Currently looks for task creation patterns and executes them.
+        Automatically creates tasks and starts worker squads when appropriate.
         
         Args:
             response: Orchestrator response text
@@ -1264,6 +1264,8 @@ class ManifestApp(App):
         
         # Look for task creation patterns
         # Pattern 1: "Create task: <name>" or "Task: <name>"
+        # Pattern 2: JSON-like task definitions
+        # Pattern 3: Structured task lists
         task_patterns = [
             r"(?:Create|Add|New)\s+task[:\s]+(.+?)(?:\n|$)",
             r"Task[:\s]+(.+?)(?:\n|$)",
@@ -1275,18 +1277,79 @@ class ManifestApp(App):
             matches = re.finditer(pattern, response, re.MULTILINE | re.IGNORECASE)
             for match in matches:
                 task_name = match.group(1).strip()
-                if task_name and len(task_name) > 3:  # Filter out very short matches
-                    tasks_found.append(task_name)
+                # Filter out very short matches and common false positives
+                if task_name and len(task_name) > 3 and not task_name.lower().startswith(('the', 'a ', 'an ')):
+                    # Remove common prefixes
+                    task_name = re.sub(r'^(?:to|for|implement|create|add|build|develop)\s+', '', task_name, flags=re.IGNORECASE).strip()
+                    if task_name and task_name not in tasks_found:
+                        tasks_found.append(task_name)
         
-        # If tasks found, ask user or create them
+        # Also look for JSON task definitions
+        json_task_pattern = r'\{[^}]*"task"[^}]*"name"[^}]*\}'
+        json_matches = re.finditer(json_task_pattern, response, re.IGNORECASE | re.DOTALL)
+        for match in json_matches:
+            try:
+                import json
+                task_json = json.loads(match.group(0))
+                if "name" in task_json:
+                    task_name = task_json["name"]
+                    if task_name and task_name not in tasks_found:
+                        tasks_found.append(task_name)
+            except:
+                pass
+        
+        # If tasks found, create them automatically
         if tasks_found:
-            # For now, just log them - user can create manually or we can add auto-creation later
-            log.write(f"[bold yellow]Orchestrator suggested {len(tasks_found)} task(s):[/]")
-            for task_name in tasks_found[:5]:  # Limit to first 5
-                log.write(f"  • {task_name}")
-            if len(tasks_found) > 5:
-                log.write(f"  ... and {len(tasks_found) - 5} more")
-            log.write("[bold yellow]Use /create_task to create them, or ask Orchestrator to create tasks automatically.[/]")
+            log.write(f"[bold cyan]Orchestrator suggested {len(tasks_found)} task(s). Creating tasks...[/]")
+            created_tasks = []
+            
+            for task_name in tasks_found[:10]:  # Limit to first 10
+                try:
+                    # Create task
+                    task_id = self.state_manager.create_task(
+                        name=task_name,
+                        description=f"Task created from Orchestrator suggestion: {task_name}",
+                        stage="planning",
+                        status="pending"
+                    )
+                    created_tasks.append({"id": task_id, "name": task_name})
+                    log.write(f"[bold green]✓ Created task: {task_name} (ID: {task_id})[/]")
+                except Exception as e:
+                    log.write(f"[bold red]✗ Failed to create task '{task_name}': {str(e)}[/]")
+            
+            if len(tasks_found) > 10:
+                log.write(f"[bold yellow]... and {len(tasks_found) - 10} more tasks (limit reached)[/]")
+            
+            # Update task tree in UI
+            await self.update_task_tree()
+            
+            # Optionally auto-start worker squads for created tasks
+            # Check if orchestrator response suggests immediate execution
+            auto_start = "start" in response.lower() or "execute" in response.lower() or "begin" in response.lower()
+            
+            if created_tasks:
+                if auto_start and self.agent_coordinator:
+                    # Auto-start worker squads
+                    log.write(f"[bold cyan]Auto-starting worker squads for {len(created_tasks)} task(s)...[/]")
+                    for task_info in created_tasks:
+                        task_id = task_info["id"]
+                        try:
+                            # Start worker squad in background
+                            success = await self.agent_coordinator._start_task_worker_squad(task_id)
+                            if success:
+                                log.write(f"[bold green]✓ Started worker squad for task: {task_info['name']} (ID: {task_id})[/]")
+                            else:
+                                log.write(f"[bold yellow]⚠ Failed to start worker squad for task: {task_info['name']}[/]")
+                        except Exception as e:
+                            log.write(f"[bold red]✗ Error starting worker squad for task {task_info['name']}: {str(e)}[/]")
+                    
+                    # Update task tree
+                    await self.update_task_tree()
+                else:
+                    # Manual start required
+                    log.write(f"[bold cyan]Created {len(created_tasks)} task(s). Use /start_task <task_id> to start worker squad, or /start_sprint to start all tasks in a sprint.[/]")
+            
+            await self.state_manager.save_state()
     
     @on(GateController.Approved)
     async def on_task_approved(self, message: GateController.Approved):
