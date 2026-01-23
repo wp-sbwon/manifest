@@ -82,6 +82,56 @@ class CodeExtractor:
                 python_files.append(path)
         return python_files
     
+    def extract_file_structure(self, file_path: Path, root: Path = None) -> List[Component]:
+        """
+        Extract structure from a single file and return components.
+        
+        Args:
+            file_path: Path to the file
+            root: Project root (default: self.root)
+            
+        Returns:
+            List of Component objects found in the file
+        """
+        if root is None:
+            root = self.root
+        
+        components = []
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            
+            tree = ast.parse(content, filename=str(file_path))
+            
+            # Calculate module path
+            rel_path = file_path.relative_to(root)
+            module_path = str(rel_path).replace("/", ".").replace("\\", ".").replace(".py", "")
+            
+            # Extract entities
+            entities = self._identify_entities(tree, file_path, module_path)
+            
+            # Extract metadata
+            for entity in entities:
+                algorithm = self._extract_algorithm_from_code(tree, entity)
+                if algorithm:
+                    entity.algorithm = algorithm
+                
+                design_pattern = self._extract_design_pattern_from_structure(tree, entity, entities)
+                if design_pattern:
+                    entity.design_pattern = design_pattern
+                
+                complexity = self._analyze_complexity_from_code(tree, entity)
+                if complexity:
+                    entity.complexity = complexity
+                
+                components.append(entity)
+        
+        except Exception as e:
+            # Return empty list if file can't be parsed
+            pass
+        
+        return components
+    
     def _extract_file_structure(self, file_path: Path, root: Path):
         """Extract structure from a single Python file."""
         try:
