@@ -1099,6 +1099,43 @@ class ManifestApp(App):
             except Exception:
                 pass  # Ignore if widget not found
     
+    async def _process_orchestrator_response(self, response: str, log: RichLog):
+        """
+        Process orchestrator response and extract actionable items.
+        Currently looks for task creation patterns and executes them.
+        
+        Args:
+            response: Orchestrator response text
+            log: Log widget for output
+        """
+        import re
+        
+        # Look for task creation patterns
+        # Pattern 1: "Create task: <name>" or "Task: <name>"
+        task_patterns = [
+            r"(?:Create|Add|New)\s+task[:\s]+(.+?)(?:\n|$)",
+            r"Task[:\s]+(.+?)(?:\n|$)",
+            r"^\s*[-*]\s*(.+?)(?:\n|$)",  # Bullet points
+        ]
+        
+        tasks_found = []
+        for pattern in task_patterns:
+            matches = re.finditer(pattern, response, re.MULTILINE | re.IGNORECASE)
+            for match in matches:
+                task_name = match.group(1).strip()
+                if task_name and len(task_name) > 3:  # Filter out very short matches
+                    tasks_found.append(task_name)
+        
+        # If tasks found, ask user or create them
+        if tasks_found:
+            # For now, just log them - user can create manually or we can add auto-creation later
+            log.write(f"[bold yellow]Orchestrator suggested {len(tasks_found)} task(s):[/]")
+            for task_name in tasks_found[:5]:  # Limit to first 5
+                log.write(f"  • {task_name}")
+            if len(tasks_found) > 5:
+                log.write(f"  ... and {len(tasks_found) - 5} more")
+            log.write("[bold yellow]Use /create_task to create them, or ask Orchestrator to create tasks automatically.[/]")
+    
     @on(GateController.Approved)
     async def on_task_approved(self, message: GateController.Approved):
         """Handle task approval."""
