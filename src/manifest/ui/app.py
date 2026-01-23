@@ -176,6 +176,10 @@ class ManifestApp(App):
         self.drift_auditor = DriftAuditor()
         self.blueprint_synchronizer = BlueprintSynchronizer()
         self.blueprint_comparator = BlueprintComparator()
+        
+        # Structure Manager for Spec-First Management
+        from manifest.audit.structure_manager import StructureManager
+        self.structure_manager = StructureManager(self.manifest_dir, Path.cwd())
         self.manifest_dir = Path(".manifest")
         self.intent_data = {}
         self.blueprint_data = {}
