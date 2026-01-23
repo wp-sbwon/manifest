@@ -317,6 +317,8 @@ class ManifestApp(App):
                 self.config,
                 self.state_manager
             )
+            # Start agent coordinator (this will start container state sync if enabled)
+            await self.agent_coordinator.start()
         
         # Load state
         state = self.state_manager.get_state()
