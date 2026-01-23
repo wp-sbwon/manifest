@@ -47,6 +47,7 @@ def test_agent_bridge_availability(agent_bridge):
     assert agent_bridge.is_connected is False  # Not started yet
 
 
+@pytest.mark.asyncio
 async def test_bridge_message_protocol(agent_bridge):
     """Test bridge message protocol."""
     await agent_bridge.start()
@@ -61,6 +62,7 @@ def test_bridge_state_integration(agent_bridge, state_manager):
     assert agent_bridge.state_manager.get_mission_tree() == {"test": "data"}
 
 
+@pytest.mark.asyncio
 async def test_bridge_commands(agent_bridge):
     """Test bridge commands."""
     await agent_bridge.start()

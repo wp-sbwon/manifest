@@ -110,6 +110,15 @@ manifest/
 
 See `requirements.txt` for the complete list.
 
+### Optional Dependencies
+
+**OpenCode Integration** (Optional):
+- Manifest can optionally use OpenCode for terminal command execution
+- If OpenCode is already installed in your environment, Manifest will automatically detect and use it
+- If OpenCode is not available, Manifest falls back to its internal implementation
+- To explicitly enable OpenCode integration, install with: `pip install opencode>=1.0.0`
+- No conflicts: Manifest works seamlessly whether OpenCode is installed or not
+
 ## Development Workflow
 
 ### Using Virtual Environment

@@ -47,6 +47,23 @@ Manifest uses a multi-agent system:
 - **Test**: Test writing and execution
 - **Review**: Code review
 
+All agents use the same terminal execution backend, which can optionally use OpenCode if available.
+
+#### OpenCode Integration
+
+Manifest agents can optionally use OpenCode for terminal command execution:
+
+- **Automatic**: If OpenCode is installed, agents will automatically use it
+- **Seamless Fallback**: If OpenCode is not available, agents use the internal implementation
+- **No Configuration Needed**: Works out of the box with or without OpenCode
+- **Version Compatibility**: Manifest is designed to work with future OpenCode versions
+
+To check if OpenCode is being used:
+```python
+from manifest.runtime.opencode_adapter import get_opencode_status
+status = get_opencode_status()
+```
+
 ## Commands
 
 ### Basic Commands
