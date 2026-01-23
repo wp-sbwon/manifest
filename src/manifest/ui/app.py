@@ -1213,18 +1213,32 @@ class ManifestApp(App):
                         
                         # Save complete response
                         if response_content:
-                            self.state_manager.add_chat_message("main", "assistant", response_content)
+                            # Save to main channel
+                            channel = "main-orchestrator"
+                            self.state_manager.add_chat_message(channel, "user", user_input)
+                            self.state_manager.add_chat_message(channel, "assistant", response_content)
                             await self.state_manager.save_state()
                             
                             # Try to extract and create tasks from orchestrator response
-                            # Look for task creation patterns in the response
                             await self._process_orchestrator_response(response_content, log)
                     else:
                         log.write("[bold yellow]Failed to create orchestrator agent.[/]")
+                        # Save error to state
+                        self.state_manager.add_chat_message("main", "user", user_input)
+                        self.state_manager.add_chat_message("main", "assistant", "Error: Failed to create orchestrator agent.")
+                        await self.state_manager.save_state()
                 else:
-                    # Fallback: simulate response
-                    log.write(f"[bold green]Manifest AI:[/] Analyzing '{user_input}'. Check inspector for real-time status.")
-                    self.state_manager.add_chat_message("main", "assistant", f"Analyzing: {user_input}")
+                    # Agent bridge not connected - provide helpful message
+                    if not self.agent_bridge:
+                        log.write("[bold yellow]Agent system not initialized. Please wait for initialization...[/]")
+                    elif not self.agent_bridge.is_connected:
+                        log.write("[bold yellow]Agent system not connected. Use /start_agent to initialize.[/]")
+                    elif not self.agent_coordinator:
+                        log.write("[bold yellow]Agent coordinator not available.[/]")
+                    
+                    # Save to state anyway
+                    self.state_manager.add_chat_message("main", "user", user_input)
+                    self.state_manager.add_chat_message("main", "assistant", "Agent system not available. Please check connection.")
                     await self.state_manager.save_state()
         finally:
             # Refocus input after command processing completes
