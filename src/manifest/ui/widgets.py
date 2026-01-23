@@ -1,7 +1,7 @@
 """
 Custom Textual widgets for Manifest TUI.
 """
-from textual.widgets import Tree, Button, Static, Label
+from textual.widgets import Tree, Button, Static, Label, ProgressBar
 from textual.containers import Container, Vertical, Horizontal
 from textual import on
 from textual.message import Message
@@ -252,3 +252,131 @@ class FeedbackRequested(Message):
 GateController.Approved = Approved
 GateController.Rejected = Rejected
 GateController.FeedbackRequested = FeedbackRequested
+
+
+class WorkerSquadProgress(Static):
+    """Displays Worker Squad progress through stages."""
+    
+    def __init__(self, task_id: Optional[str] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.task_id = task_id
+        self.stages = {
+            "planner": {"status": "pending", "output": ""},
+            "coder": {"status": "pending", "output": ""},
+            "test": {"status": "pending", "output": ""},
+            "debug": {"status": "pending", "output": "", "iterations": 0},
+            "self_review": {"status": "pending", "output": ""},
+            "approver": {"status": "pending", "output": "", "decision": "pending"}
+        }
+    
+    def update_stages(self, stages: Dict[str, Any]):
+        """Update Worker Squad stages."""
+        self.stages.update(stages)
+        self.refresh()
+    
+    def render(self):
+        """Render Worker Squad progress."""
+        lines = []
+        lines.append(f"[bold]Worker Squad Progress[/]")
+        if self.task_id:
+            lines.append(f"Task: {self.task_id}")
+        lines.append("")
+        
+        stage_order = ["planner", "coder", "test", "debug", "self_review", "approver"]
+        stage_names = {
+            "planner": "📋 Planner",
+            "coder": "💻 Coder",
+            "test": "🧪 Test",
+            "debug": "🐛 Debug",
+            "self_review": "🔍 Self Review",
+            "approver": "✅ Approver"
+        }
+        
+        for stage in stage_order:
+            stage_data = self.stages.get(stage, {})
+            status = stage_data.get("status", "pending")
+            stage_name = stage_names.get(stage, stage.title())
+            
+            status_icon = {
+                "completed": "✅",
+                "in_progress": "⚡",
+                "failed": "❌",
+                "pending": "⏳",
+                "approved": "✅",
+                "rejected": "❌"
+            }.get(status, "⏳")
+            
+            line = f"{status_icon} {stage_name}: {status}"
+            
+            # Add iteration count for debug
+            if stage == "debug" and stage_data.get("iterations", 0) > 0:
+                line += f" (iterations: {stage_data['iterations']})"
+            
+            # Add decision for approver
+            if stage == "approver" and stage_data.get("decision") != "pending":
+                decision = stage_data.get("decision", "pending")
+                line += f" - {decision}"
+            
+            lines.append(line)
+        
+        return "\n".join(lines)
+
+
+class TaskManagementWidget(Container):
+    """Task management controls (cancel, rollback, approve)."""
+    
+    def __init__(self, task_id: Optional[str] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.task_id = task_id
+    
+    def compose(self):
+        """Compose task management controls."""
+        with Vertical():
+            yield Label(f"Task: {self.task_id or 'No task selected'}", id="task-label")
+            with Horizontal():
+                yield Button("🚫 Cancel", id="cancel-btn", variant="error")
+                yield Button("↩️ Rollback", id="rollback-btn", variant="warning")
+                yield Button("✅ Complete", id="complete-btn", variant="success")
+    
+    @on(Button.Pressed, "#cancel-btn")
+    def on_cancel(self):
+        """Handle cancel button press."""
+        self.post_message(TaskManagementWidget.Cancelled(self.task_id))
+    
+    @on(Button.Pressed, "#rollback-btn")
+    def on_rollback(self):
+        """Handle rollback button press."""
+        self.post_message(TaskManagementWidget.RollbackRequested(self.task_id))
+    
+    @on(Button.Pressed, "#complete-btn")
+    def on_complete(self):
+        """Handle complete button press."""
+        self.post_message(TaskManagementWidget.Completed(self.task_id))
+
+
+# Message classes for TaskManagementWidget
+class Cancelled(Message):
+    """Message sent when task is cancelled."""
+    def __init__(self, task_id: Optional[str]):
+        super().__init__()
+        self.task_id = task_id
+
+
+class RollbackRequested(Message):
+    """Message sent when task rollback is requested."""
+    def __init__(self, task_id: Optional[str]):
+        super().__init__()
+        self.task_id = task_id
+
+
+class Completed(Message):
+    """Message sent when task is completed."""
+    def __init__(self, task_id: Optional[str]):
+        super().__init__()
+        self.task_id = task_id
+
+
+# Attach message classes to TaskManagementWidget
+TaskManagementWidget.Cancelled = Cancelled
+TaskManagementWidget.RollbackRequested = RollbackRequested
+TaskManagementWidget.Completed = Completed

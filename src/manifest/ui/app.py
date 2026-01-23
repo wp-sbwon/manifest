@@ -496,6 +496,62 @@ class ManifestApp(App):
         content_lines.append(f"Layers: {len(layers)}")
         project_content.update("\n".join(content_lines))
 
+    async def show_sprint_history(self):
+        """Show Sprint history view."""
+        sprints = self.state_manager.list_sprints()
+        history_log = self.query_one("#history-log", RichLog)
+        history_log.clear()
+        
+        if not sprints:
+            history_log.write("[bold yellow]No Sprint history found.[/]")
+            return
+        
+        history_log.write(f"[bold]Sprint History ({len(sprints)} sprints)[/]")
+        for sprint_id in sprints:
+            sprint_data = self.state_manager.load_sprint(sprint_id)
+            if sprint_data:
+                status = sprint_data.get("status", "unknown")
+                name = sprint_data.get("name", sprint_id)
+                created = sprint_data.get("created_at", "unknown")
+                tasks = sprint_data.get("tasks", [])
+                completed_tasks = sum(1 for t in tasks if t.get("status") == "completed")
+                
+                history_log.write(f"\n[bold]{name}[/] ({sprint_id})")
+                history_log.write(f"  Status: {status}")
+                history_log.write(f"  Created: {created}")
+                history_log.write(f"  Tasks: {completed_tasks}/{len(tasks)} completed")
+    
+    async def show_orchestrator_chat(self):
+        """Show Orchestrator chat channel."""
+        # Create or show Orchestrator channel
+        channel_name = "orchestrator"
+        if channel_name not in self.squad_channels:
+            await self.create_squad_channel("orchestrator", "orchestrator")
+        
+        # Switch to Orchestrator tab
+        chat_tabs = self.query_one("#chat-tabs", TabbedContent)
+        try:
+            chat_tabs.active = f"tab-{channel_name}"
+        except Exception:
+            pass
+    
+    async def show_sprint_approval_ui(self, sprint_id: str):
+        """Show Sprint plan approval UI."""
+        sprint_data = self.state_manager.load_sprint(sprint_id)
+        if not sprint_data:
+            log = self.query_one("#log-main", RichLog)
+            log.write(f"[bold red]Sprint {sprint_id} not found.[/]")
+            return
+        
+        # Show Sprint plan in main log
+        log = self.query_one("#log-main", RichLog)
+        log.write(f"[bold]Sprint Plan: {sprint_data.get('name', sprint_id)}[/]")
+        log.write(f"Status: {sprint_data.get('status', 'planned')}")
+        log.write(f"Tasks: {len(sprint_data.get('tasks', []))}")
+        
+        # TODO: Add approval buttons/widgets
+        # For now, user can approve via command: /approve_sprint {sprint_id}
+    
     async def update_task_tree(self):
         """Update the task tree with current state."""
         tasks = self.state_manager.get_task_checklist()
@@ -769,6 +825,32 @@ class ManifestApp(App):
                     }
                     tab = tab_map.get(initial_tab, "api_keys")
                     self.action_open_settings(tab)
+                elif command == "sprint_history" or command.startswith("sprint_history"):
+                    await self.show_sprint_history()
+                elif command == "orchestrator" or command.startswith("orchestrator"):
+                    await self.show_orchestrator_chat()
+                elif command == "approve_sprint" or command.startswith("approve_sprint"):
+                    parts = user_input.split()
+                    if len(parts) >= 3:
+                        sprint_id = parts[2]
+                        await self.show_sprint_approval_ui(sprint_id)
+                    else:
+                        log.write("[bold yellow]Usage: /approve_sprint <sprint_id>[/]")
+                elif command == "start_sprint" or command.startswith("start_sprint"):
+                    parts = user_input.split()
+                    if len(parts) >= 3:
+                        sprint_id = parts[2]
+                        if self.agent_coordinator:
+                            log.write(f"[bold green]Starting Sprint {sprint_id}...[/]")
+                            result = await self.agent_coordinator.start_sprint(sprint_id)
+                            if result.get("success"):
+                                log.write(f"[bold green]Sprint started. {len(result.get('started_tasks', []))} tasks started.[/]")
+                            else:
+                                log.write(f"[bold red]Failed to start Sprint: {result.get('error', 'Unknown error')}[/]")
+                        else:
+                            log.write("[bold yellow]Agent coordinator not available.[/]")
+                    else:
+                        log.write("[bold yellow]Usage: /start_sprint <sprint_id>[/]")
                 else:
                     log.write(f"[bold yellow]Unknown command: {command}[/]")
             else:
