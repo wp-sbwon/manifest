@@ -58,6 +58,7 @@ htmlcov/
 .manifest/keys.json
 .manifest/.key
 .manifest/conflicts/
+.manifest/blueprint_manifest.json
 
 # Package structure (src layout)
 src/manifest/__pycache__/
