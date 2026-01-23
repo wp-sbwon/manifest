@@ -51,8 +51,22 @@ class AgentBridge:
         # Update watchdog's terminal router reference
         self.watchdog.terminal_router = self.terminal_router
         
-        # Agent executor for LLM calls
-        self.executor = AgentExecutor(config_manager or ConfigManager(), state_manager) if config_manager else None
+        # Hook manager for prompt interception
+        from manifest.runtime.hooks.prompt_hooks import HookManager, VisualRealityHook
+        from manifest.audit.blueprint_synchronizer import BlueprintSynchronizer
+        
+        hook_manager = HookManager()
+        # Register Visual Reality hook
+        blueprint_synchronizer = BlueprintSynchronizer()
+        visual_reality_hook = VisualRealityHook(state_manager, blueprint_synchronizer)
+        hook_manager.register_hook(visual_reality_hook)
+        
+        # Agent executor for LLM calls (with hooks)
+        self.executor = AgentExecutor(
+            config_manager or ConfigManager(),
+            state_manager,
+            hook_manager=hook_manager
+        ) if config_manager else None
         
         # Agent system
         self.orchestrator = Orchestrator(state_manager)

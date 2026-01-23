@@ -9,6 +9,7 @@ from pathlib import Path
 import httpx
 from manifest.core.config import ConfigManager
 from manifest.core.state_manager import StateManager
+from manifest.runtime.hooks.prompt_hooks import HookManager
 
 
 class AgentExecutor:
@@ -20,7 +21,8 @@ class AgentExecutor:
     def __init__(
         self,
         config_manager: ConfigManager,
-        state_manager: StateManager
+        state_manager: StateManager,
+        hook_manager: Optional[HookManager] = None
     ):
         """
         Initialize agent executor.
@@ -28,9 +30,11 @@ class AgentExecutor:
         Args:
             config_manager: Configuration manager for API keys
             state_manager: State manager for persistence
+            hook_manager: Optional hook manager for prompt interception
         """
         self.config_manager = config_manager
         self.state_manager = state_manager
+        self.hook_manager = hook_manager or HookManager()
         self.active_sessions: Dict[str, Dict[str, Any]] = {}  # agent_id -> session
     
     async def execute_agent(
@@ -64,8 +68,17 @@ class AgentExecutor:
             yield {"type": "error", "content": "API key not provided"}
             return
         
+        # Apply prompt hooks (intercept and modify prompt)
+        modified_prompt = await self.hook_manager.apply_hooks(
+            agent_id=agent_id,
+            agent_type=agent_type,
+            prompt=prompt,
+            context=context,
+            message_history=message_history
+        )
+        
         # Prepare messages
-        messages = self._prepare_messages(prompt, message_history or [])
+        messages = self._prepare_messages(modified_prompt, message_history or [])
         
         # Create session
         session_id = f"{agent_id}_{asyncio.get_event_loop().time()}"
