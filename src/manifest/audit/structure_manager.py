@@ -68,11 +68,18 @@ class StructureManager:
         self.project_root = project_root or Path.cwd()
         self.code_extractor = CodeExtractor(manifest_dir)
         self.comparator = BlueprintComparator()
+        self.file_watcher = FileWatcher(project_root)
         
         # File paths
         self.blueprint_file = self.manifest_dir / "blueprint.json"
         self.blueprint_code_file = self.manifest_dir / "blueprint_code.json"
         self.architecture_file = self.manifest_dir / "architecture.json"
+        
+        # Pending changes
+        self._pending_changes: List[str] = []
+        
+        # Register file change callback
+        self.file_watcher.register_change_callback(self._on_files_changed)
     
     def detect_code_changes(
         self,
