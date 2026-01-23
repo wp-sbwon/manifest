@@ -1,0 +1,38 @@
+# AGENTS.md - Project Skills Configuration
+
+This file follows OpenCode conventions for defining project-scoped skills.
+
+## Skills
+
+### Skill: code_review
+Automatically review code changes for quality, security, and best practices.
+
+**Triggers**: review, code review, check code, audit code
+
+**Agents**: coder, review
+
+### Skill: test_generation
+Generate comprehensive tests for code changes.
+
+**Triggers**: test, tests, testing, unit test, integration test
+
+**Agents**: coder, test
+
+### Skill: refactoring
+Refactor code following project patterns and best practices.
+
+**Triggers**: refactor, refactoring, improve code, clean up
+
+**Agents**: coder
+
+## Rules
+
+Project-specific rules are defined in `.claude/rules/` directory:
+- `.claude/rules/manifest-policy.md` - Core project policy (Tier 0)
+- `.claude/rules/code-style.md` - Code style guidelines
+- `.claude/rules/security.md` - Security best practices
+
+## Usage
+
+Skills defined here are automatically available to agents when working on this project.
+Agent-specific skills can be configured in `.manifest/agent_config.json`.

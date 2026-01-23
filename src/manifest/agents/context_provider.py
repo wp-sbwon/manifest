@@ -5,23 +5,36 @@ Implements the Tiered Orchestration system:
 - Tier 1: The Intent (intent.json, architecture.json)
 - Tier 2: The Blueprint (blueprint.json - scoped)
 - Tier 3: Surgical Code (files - scoped)
+- Skills: Agent skills (from agent_config.json and AGENTS.md)
 """
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional
 from manifest.agents.task_scoper import TaskScoper
+from manifest.agents.skills_manager import SkillsManager
 
 
 class ContextProvider:
     """Provides tiered context to agents."""
     
-    def __init__(self, manifest_dir: Path = None, task_scoper: Optional[TaskScoper] = None):
+    def __init__(self, manifest_dir: Path = None, task_scoper: Optional[TaskScoper] = None, project_root: Path = None):
         self.manifest_dir = manifest_dir or Path(".manifest")
+        self.project_root = project_root or Path.cwd()
         self.task_scoper = task_scoper or TaskScoper(manifest_dir)
+        self.skills_manager = SkillsManager(manifest_dir, self.project_root)
         self.policy_file = Path(".claude/rules/manifest-policy.md")
         self.intent_file = self.manifest_dir / "intent.json"
         self.architecture_file = self.manifest_dir / "architecture.json"
         self.blueprint_file = self.manifest_dir / "blueprint.json"
+    
+    def get_skills_context(self, agent_type: str, task_scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Get skills context for an agent."""
+        skills = self.skills_manager.get_skills_for_agent(agent_type, task_scope)
+        return {
+            "skills": skills,
+            "skills_formatted": self.skills_manager.format_skills_for_prompt(skills),
+            "skills_count": len(skills)
+        }
     
     def get_orchestrator_context(self) -> Dict[str, Any]:
         """Context for orchestrator."""
@@ -29,6 +42,7 @@ class ContextProvider:
             "tier": "orchestrator",
             "tier_0": self._load_tier_0(),
             "tier_1": self._load_tier_1(),
+            "skills": self.get_skills_context("orchestrator"),
             "version": "1.0"
         }
         return context
@@ -38,6 +52,14 @@ class ContextProvider:
         # Get task scope
         task_context = self.task_scoper.get_task_context(task_id)
         
+        # Get task scope for skills
+        task_scope = {
+            "components": task_context.get("components", []),
+            "allowed_files": task_context.get("files", []),
+            "allowed_modifications": task_context.get("allowed_modifications", []),
+            "requirements": task_context.get("requirements", [])
+        }
+        
         context = {
             "tier": "worker",
             "task_id": task_id,
@@ -45,12 +67,8 @@ class ContextProvider:
             "tier_0": self._load_tier_0(),
             "tier_2": self._load_tier_2_scoped(task_context),
             "tier_3": self._load_tier_3_scoped(task_context),
-            "task_scope": {
-                "components": task_context.get("components", []),
-                "allowed_files": task_context.get("files", []),
-                "allowed_modifications": task_context.get("allowed_modifications", []),
-                "requirements": task_context.get("requirements", [])
-            },
+            "task_scope": task_scope,
+            "skills": self.get_skills_context(agent_type, task_scope),
             "version": "1.0"
         }
         return context

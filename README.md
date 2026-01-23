@@ -119,6 +119,12 @@ See `requirements.txt` for the complete list.
 - To explicitly enable OpenCode integration, install with: `pip install opencode>=1.0.0`
 - No conflicts: Manifest works seamlessly whether OpenCode is installed or not
 
+**Skills System**:
+- Configure skills for individual agents in `.manifest/agent_config.json`
+- Configure project-scoped skills in `AGENTS.md` (OpenCode convention)
+- Skills are automatically loaded from `.claude/rules/` directory
+- See [docs/SKILLS.md](docs/SKILLS.md) for detailed documentation
+
 ## Development Workflow
 
 ### Using Virtual Environment

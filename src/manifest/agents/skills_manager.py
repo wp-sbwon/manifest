@@ -1,0 +1,388 @@
+"""
+Skills Manager - Manages agent skills following OpenCode conventions.
+Supports two levels:
+1. Agent default skills (from agent_config.json)
+2. Project-scoped skills (from AGENTS.md or .claude/rules/)
+"""
+import json
+import re
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Set
+
+
+class SkillsManager:
+    """Manages skills for agents following OpenCode conventions."""
+    
+    def __init__(self, manifest_dir: Path = None, project_root: Path = None):
+        """
+        Initialize Skills Manager.
+        
+        Args:
+            manifest_dir: .manifest directory path
+            project_root: Project root directory (for AGENTS.md lookup)
+        """
+        self.manifest_dir = manifest_dir or Path(".manifest")
+        self.project_root = project_root or Path.cwd()
+        self.agent_config_file = self.manifest_dir / "agent_config.json"
+        self.agents_md_file = self.project_root / "AGENTS.md"
+        self.claude_rules_dir = self.project_root / ".claude" / "rules"
+        
+        self._agent_skills = {}  # agent_type -> list of skill IDs
+        self._project_skills = []  # List of project-scoped skills
+        self._skill_definitions = {}  # skill_id -> skill definition
+        
+        self._load_skills()
+    
+    def _load_skills(self):
+        """Load skills from all sources."""
+        # Load agent default skills from agent_config.json
+        self._load_agent_default_skills()
+        
+        # Load project-scoped skills from AGENTS.md
+        self._load_project_skills()
+        
+        # Load skill definitions from .claude/rules/
+        self._load_skill_definitions()
+    
+    def _load_agent_default_skills(self):
+        """Load agent default skills from agent_config.json."""
+        if not self.agent_config_file.exists():
+            return
+        
+        try:
+            with open(self.agent_config_file, "r") as f:
+                config = json.load(f)
+            
+            # Load agent_skills section (new)
+            agent_skills = config.get("agent_skills", {})
+            self._agent_skills = agent_skills.copy()
+            
+        except Exception as e:
+            print(f"Warning: Failed to load agent skills: {e}")
+            self._agent_skills = {}
+    
+    def _load_project_skills(self):
+        """Load project-scoped skills from AGENTS.md (OpenCode convention)."""
+        if not self.agents_md_file.exists():
+            return
+        
+        try:
+            with open(self.agents_md_file, "r", encoding="utf-8") as f:
+                content = f.read()
+            
+            # Parse AGENTS.md for skills
+            # Look for skills section or skill references
+            skills = self._parse_agents_md(content)
+            self._project_skills = skills
+            
+        except Exception as e:
+            print(f"Warning: Failed to load AGENTS.md: {e}")
+            self._project_skills = []
+    
+    def _parse_agents_md(self, content: str) -> List[Dict[str, Any]]:
+        """
+        Parse AGENTS.md content for skills.
+        
+        OpenCode convention: Skills can be defined in AGENTS.md
+        Format examples:
+        - ## Skills
+        - ### Skill: skill_name
+        - References to .claude/rules/*.md files
+        """
+        skills = []
+        
+        # Look for skills section
+        skills_section_match = re.search(
+            r'##\s+Skills?\s*\n(.*?)(?=\n##|\Z)',
+            content,
+            re.DOTALL | re.IGNORECASE
+        )
+        
+        if skills_section_match:
+            skills_content = skills_section_match.group(1)
+            
+            # Parse individual skill definitions
+            skill_pattern = r'###\s+Skill:\s*(\w+)\s*\n(.*?)(?=\n###|\Z)'
+            for match in re.finditer(skill_pattern, skills_content, re.DOTALL):
+                skill_id = match.group(1)
+                skill_desc = match.group(2).strip()
+                
+                skills.append({
+                    "id": skill_id,
+                    "name": skill_id,
+                    "description": skill_desc,
+                    "source": "AGENTS.md",
+                    "type": "project"
+                })
+        
+        # Also look for references to .claude/rules/*.md files
+        rule_ref_pattern = r'\.claude/rules/([\w\-]+)\.md'
+        for match in re.finditer(rule_ref_pattern, content):
+            rule_name = match.group(1)
+            rule_file = self.claude_rules_dir / f"{rule_name}.md"
+            
+            if rule_file.exists():
+                skills.append({
+                    "id": rule_name,
+                    "name": rule_name,
+                    "file": str(rule_file.relative_to(self.project_root)),
+                    "source": "AGENTS.md",
+                    "type": "project"
+                })
+        
+        return skills
+    
+    def _load_skill_definitions(self):
+        """Load skill definitions from .claude/rules/ directory."""
+        if not self.claude_rules_dir.exists():
+            return
+        
+        # Load all .md files in .claude/rules/ as potential skills
+        for rule_file in self.claude_rules_dir.glob("*.md"):
+            # Skip manifest-policy.md (it's Tier 0, not a skill)
+            if rule_file.name == "manifest-policy.md":
+                continue
+            
+            skill_id = rule_file.stem
+            try:
+                with open(rule_file, "r", encoding="utf-8") as f:
+                    content = f.read()
+                
+                # Extract skill metadata from markdown
+                skill_def = self._parse_skill_markdown(content, skill_id, rule_file)
+                self._skill_definitions[skill_id] = skill_def
+                
+            except Exception as e:
+                print(f"Warning: Failed to load skill {skill_id}: {e}")
+    
+    def _parse_skill_markdown(self, content: str, skill_id: str, file_path: Path) -> Dict[str, Any]:
+        """Parse markdown file to extract skill definition."""
+        skill_def = {
+            "id": skill_id,
+            "name": skill_id,
+            "file": str(file_path.relative_to(self.project_root)),
+            "content": content,
+            "source": ".claude/rules/",
+            "type": "rule"
+        }
+        
+        # Extract title (first # heading)
+        title_match = re.search(r'^#\s+(.+)$', content, re.MULTILINE)
+        if title_match:
+            skill_def["name"] = title_match.group(1).strip()
+        
+        # Extract description (first paragraph after title)
+        desc_match = re.search(
+            r'^#\s+.+?\n\n(.+?)(?=\n\n|\n#|\Z)',
+            content,
+            re.DOTALL
+        )
+        if desc_match:
+            skill_def["description"] = desc_match.group(1).strip()
+        
+        # Extract trigger keywords (if present)
+        trigger_match = re.search(
+            r'(?:##\s+)?Trigger(?:s)?(?:\s+Keywords?)?\s*\n(.*?)(?=\n##|\Z)',
+            content,
+            re.DOTALL | re.IGNORECASE
+        )
+        if trigger_match:
+            triggers = [
+                line.strip().lstrip('-').strip()
+                for line in trigger_match.group(1).split('\n')
+                if line.strip() and not line.strip().startswith('#')
+            ]
+            skill_def["triggers"] = triggers
+        
+        # Extract agent applicability (if present)
+        agents_match = re.search(
+            r'(?:##\s+)?Agent(?:s)?\s*\n(.*?)(?=\n##|\Z)',
+            content,
+            re.DOTALL | re.IGNORECASE
+        )
+        if agents_match:
+            agents = [
+                line.strip().lstrip('-').strip()
+                for line in agents_match.group(1).split('\n')
+                if line.strip() and not line.strip().startswith('#')
+            ]
+            skill_def["agents"] = agents
+        
+        return skill_def
+    
+    def get_skills_for_agent(
+        self,
+        agent_type: str,
+        task_scope: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get applicable skills for an agent.
+        
+        Priority:
+        1. Project-scoped skills (from AGENTS.md)
+        2. Agent default skills (from agent_config.json)
+        
+        Args:
+            agent_type: Type of agent (orchestrator, planner, coder, etc.)
+            task_scope: Optional task scope (for future directory-based skills)
+            
+        Returns:
+            List of skill definitions
+        """
+        skills = []
+        
+        # First, add project-scoped skills
+        for skill in self._project_skills:
+            # Check if skill applies to this agent
+            if self._skill_applies_to_agent(skill, agent_type):
+                skill_def = self._skill_definitions.get(skill["id"], skill)
+                skills.append(skill_def)
+        
+        # Then, add agent default skills (if not already included)
+        agent_default_skill_ids = self._agent_skills.get(agent_type, [])
+        for skill_id in agent_default_skill_ids:
+            # Skip if already added from project skills
+            if any(s.get("id") == skill_id for s in skills):
+                continue
+            
+            # Load skill definition
+            skill_def = self._skill_definitions.get(skill_id)
+            if skill_def:
+                skills.append(skill_def)
+            else:
+                # Skill ID referenced but definition not found
+                skills.append({
+                    "id": skill_id,
+                    "name": skill_id,
+                    "description": f"Skill {skill_id} (definition not found)",
+                    "source": "agent_config.json",
+                    "type": "agent_default"
+                })
+        
+        return skills
+    
+    def _skill_applies_to_agent(self, skill: Dict[str, Any], agent_type: str) -> bool:
+        """Check if a skill applies to a specific agent type."""
+        # If skill has explicit agents list, check it
+        if "agents" in skill:
+            return agent_type in skill["agents"]
+        
+        # If no agents specified, skill applies to all agents
+        return True
+    
+    def get_skill_content(self, skill_id: str) -> Optional[str]:
+        """Get the content of a skill by ID."""
+        skill_def = self._skill_definitions.get(skill_id)
+        if skill_def:
+            return skill_def.get("content", "")
+        return None
+    
+    def format_skills_for_prompt(self, skills: List[Dict[str, Any]]) -> str:
+        """Format skills list for inclusion in agent prompt."""
+        if not skills:
+            return ""
+        
+        lines = ["## AVAILABLE SKILLS", ""]
+        
+        for skill in skills:
+            skill_id = skill.get("id", "unknown")
+            skill_name = skill.get("name", skill_id)
+            skill_desc = skill.get("description", "")
+            triggers = skill.get("triggers", [])
+            
+            lines.append(f"### {skill_name} (`{skill_id}`)")
+            if skill_desc:
+                lines.append(f"{skill_desc}")
+            if triggers:
+                lines.append(f"**Triggers**: {', '.join(triggers)}")
+            lines.append("")
+        
+        lines.append(
+            "**IMPORTANT**: When a request matches a skill trigger, "
+            "invoke the skill immediately before proceeding with other steps."
+        )
+        
+        return "\n".join(lines)
+    
+    def save_agent_skills(self, agent_skills: Dict[str, List[str]]) -> bool:
+        """
+        Save agent default skills to agent_config.json.
+        
+        Args:
+            agent_skills: Dictionary mapping agent_type -> list of skill IDs
+            
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        import json
+        
+        if not self.agent_config_file.exists():
+            # Create default config
+            config = {
+                "version": "1.0",
+                "agent_models": {},
+                "agent_skills": agent_skills
+            }
+        else:
+            try:
+                with open(self.agent_config_file, "r") as f:
+                    config = json.load(f)
+            except Exception as e:
+                print(f"Error loading agent config: {e}")
+                return False
+        
+        config["agent_skills"] = agent_skills
+        
+        try:
+            self.manifest_dir.mkdir(parents=True, exist_ok=True)
+            with open(self.agent_config_file, "w") as f:
+                json.dump(config, f, indent=2)
+            # Reload
+            self._load_agent_default_skills()
+            return True
+        except Exception as e:
+            print(f"Error saving agent skills: {e}")
+            return False
+    
+    def save_skill_file(self, skill_id: str, content: str) -> bool:
+        """
+        Save a skill file to .claude/rules/.
+        
+        Args:
+            skill_id: Skill identifier (filename without .md)
+            content: Markdown content for the skill
+            
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        skill_file = self.claude_rules_dir / f"{skill_id}.md"
+        try:
+            self.claude_rules_dir.mkdir(parents=True, exist_ok=True)
+            with open(skill_file, "w", encoding="utf-8") as f:
+                f.write(content)
+            # Reload skill definitions
+            self._load_skill_definitions()
+            return True
+        except Exception as e:
+            print(f"Error saving skill file: {e}")
+            return False
+    
+    def save_agents_md(self, content: str) -> bool:
+        """
+        Save AGENTS.md content.
+        
+        Args:
+            content: Markdown content for AGENTS.md
+            
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        try:
+            with open(self.agents_md_file, "w", encoding="utf-8") as f:
+                f.write(content)
+            # Reload project skills
+            self._load_project_skills()
+            return True
+        except Exception as e:
+            print(f"Error saving AGENTS.md: {e}")
+            return False

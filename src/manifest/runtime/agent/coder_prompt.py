@@ -167,4 +167,10 @@ def _format_context(context: Dict[str, Any]) -> str:
         formatted.append("### Tier 3: Code Context")
         formatted.append(str(context["tier_3"]))
     
+    # Add skills section if available
+    if "skills" in context:
+        skills_context = context["skills"]
+        if skills_context.get("skills_formatted"):
+            formatted.append("\n" + skills_context["skills_formatted"])
+    
     return "\n".join(formatted)
