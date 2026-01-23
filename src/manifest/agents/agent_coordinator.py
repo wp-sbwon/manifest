@@ -47,6 +47,12 @@ class AgentCoordinator:
         else:
             self.state_sync = None
     
+    async def start(self):
+        """Start agent coordinator and container communication if enabled."""
+        if self.use_containers and self.state_sync:
+            await self.state_sync.start()
+            print("Container state synchronization started.")
+    
     async def start_orchestrator(self, mission_description: str) -> bool:
         """Start orchestrator via agent bridge."""
         # Get orchestrator context (Tier 0-1)

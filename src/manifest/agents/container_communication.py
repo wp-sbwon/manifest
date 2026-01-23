@@ -94,6 +94,35 @@ class ContainerMessageBus:
         if topic not in self.subscribers:
             self.subscribers[topic] = []
         self.subscribers[topic].append(callback)
+        
+        # Start polling for messages if not already started
+        if not hasattr(self, '_poll_task') or self._poll_task is None or self._poll_task.done():
+            self._poll_task = asyncio.create_task(self._poll_messages())
+    
+    async def _poll_messages(self):
+        """Poll for messages and dispatch to subscribers."""
+        while True:
+            try:
+                # Poll for all subscribed topics
+                for topic in self.subscribers.keys():
+                    messages = await self.receive_messages(topic=topic, timeout=1.0)
+                    for message in messages:
+                        # Dispatch to all subscribers for this topic
+                        for callback in self.subscribers.get(topic, []):
+                            try:
+                                if asyncio.iscoroutinefunction(callback):
+                                    await callback(message)
+                                else:
+                                    callback(message)
+                            except Exception as e:
+                                print(f"Error in subscriber callback for topic {topic}: {e}")
+                
+                await asyncio.sleep(1.0)  # Poll interval
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                print(f"Error in message polling: {e}")
+                await asyncio.sleep(5.0)  # Wait before retrying
     
     async def receive_messages(
         self,
