@@ -161,11 +161,14 @@ class PlannerAgent:
     
     async def _update_blueprint_metadata(self, methodology_info: Dict[str, Any]):
         """
-        Update Blueprint with methodology metadata.
+        Update Blueprint with metadata (algorithm, design_pattern, complexity).
+        Note: methodology is excluded as it's a development methodology, not product logic.
         
         Args:
-            methodology_info: Methodology information dict
+            methodology_info: Metadata information dict (algorithm, design_pattern, complexity)
         """
+        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata, save_blueprint_with_metadata
+        
         manifest_dir = Path(".manifest")
         blueprint_file = manifest_dir / "blueprint.json"
         
@@ -173,20 +176,27 @@ class PlannerAgent:
             return
         
         try:
-            with open(blueprint_file, "r") as f:
-                blueprint = json.load(f)
+            blueprint = load_blueprint_with_metadata(blueprint_file, "llm_design", False)
             
-            # Update components with methodology info
+            # Update components with metadata (excluding methodology)
             # For now, update the first component or create a metadata section
             if "components" in blueprint and blueprint["components"]:
                 # Update the first component (or we could match by task_id)
                 # This is a simplified approach - in production, we'd match components by task
-                if not blueprint["components"][0].get("methodology"):
-                    blueprint["components"][0].update(methodology_info)
+                comp = blueprint["components"][0]
+                # Only update algorithm, design_pattern, complexity (not methodology)
+                if "algorithm" in methodology_info:
+                    comp["algorithm"] = methodology_info["algorithm"]
+                    comp["algorithm_reasoning"] = methodology_info.get("algorithm_reasoning", "")
+                if "design_pattern" in methodology_info:
+                    comp["design_pattern"] = methodology_info["design_pattern"]
+                    comp["design_pattern_reasoning"] = methodology_info.get("design_pattern_reasoning", "")
+                if "complexity" in methodology_info:
+                    comp["complexity"] = methodology_info["complexity"]
+                    comp["complexity_reasoning"] = methodology_info.get("complexity_reasoning", "")
             
-            # Save updated blueprint
-            with open(blueprint_file, "w") as f:
-                json.dump(blueprint, f, indent=2, ensure_ascii=False)
+            # Save updated blueprint with metadata
+            save_blueprint_with_metadata(blueprint, blueprint_file, "llm_design", False, "llm_inference")
         except Exception as e:
             # Silently fail - blueprint update is optional
             pass

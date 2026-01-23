@@ -20,15 +20,11 @@ class TaskScoper:
     
     def _load_data(self):
         """Load blueprint and intent data."""
-        # Load blueprint
-        if self.blueprint_file.exists():
-            try:
-                with open(self.blueprint_file, "r") as f:
-                    self._blueprint_data = json.load(f)
-            except Exception:
-                self._blueprint_data = {"version": "1.0", "zones": {}, "components": [], "contracts": []}
-        else:
-            self._blueprint_data = {"version": "1.0", "zones": {}, "components": [], "contracts": []}
+        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
+        # Load blueprint with metadata
+        self._blueprint_data = load_blueprint_with_metadata(
+            self.blueprint_file, "llm_design", False
+        )
         
         # Load intent
         if self.intent_file.exists():

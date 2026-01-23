@@ -47,15 +47,11 @@ class DriftAuditor:
         self._load_blueprint()
     
     def _load_blueprint(self):
-        """Load blueprint.json."""
-        if self.blueprint_file.exists():
-            try:
-                with open(self.blueprint_file, "r") as f:
-                    self.blueprint = json.load(f)
-            except Exception:
-                self.blueprint = {"version": "1.0", "zones": {}, "components": [], "contracts": []}
-        else:
-            self.blueprint = {"version": "1.0", "zones": {}, "components": [], "contracts": []}
+        """Load blueprint.json with metadata."""
+        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
+        self.blueprint = load_blueprint_with_metadata(
+            self.blueprint_file, "llm_design", False
+        )
     
     def reload_blueprint(self):
         """Reload blueprint from file."""

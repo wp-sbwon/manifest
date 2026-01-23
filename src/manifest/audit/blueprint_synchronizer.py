@@ -284,3 +284,171 @@ class BlueprintSynchronizer:
             }
         
         return {"success": False, "error": f"Unknown mode: {mode}"}
+    
+    def calculate_implementation_status(
+        self,
+        top_down: Dict[str, Any],
+        bottom_up: Dict[str, Any],
+        architecture: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Calculate implementation status for components (Ghost/Drift/Implemented).
+        Also calculates completion percentage for features.
+        
+        Args:
+            top_down: Top-down blueprint (design)
+            bottom_up: Bottom-up blueprint (code)
+            architecture: Architecture data (optional, for feature-level completion)
+        
+        Returns:
+            Dict with component statuses and feature completion percentages
+        """
+        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
+        
+        # Build component lookup
+        td_components_by_id: Dict[str, Dict[str, Any]] = {}
+        td_components_by_name: Dict[str, Dict[str, Any]] = {}
+        for comp in top_down.get("components", []):
+            comp_id = comp.get("id", "")
+            comp_name = comp.get("name", "")
+            if comp_id:
+                td_components_by_id[comp_id] = comp
+            if comp_name:
+                td_components_by_name[comp_name] = comp
+        
+        bu_components_by_id: Dict[str, Dict[str, Any]] = {}
+        bu_components_by_name: Dict[str, Dict[str, Any]] = {}
+        for comp in bottom_up.get("components", []):
+            comp_id = comp.get("id", "")
+            comp_name = comp.get("name", "")
+            if comp_id:
+                bu_components_by_id[comp_id] = comp
+            if comp_name:
+                bu_components_by_name[comp_name] = comp
+        
+        # Calculate status for each top-down component
+        component_statuses: Dict[str, str] = {}
+        component_drifts: Dict[str, List[str]] = {}
+        
+        for comp_id, td_comp in td_components_by_id.items():
+            comp_name = td_comp.get("name", "")
+            
+            # Try to find in bottom-up by ID first, then by name
+            bu_comp = bu_components_by_id.get(comp_id)
+            if not bu_comp and comp_name:
+                bu_comp = bu_components_by_name.get(comp_name)
+            
+            if not bu_comp:
+                # Component not found in code - Ghost
+                component_statuses[comp_id] = "ghost"
+            else:
+                # Component exists - check for drift
+                conflicts = self.comparator.compare_components([td_comp], [bu_comp])
+                # Filter for significant conflicts (ERROR, WARNING)
+                significant_conflicts = [
+                    c for c in conflicts
+                    if c.severity in [Severity.ERROR, Severity.WARNING]
+                ]
+                
+                if significant_conflicts:
+                    # Has drift
+                    component_statuses[comp_id] = "drift"
+                    component_drifts[comp_id] = [c.message for c in significant_conflicts]
+                else:
+                    # Implemented and matches
+                    component_statuses[comp_id] = "implemented"
+        
+        # Also mark extra components (in code but not in design)
+        for comp_id, bu_comp in bu_components_by_id.items():
+            comp_name = bu_comp.get("name", "")
+            if comp_id not in td_components_by_id:
+                # Check by name
+                if comp_name not in td_components_by_name:
+                    # Extra component - mark as such
+                    component_statuses[comp_id] = "extra"
+        
+        # Calculate feature completion percentages if architecture is provided
+        feature_completions: Dict[str, float] = {}
+        if architecture:
+            features = architecture.get("features", [])
+            for feature in features:
+                feature_id = feature.get("id", "")
+                feature_components = feature.get("components", [])
+                
+                if not feature_components:
+                    feature_completions[feature_id] = 0.0
+                    continue
+                
+                # Count implemented components
+                implemented_count = 0
+                total_count = len(feature_components)
+                
+                for comp_id in feature_components:
+                    status = component_statuses.get(comp_id, "ghost")
+                    if status == "implemented":
+                        implemented_count += 1
+                    elif status == "drift":
+                        # Drift counts as partial (0.5)
+                        implemented_count += 0.5
+                
+                # Calculate percentage
+                if total_count > 0:
+                    completion = (implemented_count / total_count) * 100
+                    feature_completions[feature_id] = round(completion, 1)
+                else:
+                    feature_completions[feature_id] = 0.0
+        
+        return {
+            "component_statuses": component_statuses,
+            "component_drifts": component_drifts,
+            "feature_completions": feature_completions
+        }
+    
+    def update_architecture_with_status(
+        self,
+        architecture: Dict[str, Any],
+        status_info: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Update architecture.json with implementation status and completion percentages.
+        
+        Args:
+            architecture: Architecture dictionary
+            status_info: Status information from calculate_implementation_status
+        
+        Returns:
+            Updated architecture dictionary
+        """
+        component_statuses = status_info.get("component_statuses", {})
+        component_drifts = status_info.get("component_drifts", {})
+        feature_completions = status_info.get("feature_completions", {})
+        
+        # Update component statuses in architecture
+        # First, ensure components list exists in architecture
+        if "components" not in architecture:
+            architecture["components"] = []
+        
+        # Update component status
+        for comp in architecture.get("components", []):
+            comp_id = comp.get("id", "")
+            if comp_id in component_statuses:
+                comp["status"] = component_statuses[comp_id]
+                if comp_id in component_drifts:
+                    comp["drift_details"] = component_drifts[comp_id]
+        
+        # Update feature completion percentages
+        for feature in architecture.get("features", []):
+            feature_id = feature.get("id", "")
+            if feature_id in feature_completions:
+                feature["completion_percentage"] = feature_completions[feature_id]
+            
+            # Update status based on completion
+            completion = feature.get("completion_percentage", 0)
+            if completion == 100:
+                feature["status"] = "done"
+            elif completion > 0:
+                feature["status"] = "wip"
+            else:
+                feature["status"] = "pending"
+        
+        return architecture

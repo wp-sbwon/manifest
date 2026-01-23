@@ -111,14 +111,24 @@ class BlueprintComparator:
                     file_path=td_comp.get("file")
                 ))
             else:
-                # Component exists, check methods
+                # Component exists, check Ground Truth fields (strict comparison)
                 bu_comp = bottom_up_by_name[name]
+                
+                # Ground Truth fields: methods, attributes (strict comparison)
                 method_conflicts = self._compare_methods(td_comp, bu_comp)
                 conflicts.extend(method_conflicts)
                 
-                # Check attributes
                 attr_conflicts = self._compare_attributes(td_comp, bu_comp)
                 conflicts.extend(attr_conflicts)
+                
+                # Ground Truth fields: structural info (id, name, type, file, line)
+                structural_conflicts = self._compare_structural_fields(td_comp, bu_comp)
+                conflicts.extend(structural_conflicts)
+                
+                # Non-Ground Truth fields: metadata (algorithm, design_pattern, complexity)
+                # These are compared with tolerance for LLM inference differences
+                metadata_conflicts = self._compare_metadata_fields(td_comp, bu_comp)
+                conflicts.extend(metadata_conflicts)
         
         # Check for extra components (in bottom-up but not in top-down)
         for name, bu_comp in bottom_up_by_name.items():
@@ -299,3 +309,151 @@ class BlueprintComparator:
             grouped[conflict_type].append(conflict)
         
         return grouped
+    
+    def _compare_structural_fields(
+        self,
+        top_down: Dict[str, Any],
+        bottom_up: Dict[str, Any]
+    ) -> List[BlueprintConflict]:
+        """
+        Compare Ground Truth structural fields (strict comparison).
+        Fields: id, name, type, file, line
+        """
+        conflicts = []
+        
+        # Check name (should match for comparison to work)
+        td_name = top_down.get("name")
+        bu_name = bottom_up.get("name")
+        if td_name != bu_name:
+            conflicts.append(BlueprintConflict(
+                severity=Severity.ERROR,
+                type=ConflictType.METHOD_MISMATCH,  # Reuse type
+                message=f"Component name mismatch: design has '{td_name}', code has '{bu_name}'",
+                top_down_component=top_down,
+                bottom_up_component=bottom_up,
+                component_id=top_down.get("id"),
+                file_path=bottom_up.get("file")
+            ))
+        
+        # Check type
+        td_type = top_down.get("type")
+        bu_type = bottom_up.get("type")
+        if td_type != bu_type:
+            conflicts.append(BlueprintConflict(
+                severity=Severity.WARNING,
+                type=ConflictType.METHOD_MISMATCH,
+                message=f"Component type mismatch: design has '{td_type}', code has '{bu_type}'",
+                top_down_component=top_down,
+                bottom_up_component=bottom_up,
+                component_id=top_down.get("id"),
+                file_path=bottom_up.get("file")
+            ))
+        
+        # Check file path (should match or be similar)
+        td_file = top_down.get("file", "")
+        bu_file = bottom_up.get("file", "")
+        if td_file and bu_file and td_file != bu_file:
+            # Allow some flexibility (relative vs absolute paths)
+            if not (td_file.endswith(bu_file) or bu_file.endswith(td_file)):
+                conflicts.append(BlueprintConflict(
+                    severity=Severity.INFO,
+                    type=ConflictType.METHOD_MISMATCH,
+                    message=f"Component file path differs: design has '{td_file}', code has '{bu_file}'",
+                    top_down_component=top_down,
+                    bottom_up_component=bottom_up,
+                    component_id=top_down.get("id"),
+                    file_path=bottom_up.get("file")
+                ))
+        
+        return conflicts
+    
+    def _compare_metadata_fields(
+        self,
+        top_down: Dict[str, Any],
+        bottom_up: Dict[str, Any]
+    ) -> List[BlueprintConflict]:
+        """
+        Compare non-Ground Truth metadata fields (tolerant comparison).
+        Fields: algorithm, design_pattern, complexity
+        Note: methodology is excluded as it's a development methodology, not product logic.
+        """
+        conflicts = []
+        
+        # Compare algorithm (if present in both)
+        td_algorithm = top_down.get("algorithm")
+        bu_algorithm = bottom_up.get("algorithm")
+        if td_algorithm and bu_algorithm:
+            # Allow case-insensitive comparison and partial matches
+            if td_algorithm.lower() != bu_algorithm.lower():
+                conflicts.append(BlueprintConflict(
+                    severity=Severity.INFO,  # INFO level - LLM inference differences are acceptable
+                    type=ConflictType.METHOD_MISMATCH,
+                    message=f"Algorithm differs: design has '{td_algorithm}', code has '{bu_algorithm}' (LLM inference difference acceptable)",
+                    top_down_component=top_down,
+                    bottom_up_component=bottom_up,
+                    component_id=top_down.get("id"),
+                    file_path=bottom_up.get("file")
+                ))
+        elif td_algorithm and not bu_algorithm:
+            # Design has algorithm but code doesn't - informational
+            conflicts.append(BlueprintConflict(
+                severity=Severity.INFO,
+                type=ConflictType.METHOD_MISMATCH,
+                message=f"Algorithm '{td_algorithm}' specified in design but not detected in code",
+                top_down_component=top_down,
+                bottom_up_component=bottom_up,
+                component_id=top_down.get("id"),
+                file_path=bottom_up.get("file")
+            ))
+        
+        # Compare design_pattern (if present in both)
+        td_pattern = top_down.get("design_pattern")
+        bu_pattern = bottom_up.get("design_pattern")
+        if td_pattern and bu_pattern:
+            if td_pattern.lower() != bu_pattern.lower():
+                conflicts.append(BlueprintConflict(
+                    severity=Severity.INFO,
+                    type=ConflictType.METHOD_MISMATCH,
+                    message=f"Design pattern differs: design has '{td_pattern}', code has '{bu_pattern}' (LLM inference difference acceptable)",
+                    top_down_component=top_down,
+                    bottom_up_component=bottom_up,
+                    component_id=top_down.get("id"),
+                    file_path=bottom_up.get("file")
+                ))
+        elif td_pattern and not bu_pattern:
+            conflicts.append(BlueprintConflict(
+                severity=Severity.INFO,
+                type=ConflictType.METHOD_MISMATCH,
+                message=f"Design pattern '{td_pattern}' specified in design but not detected in code",
+                top_down_component=top_down,
+                bottom_up_component=bottom_up,
+                component_id=top_down.get("id"),
+                file_path=bottom_up.get("file")
+            ))
+        
+        # Compare complexity (if present in both)
+        td_complexity = top_down.get("complexity")
+        bu_complexity = bottom_up.get("complexity")
+        if td_complexity and bu_complexity:
+            if td_complexity.lower() != bu_complexity.lower():
+                conflicts.append(BlueprintConflict(
+                    severity=Severity.INFO,
+                    type=ConflictType.METHOD_MISMATCH,
+                    message=f"Complexity differs: design has '{td_complexity}', code has '{bu_complexity}' (LLM inference difference acceptable)",
+                    top_down_component=top_down,
+                    bottom_up_component=bottom_up,
+                    component_id=top_down.get("id"),
+                    file_path=bottom_up.get("file")
+                ))
+        elif td_complexity and not bu_complexity:
+            conflicts.append(BlueprintConflict(
+                severity=Severity.INFO,
+                type=ConflictType.METHOD_MISMATCH,
+                message=f"Complexity '{td_complexity}' specified in design but not detected in code",
+                top_down_component=top_down,
+                bottom_up_component=bottom_up,
+                component_id=top_down.get("id"),
+                file_path=bottom_up.get("file")
+            ))
+        
+        return conflicts
