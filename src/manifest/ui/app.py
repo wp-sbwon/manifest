@@ -195,7 +195,8 @@ class ManifestApp(App):
         self.task_scoper = TaskScoper(self.manifest_dir)
         self.context_provider = ContextProvider(self.manifest_dir, self.task_scoper)
         self.agent_coordinator: Optional[AgentCoordinator] = None
-        self.squad_channels: Dict[str, str] = {}  # channel_name -> tab_id
+        self.squad_channels: Dict[str, Dict[str, Any]] = {}  # channel_name -> channel info
+        self.active_channel: str = "main"  # Currently active channel
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
