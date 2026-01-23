@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Optional
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll, Grid
-from textual.widgets import Header, Footer, Tree, Input, RichLog, TabbedContent, TabPane, Static, Label
+from textual.widgets import Header, Footer, Tree, Input, RichLog, TabbedContent, TabPane, Static, Label, Button
+from manifest.ui.widgets.structure_hierarchy_view import StructureHierarchyView
+from manifest.ui.widgets.structure_graph_view import StructureGraphView
+from manifest.ui.widgets.project_view import TaskTreeView, SprintStatusView, HistoryView
 from textual import on, work
 from textual.binding import Binding
 
@@ -18,6 +21,10 @@ from manifest.audit.drift_auditor import DriftAuditor
 from manifest.audit.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
 from manifest.audit.blueprint_comparator import BlueprintComparator
 from manifest.ui.widgets import RequirementMap, ArchitectureGraph, FeatureTree, TaskTree, GateController
+from manifest.ui.widgets.structure_hierarchy_view import StructureHierarchyView
+from manifest.ui.widgets.structure_graph_view import StructureGraphView
+from manifest.ui.widgets.project_view import TaskTreeView, SprintStatusView, HistoryView
+from manifest.audit.architecture_metadata import load_architecture_with_metadata
 from manifest.ui.bootstrap_ui import run_bootstrap
 from manifest.ui.settings_screen import SettingsScreen
 from manifest.agents.task_scoper import TaskScoper
@@ -197,40 +204,33 @@ class ManifestApp(App):
                 # 2-A. Design Side (Architect / Blueprint)
                 with Vertical(id="design-side"):
                     with TabbedContent(id="design-tabs"):
-                        # View 1: Architect
-                        with TabPane("Architect (Intention)", id="tab-architect"):
-                            with VerticalScroll(id="architect-scroll"):
-                                yield Label("", id="architect-title", classes="side-title")
-                                yield RequirementMap(id="requirement-map")
-                                yield Static("", id="architect-content")
+                        # View 1: Structure (Hierarchy + Graph)
+                        with TabPane("Structure", id="tab-structure"):
+                            with TabbedContent(id="structure-sub-tabs"):
+                                # Hierarchy Tab
+                                with TabPane("Hierarchy", id="tab-structure-hierarchy"):
+                                    with VerticalScroll(id="structure-hierarchy-scroll"):
+                                        yield StructureHierarchyView(id="structure-hierarchy-view")
+                                
+                                # Graph Tab
+                                with TabPane("Graph", id="tab-structure-graph"):
+                                    with VerticalScroll(id="structure-graph-scroll"):
+                                        yield StructureGraphView(id="structure-graph-view")
                         
-                        # View 2: Blueprint
-                        with TabPane("Blueprint (Design)", id="tab-blueprint"):
-                            with VerticalScroll(id="blueprint-scroll"):
-                                yield Label("", id="blueprint-title", classes="side-title")
-                                yield ArchitectureGraph(id="architecture-graph")
-                                yield Static("", id="blueprint-content")
-                        
-                        # View 5: History
-                        with TabPane("History (Timeline)", id="tab-history"):
-                            with VerticalScroll(id="history-scroll"):
-                                yield Label("HISTORY", classes="side-title")
-                                yield RichLog(id="history-log", markup=True)
-                                yield Static("", id="history-timeline")
-                        
-                        # View 6: Feature Explorer (NEW)
-                        with TabPane("Feature Explorer", id="tab-features"):
-                            with VerticalScroll(id="feature-scroll"):
-                                yield Label("FEATURE EXPLORER", classes="side-title")
-                                yield FeatureTree("Features", id="feature-tree")
-                                yield Static("", id="feature-details")
-                        
-                        # View 7: Project Info (NEW)
-                        with TabPane("Project Info", id="tab-project"):
+                        # View 2: Project (Tasks + History)
+                        with TabPane("Project", id="tab-project"):
                             with VerticalScroll(id="project-scroll"):
-                                yield Label("PROJECT MANIFEST", classes="side-title")
-                                yield RichLog(id="project-log", markup=True)
-                                yield Static("", id="project-content")
+                                yield Label("PROJECT", classes="side-title")
+                                # Tasks Tree
+                                yield TaskTreeView(id="task-tree-view")
+                                yield Static("", classes="spacer")
+                                # Sprint Status
+                                yield Label("SPRINT STATUS", classes="side-title")
+                                yield SprintStatusView(id="sprint-status-view")
+                                yield Static("", classes="spacer")
+                                # History
+                                yield Label("HISTORY", classes="side-title")
+                                yield HistoryView(id="history-view")
 
                 # 2-B. Inspector Side (Verification)
                 with Vertical(id="inspector-side"):
@@ -318,10 +318,8 @@ class ManifestApp(App):
         await self.update_squad_channels()
         
         # Initialize views
-        await self.update_architect_view()
-        await self.update_blueprint_view()
-        await self.update_feature_explorer()
-        await self.update_project_view()
+        await self._load_structure_data()
+        await self._load_project_data()
         
         # Start drift audit (non-blocking to avoid blocking UI)
         asyncio.create_task(self.audit_drift())
@@ -666,43 +664,111 @@ class ManifestApp(App):
         data_pane = self.query_one("#insp-data")
         drift_pane = self.query_one("#insp-drift")
         
-        if event.pane.id == "tab-architect":
+        if event.pane.id == "tab-structure":
             visual_pane.styles.display = "block"
             data_pane.styles.display = "none"
             drift_pane.styles.display = "none"
-            self.current_view = "architect"
+            self.current_view = "structure"
             self.inspector_mode = "visual"
-        elif event.pane.id == "tab-blueprint":
+            # Load structure data when tab is activated
+            await self._load_structure_data()
+        elif event.pane.id == "tab-project":
             visual_pane.styles.display = "none"
             data_pane.styles.display = "block"
             drift_pane.styles.display = "none"
-            self.current_view = "blueprint"
-            self.inspector_mode = "data"
-        elif event.pane.id == "tab-history":
-            visual_pane.styles.display = "none"
-            data_pane.styles.display = "none"
-            drift_pane.styles.display = "none"
-            self.current_view = "history"
-        elif event.pane.id == "tab-project":
-            visual_pane.styles.display = "none"
-            data_pane.styles.display = "none"
-            drift_pane.styles.display = "none"
             self.current_view = "project"
+            self.inspector_mode = "data"
+            # Load project data when tab is activated
+            await self._load_project_data()
 
     def action_toggle_inspector(self) -> None:
         """Toggle inspector visibility."""
         side = self.query_one("#inspector-side")
         side.styles.display = "none" if side.styles.display == "block" else "block"
 
-    def action_show_history(self) -> None:
-        """Switch to history view."""
-        tabs = self.query_one("#design-tabs", TabbedContent)
-        tabs.active = "tab-history"
-
     def action_show_project(self) -> None:
-        """Switch to project info view."""
+        """Switch to project view."""
         tabs = self.query_one("#design-tabs", TabbedContent)
         tabs.active = "tab-project"
+    
+    async def _load_structure_data(self):
+        """Load and update structure view data."""
+        # Load architecture
+        architecture_file = self.manifest_dir / "architecture.json"
+        self.architecture_data = load_architecture_with_metadata(architecture_file)
+        
+        # Calculate status using BlueprintSynchronizer
+        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
+        
+        blueprint_file = self.manifest_dir / "blueprint.json"
+        blueprint_code_file = self.manifest_dir / "blueprint_code.json"
+        
+        top_down_blueprint = load_blueprint_with_metadata(blueprint_file, "llm_design", False)
+        bottom_up_blueprint = load_blueprint_with_metadata(blueprint_code_file, "code_extraction", True)
+        
+        # Calculate implementation status
+        status_info = self.blueprint_synchronizer.calculate_implementation_status(
+            top_down_blueprint,
+            bottom_up_blueprint,
+            self.architecture_data
+        )
+        
+        # Update hierarchy view
+        try:
+            hierarchy_view = self.query_one("#structure-hierarchy-view", StructureHierarchyView)
+            hierarchy_view.load_data(self.architecture_data, top_down_blueprint, status_info)
+        except Exception:
+            pass
+        
+        # Update graph view
+        try:
+            graph_view = self.query_one("#structure-graph-view", StructureGraphView)
+            graph_view.load_data(self.architecture_data, top_down_blueprint, status_info)
+        except Exception:
+            pass
+    
+    async def _load_project_data(self):
+        """Load and update project view data."""
+        # Load tasks from state
+        state = self.state_manager.get_state()
+        tasks = state.get("tasks", [])
+        sprints = state.get("sprints", [])
+        
+        # Update task tree
+        try:
+            task_tree = self.query_one("#task-tree-view", TaskTreeView)
+            task_tree.load_tasks(tasks)
+        except Exception:
+            pass
+        
+        # Update sprint status
+        try:
+            sprint_status = self.query_one("#sprint-status-view", SprintStatusView)
+            sprint_status.load_sprints(sprints)
+        except Exception:
+            pass
+        
+        # Load history (from git or state)
+        history = []
+        if GIT_AVAILABLE:
+            try:
+                repo = git.Repo(".")
+                commits = list(repo.iter_commits(max_count=50))
+                for commit in commits:
+                    history.append({
+                        "timestamp": commit.committed_datetime.isoformat(),
+                        "action": "commit",
+                        "details": f"{commit.message.split(chr(10))[0]} ({commit.hexsha[:8]})"
+                    })
+            except Exception:
+                pass
+        
+        # Update history view
+        try:
+            history_view = self.query_one("#history-view", HistoryView)
+            history_view.load_history(history)
+        except Exception:
+            pass
     
     def action_open_settings(self, initial_tab: str = "api_keys") -> None:
         """Open settings screen."""
