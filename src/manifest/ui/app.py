@@ -1077,6 +1077,10 @@ class ManifestApp(App):
                         if response_content:
                             self.state_manager.add_chat_message("main", "assistant", response_content)
                             await self.state_manager.save_state()
+                            
+                            # Try to extract and create tasks from orchestrator response
+                            # Look for task creation patterns in the response
+                            await self._process_orchestrator_response(response_content, log)
                     else:
                         log.write("[bold yellow]Failed to create orchestrator agent.[/]")
                 else:
