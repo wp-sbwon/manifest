@@ -617,6 +617,9 @@ class StructureManager:
             print(f"Would apply Blueprint update: {suggestion.suggestion_type}")
             return False
         
+        # Save backup before applying
+        self._save_blueprint_backup()
+        
         blueprint = self._load_blueprint()
         
         if suggestion.suggestion_type == "add_component" and suggestion.component:
@@ -635,7 +638,10 @@ class StructureManager:
                 "module_path": suggestion.component.module_path
             }
             
-            blueprint["components"].append(component_dict)
+            # Check if component already exists
+            existing = self._find_component_in_blueprint(suggestion.component.id, blueprint)
+            if not existing:
+                blueprint["components"].append(component_dict)
         
         elif suggestion.suggestion_type == "update_component" and suggestion.component:
             # Find and update existing component
@@ -657,6 +663,29 @@ class StructureManager:
                     if c.get("id") != suggestion.component_id
                 ]
         
+        elif suggestion.suggestion_type == "add_contract" and suggestion.contract:
+            if "contracts" not in blueprint:
+                blueprint["contracts"] = []
+            
+            contract_dict = {
+                "from_id": suggestion.contract.from_id,
+                "to_id": suggestion.contract.to_id,
+                "type": suggestion.contract.type,
+                "symbols": suggestion.contract.symbols,
+                "file": suggestion.contract.file
+            }
+            
+            # Check if contract already exists
+            existing_contract = next(
+                (c for c in blueprint.get("contracts", [])
+                 if (c.get("from_id") == contract_dict["from_id"] and
+                     c.get("to_id") == contract_dict["to_id"] and
+                     c.get("type") == contract_dict["type"])),
+                None
+            )
+            if not existing_contract:
+                blueprint["contracts"].append(contract_dict)
+        
         # Save updated blueprint
         return save_blueprint_with_metadata(
             blueprint,
@@ -665,6 +694,56 @@ class StructureManager:
             False,
             "automatic_update"
         )
+    
+    def apply_blueprint_updates_batch(
+        self,
+        suggestions: List[BlueprintUpdateSuggestion],
+        auto_apply: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Apply multiple Blueprint update suggestions in batch.
+        
+        Args:
+            suggestions: List of Blueprint update suggestions
+            auto_apply: If True, apply without confirmation
+            
+        Returns:
+            Dict with results:
+            {
+                "applied": int,
+                "failed": int,
+                "errors": List[str]
+            }
+        """
+        if not auto_apply:
+            return {
+                "applied": 0,
+                "failed": 0,
+                "errors": ["Auto-apply is disabled"]
+            }
+        
+        results = {
+            "applied": 0,
+            "failed": 0,
+            "errors": []
+        }
+        
+        # Save backup before batch update
+        self._save_blueprint_backup()
+        
+        for suggestion in suggestions:
+            try:
+                success = self.apply_blueprint_update(suggestion, auto_apply=True)
+                if success:
+                    results["applied"] += 1
+                else:
+                    results["failed"] += 1
+                    results["errors"].append(f"Failed to apply: {suggestion.suggestion_type}")
+            except Exception as e:
+                results["failed"] += 1
+                results["errors"].append(f"Error applying {suggestion.suggestion_type}: {str(e)}")
+        
+        return results
     
     def _load_blueprint(self) -> Dict[str, Any]:
         """Load current Blueprint."""
@@ -738,3 +817,31 @@ class StructureManager:
         blueprint = self._load_blueprint()
         component = self._find_component_in_blueprint(component_id, blueprint)
         return component.get("file", "") if component else ""
+    
+    def _save_blueprint_backup(self) -> bool:
+        """Save a backup of the current Blueprint before applying changes."""
+        try:
+            if not self.blueprint_file.exists():
+                return True  # Nothing to backup
+            
+            backup_file = self.blueprint_file.with_suffix(
+                f".backup.{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+            )
+            
+            import shutil
+            shutil.copy2(self.blueprint_file, backup_file)
+            
+            # Keep only last 5 backups
+            backup_dir = self.blueprint_file.parent
+            backups = sorted(
+                backup_dir.glob(f"{self.blueprint_file.stem}.backup.*.json"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True
+            )
+            for old_backup in backups[5:]:
+                old_backup.unlink()
+            
+            return True
+        except Exception as e:
+            print(f"Warning: Failed to create Blueprint backup: {e}")
+            return False

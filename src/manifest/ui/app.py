@@ -4,7 +4,7 @@ Manifest TUI - Main application with 5-view workspace.
 import asyncio
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, List
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll, Grid
 from textual.widgets import Header, Footer, Tree, Input, RichLog, TabbedContent, TabPane, Static, Label, Button
@@ -186,6 +186,10 @@ class ManifestApp(App):
         self.project_data = {}
         self.current_view = "architect"
         self.inspector_mode = "visual"
+        
+        # Pending suggestions for approval
+        self._pending_blueprint_suggestions: List = []
+        self._pending_code_suggestions: List = []
         
         # Initialize agent coordination components
         self.task_scoper = TaskScoper(self.manifest_dir)
@@ -671,6 +675,10 @@ class ManifestApp(App):
                     drift_log.write(f"  • {suggestion.suggestion_type}: {suggestion.reason}")
                 if len(suggestions) > 5:
                     drift_log.write(f"  ... and {len(suggestions) - 5} more suggestions")
+                
+                # Store suggestions for potential approval
+                self._pending_blueprint_suggestions = suggestions
+                drift_log.write(f"[bold cyan]Use /apply_blueprint_updates to apply all suggestions, or /apply_blueprint_update <index> for specific one[/]")
         except Exception as e:
             # Silently fail if structure manager has issues
             pass
@@ -706,6 +714,11 @@ class ManifestApp(App):
                         drift_log.write(f"[bold green]Migration Plan: {len(migration_steps)} steps[/]")
                         for step in migration_steps:
                             drift_log.write(f"  Step {step.get('step', '?')}: {step.get('action', 'Unknown')} (Priority: {step.get('priority', 'unknown')})")
+                
+                # Store code suggestions for potential approval
+                self._pending_code_suggestions = code_suggestions
+                if code_suggestions:
+                    drift_log.write(f"[bold cyan]Use /apply_code_changes to apply all code changes, or /apply_code_change <index> for specific one[/]")
         except Exception as e:
             # Silently fail if structure manager has issues
             pass
@@ -1071,6 +1084,49 @@ class ManifestApp(App):
                             log.write("[bold yellow]Agent coordinator not available.[/]")
                     else:
                         log.write("[bold yellow]Usage: /start_sprint <sprint_id>[/]")
+                elif command == "apply_blueprint_updates" or command.startswith("apply_blueprint_updates"):
+                    # Apply all pending Blueprint update suggestions
+                    if not self._pending_blueprint_suggestions:
+                        log.write("[bold yellow]No pending Blueprint update suggestions.[/]")
+                    else:
+                        log.write(f"[bold green]Applying {len(self._pending_blueprint_suggestions)} Blueprint updates...[/]")
+                        results = self.structure_manager.apply_blueprint_updates_batch(
+                            self._pending_blueprint_suggestions,
+                            auto_apply=True
+                        )
+                        if results["applied"] > 0:
+                            log.write(f"[bold green]Applied {results['applied']} updates successfully.[/]")
+                            self._pending_blueprint_suggestions = []
+                            # Reload blueprint data
+                            await self.load_blueprint_data()
+                            await self._load_structure_data()
+                        if results["failed"] > 0:
+                            log.write(f"[bold red]Failed to apply {results['failed']} updates.[/]")
+                            for error in results["errors"][:5]:
+                                log.write(f"  • {error}")
+                elif command == "apply_blueprint_update" or command.startswith("apply_blueprint_update"):
+                    # Apply specific Blueprint update by index
+                    parts = user_input.split()
+                    if len(parts) >= 3:
+                        try:
+                            index = int(parts[2])
+                            if 0 <= index < len(self._pending_blueprint_suggestions):
+                                suggestion = self._pending_blueprint_suggestions[index]
+                                log.write(f"[bold green]Applying Blueprint update: {suggestion.suggestion_type}...[/]")
+                                success = self.structure_manager.apply_blueprint_update(suggestion, auto_apply=True)
+                                if success:
+                                    log.write(f"[bold green]Update applied successfully.[/]")
+                                    self._pending_blueprint_suggestions.pop(index)
+                                    await self.load_blueprint_data()
+                                    await self._load_structure_data()
+                                else:
+                                    log.write(f"[bold red]Failed to apply update.[/]")
+                            else:
+                                log.write(f"[bold yellow]Invalid index. Available: 0-{len(self._pending_blueprint_suggestions)-1}[/]")
+                        except ValueError:
+                            log.write("[bold yellow]Usage: /apply_blueprint_update <index>[/]")
+                    else:
+                        log.write("[bold yellow]Usage: /apply_blueprint_update <index>[/]")
                 else:
                     log.write(f"[bold yellow]Unknown command: {command}[/]")
             else:
