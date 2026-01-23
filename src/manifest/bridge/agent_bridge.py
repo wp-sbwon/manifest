@@ -72,6 +72,14 @@ class AgentBridge:
         self.orchestrator = Orchestrator(state_manager)
         self.agent_manager = AgentManager(state_manager, executor=self.executor)
         
+        # Shadow Manager for isolated agent execution (optional)
+        from manifest.runtime.shadow_manager import ShadowManager
+        self.shadow_manager = ShadowManager(
+            working_dir=self.working_dir,
+            manifest_dir=state_manager.manifest_dir
+        )
+        self.use_shadow_processes = False  # Can be enabled via settings
+        
         self.is_connected = False
         self._message_id_counter = 0
         self._active_agents: Dict[str, Dict[str, Any]] = {}  # task_id -> agent info
@@ -165,7 +173,8 @@ class AgentBridge:
         agent_type: str,
         context: Dict[str, Any],
         model_config: Dict[str, Any],
-        stage: Optional[str] = None
+        stage: Optional[str] = None,
+        use_shadow: Optional[bool] = None
     ) -> bool:
         """
         Start an agent mission with scoped context and model config.
@@ -176,7 +185,88 @@ class AgentBridge:
             context: Agent context (tiered context)
             model_config: Model configuration
             stage: Optional stage (planner, tdd_test, coder, test, etc.)
+            use_shadow: Use shadow process (None = use default setting)
         """
+        # Determine if shadow process should be used
+        use_shadow_process = use_shadow if use_shadow is not None else self.use_shadow_processes
+        
+        if use_shadow_process:
+            # Use Shadow Manager for isolated execution
+            return await self._start_shadow_agent(task_id, agent_type, context, model_config, stage)
+        else:
+            # Use direct execution (existing method)
+            return await self._start_direct_agent(task_id, agent_type, context, model_config, stage)
+    
+    async def _start_shadow_agent(
+        self,
+        task_id: str,
+        agent_type: str,
+        context: Dict[str, Any],
+        model_config: Dict[str, Any],
+        stage: Optional[str] = None
+    ) -> bool:
+        """Start agent in shadow process."""
+        channel = f"shadow-{task_id}-{agent_type}"
+        
+        # Output callback to stream to state manager
+        async def output_callback(output_channel: str, content: str):
+            """Stream shadow process output to state manager."""
+            self.state_manager.add_chat_message(output_channel, "assistant", content)
+            await self.state_manager.save_state()
+        
+        try:
+            process_id = await self.shadow_manager.start_shadow_agent(
+                task_id=task_id,
+                agent_type=agent_type,
+                context=context,
+                model_config=model_config,
+                stage=stage,
+                output_callback=output_callback
+            )
+            
+            # Record shadow process
+            self._active_agents[task_id] = {
+                "agent_type": agent_type,
+                "status": "active",
+                "channel": channel,
+                "context": context,
+                "model_config": model_config,
+                "stage": stage,
+                "process_id": process_id,
+                "shadow": True
+            }
+            
+            # Initial message
+            self.state_manager.add_chat_message(
+                channel,
+                "assistant",
+                f"[{agent_type.upper()}] Agent started in shadow process for task {task_id}\n"
+                f"Process ID: {process_id}\n"
+                f"Stage: {stage or 'default'}\n"
+                f"Model: {model_config.get('model', 'default')}"
+            )
+            
+            await self.state_manager.save_state()
+            return True
+            
+        except Exception as e:
+            self.state_manager.add_chat_message(
+                channel,
+                "assistant",
+                f"[error] Failed to start shadow agent: {str(e)}"
+            )
+            await self.state_manager.save_state()
+            return False
+    
+    async def _start_direct_agent(
+        self,
+        task_id: str,
+        agent_type: str,
+        context: Dict[str, Any],
+        model_config: Dict[str, Any],
+        stage: Optional[str] = None
+    ) -> bool:
+        """Start agent with direct execution (existing method)."""
         # Create agent using agent manager
         agent = await self.agent_manager.create_agent(
             agent_type=agent_type,
@@ -214,7 +304,8 @@ class AgentBridge:
                 "channel": channel,
                 "context": context,
                 "model_config": model_config,
-                "stage": stage
+                "stage": stage,
+                "shadow": False
             }
             
             await self.state_manager.save_state()
