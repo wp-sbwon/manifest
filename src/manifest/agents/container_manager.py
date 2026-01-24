@@ -155,7 +155,11 @@ class ContainerManager:
                 detach=True,
                 remove=False,
                 stdout=True,
-                stderr=True
+                stderr=True,
+                # Resource limits
+                mem_limit="1g",
+                cpu_period=100000,
+                cpu_quota=50000  # 50% CPU limit
             )
             
             self.active_containers[task_id] = container

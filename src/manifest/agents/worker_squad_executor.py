@@ -34,6 +34,7 @@ class WorkerSquadExecutor:
     Attributes:
         coordinator: Reference to AgentCoordinator for starting agents.
         state_manager: Reference to StateManager for persisting stage results.
+        timeouts: Dictionary mapping stage names to timeouts in seconds.
     """
     
     def __init__(self, coordinator: Any):
@@ -46,6 +47,21 @@ class WorkerSquadExecutor:
         self.coordinator = coordinator
         self.state_manager = coordinator.state_manager
         self.recovery_manager = FailureRecoveryManager(coordinator)
+        
+        # Default timeouts for each stage (in seconds)
+        self.timeouts = {
+            "planner": 300.0,      # 5 minutes
+            "tdd_test": 300.0,     # 5 minutes
+            "coder": 900.0,        # 15 minutes
+            "test": 300.0,         # 5 minutes
+            "debug": 600.0,        # 10 minutes
+            "self_review": 300.0,  # 5 minutes
+            "approver": 300.0      # 5 minutes
+        }
+    
+    def set_timeout(self, stage: str, timeout: float):
+        """Set timeout for a specific stage."""
+        self.timeouts[stage] = timeout
     
     async def execute(self, task_id: str) -> Dict[str, Any]:
         """Execute the complete Worker Squad workflow for a task.
@@ -178,7 +194,35 @@ class WorkerSquadExecutor:
         # Save stage result
         await self.state_manager.save_worker_squad_stage_async(task_id, "coder", coder_result)
         if not coder_result.get("success"):
-            return {"success": False, "stages": stages, "error": coder_result.get("error", "Coder stage failed")}
+            # Attempt recovery
+            recovery_result = await self.recovery_manager.attempt_recovery(
+                task_id=task_id,
+                stage="coder",
+                agent_type="coder",
+                failure_result=coder_result,
+                previous_stages=previous_stages
+            )
+            
+            if recovery_result.get("recovered"):
+                coder_result = recovery_result["result"]
+                coder_result["status"] = "completed"
+                coder_result["recovered"] = True
+                coder_result["recovery_strategy"] = recovery_result["strategy_used"].value
+                stages["coder"] = coder_result
+                previous_stages["coder"] = coder_result
+                await self.state_manager.save_worker_squad_stage_async(task_id, "coder", coder_result)
+                logger.info(f"Coder stage recovered for task {task_id} using {recovery_result['strategy_used'].value}")
+            else:
+                error_msg = recovery_result.get("error", coder_result.get("error", "Coder stage failed"))
+                # Publish workflow failed event
+                if hasattr(self.coordinator, 'event_bus'):
+                    await self.coordinator.event_bus.publish(WorkflowEvent(
+                        event_type=WorkflowEventType.WORKFLOW_FAILED,
+                        task_id=task_id,
+                        stage="coder",
+                        data={"error": error_msg, "recovery_failed": True}
+                    ))
+                return {"success": False, "stages": stages, "error": error_msg}
         
         # 4. Test (run tests)
         test_result = await self._execute_test_stage(task_id, previous_stages)
@@ -208,18 +252,49 @@ class WorkerSquadExecutor:
                 # Save updated test result
                 await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
             else:
-                break
+                # Attempt recovery for debug failure
+                recovery_result = await self.recovery_manager.attempt_recovery(
+                    task_id=task_id,
+                    stage="debug",
+                    agent_type="debug",
+                    failure_result=debug_result,
+                    previous_stages=previous_stages
+                )
+                if recovery_result.get("recovered"):
+                    debug_result = recovery_result["result"]
+                    # ... handle recovered debug ...
+                    test_result = await self._execute_test_stage(task_id, previous_stages)
+                    stages["test"] = test_result
+                    previous_stages["test"] = test_result
+                    await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
+                else:
+                    break
         
         if not test_result.get("success"):
-            # Publish workflow failed event
-            if hasattr(self.coordinator, 'event_bus'):
-                await self.coordinator.event_bus.publish(WorkflowEvent(
-                    event_type=WorkflowEventType.WORKFLOW_FAILED,
-                    task_id=task_id,
-                    stage="test",
-                    data={"error": "Tests failed after max debug iterations"}
-                ))
-            return {"success": False, "stages": stages, "error": "Tests failed after max debug iterations"}
+            # Attempt recovery for final test failure
+            recovery_result = await self.recovery_manager.attempt_recovery(
+                task_id=task_id,
+                stage="test",
+                agent_type="test",
+                failure_result=test_result,
+                previous_stages=previous_stages
+            )
+            
+            if recovery_result.get("recovered"):
+                test_result = recovery_result["result"]
+                stages["test"] = test_result
+                previous_stages["test"] = test_result
+                await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
+            else:
+                # Publish workflow failed event
+                if hasattr(self.coordinator, 'event_bus'):
+                    await self.coordinator.event_bus.publish(WorkflowEvent(
+                        event_type=WorkflowEventType.WORKFLOW_FAILED,
+                        task_id=task_id,
+                        stage="test",
+                        data={"error": "Tests failed after max debug iterations"}
+                    ))
+                return {"success": False, "stages": stages, "error": "Tests failed after max debug iterations"}
         
         # 6. Self Review
         self_review_result = await self._execute_self_review_stage(task_id, previous_stages)
@@ -313,8 +388,9 @@ class WorkerSquadExecutor:
         Returns:
             Dictionary with stage results including success, output, and parsed data.
         """
+        timeout = self.timeouts.get("planner", 300.0)
         result = await self.coordinator.start_worker_agent_and_wait(
-            task_id, "planner", stage="planner", previous_stages=previous_stages or {}, timeout=600.0
+            task_id, "planner", stage="planner", previous_stages=previous_stages or {}, timeout=timeout
         )
         
         # Extract plan from parsed data
@@ -374,8 +450,9 @@ class WorkerSquadExecutor:
                 task["worker_squad"]["stages"]["tdd_test"] = test_plan
                 self.state_manager.set_task_checklist(tasks)
         
+        timeout = self.timeouts.get("coder", 900.0)
         result = await self.coordinator.start_worker_agent_and_wait(
-            task_id, "coder", stage="coder", previous_stages=previous_stages or {}, timeout=1200.0
+            task_id, "coder", stage="coder", previous_stages=previous_stages or {}, timeout=timeout
         )
         
         # Extract files modified from parsed data
@@ -405,8 +482,9 @@ class WorkerSquadExecutor:
         Returns:
             Dictionary with stage results including status, test skeleton, test plan, and TDD mode flag.
         """
+        timeout = self.timeouts.get("tdd_test", 300.0)
         result = await self.coordinator.start_worker_agent_and_wait(
-            task_id, "test", stage="tdd_test", previous_stages=previous_stages or {}, timeout=600.0
+            task_id, "test", stage="tdd_test", previous_stages=previous_stages or {}, timeout=timeout
         )
         
         # Extract test skeleton and plan from parsed data
@@ -434,8 +512,9 @@ class WorkerSquadExecutor:
         Returns:
             Dictionary with test execution results including success, status, and test results.
         """
+        timeout = self.timeouts.get("test", 300.0)
         result = await self.coordinator.start_worker_agent_and_wait(
-            task_id, "test", stage="test", previous_stages=previous_stages or {}, timeout=600.0
+            task_id, "test", stage="test", previous_stages=previous_stages or {}, timeout=timeout
         )
         
         # Extract test results from parsed data
@@ -465,8 +544,9 @@ class WorkerSquadExecutor:
         Returns:
             Dictionary with debug results including status and list of issues that were fixed.
         """
+        timeout = self.timeouts.get("debug", 600.0)
         result = await self.coordinator.start_worker_agent_and_wait(
-            task_id, "debug", stage="debug", previous_stages=previous_stages or {}, timeout=600.0
+            task_id, "debug", stage="debug", previous_stages=previous_stages or {}, timeout=timeout
         )
         
         # Extract issues fixed from parsed data
@@ -490,8 +570,9 @@ class WorkerSquadExecutor:
         Returns:
             Dictionary with review results including status, plan compliance flag, and any findings.
         """
+        timeout = self.timeouts.get("self_review", 300.0)
         result = await self.coordinator.start_worker_agent_and_wait(
-            task_id, "coder", stage="self_review", previous_stages=previous_stages or {}, timeout=600.0
+            task_id, "coder", stage="self_review", previous_stages=previous_stages or {}, timeout=timeout
         )
         
         # Parse findings from output (could be enhanced with structured parsing)
@@ -526,8 +607,9 @@ class WorkerSquadExecutor:
         Returns:
             Dictionary with approval results including status, decision ("approved" or "rejected"), and optional feedback.
         """
+        timeout = self.timeouts.get("approver", 300.0)
         result = await self.coordinator.start_worker_agent_and_wait(
-            task_id, "approver", stage="approver", previous_stages=previous_stages or {}, timeout=600.0
+            task_id, "approver", stage="approver", previous_stages=previous_stages or {}, timeout=timeout
         )
         
         # Extract decision and feedback from parsed data

@@ -386,3 +386,62 @@ class Completed(Message):
 TaskManagementWidget.Cancelled = Cancelled
 TaskManagementWidget.RollbackRequested = RollbackRequested
 TaskManagementWidget.Completed = Completed
+
+
+class SprintApprovalWidget(Container):
+    """Approval buttons panel for sprint gates."""
+    
+    def __init__(self, sprint_id: Optional[str] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.sprint_id = sprint_id
+    
+    def compose(self):
+        """Compose the sprint approval widget."""
+        with Vertical():
+            yield Label(f"Sprint: {self.sprint_id or 'No sprint selected'}", id="sprint-label")
+            with Horizontal():
+                yield Button("✅ Approve Sprint", id="approve-sprint-btn", variant="success")
+                yield Button("❌ Reject Sprint", id="reject-sprint-btn", variant="error")
+                yield Button("⚡ Start Sprint", id="start-sprint-btn", variant="primary")
+    
+    @on(Button.Pressed, "#approve-sprint-btn")
+    def on_approve(self):
+        """Handle approve button press."""
+        self.post_message(SprintApprovalWidget.Approved(self.sprint_id))
+    
+    @on(Button.Pressed, "#reject-sprint-btn")
+    def on_reject(self):
+        """Handle reject button press."""
+        self.post_message(SprintApprovalWidget.Rejected(self.sprint_id))
+        
+    @on(Button.Pressed, "#start-sprint-btn")
+    def on_start(self):
+        """Handle start button press."""
+        self.post_message(SprintApprovalWidget.Started(self.sprint_id))
+
+
+class SprintApproved(Message):
+    """Message sent when sprint is approved."""
+    def __init__(self, sprint_id: Optional[str]):
+        super().__init__()
+        self.sprint_id = sprint_id
+
+
+class SprintRejected(Message):
+    """Message sent when sprint is rejected."""
+    def __init__(self, sprint_id: Optional[str]):
+        super().__init__()
+        self.sprint_id = sprint_id
+
+
+class SprintStarted(Message):
+    """Message sent when sprint is started."""
+    def __init__(self, sprint_id: Optional[str]):
+        super().__init__()
+        self.sprint_id = sprint_id
+
+
+# Attach message classes to SprintApprovalWidget
+SprintApprovalWidget.Approved = SprintApproved
+SprintApprovalWidget.Rejected = SprintRejected
+SprintApprovalWidget.Started = SprintStarted

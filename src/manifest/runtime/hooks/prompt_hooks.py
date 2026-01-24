@@ -162,9 +162,8 @@ class VisualRealityHook(PromptHook):
         manifest_dir = Path(".manifest")
         architecture_file = manifest_dir / "architecture.json"
         blueprint_file = manifest_dir / "blueprint.json"
-        blueprint_code_file = manifest_dir / "blueprint_code.json"
         
-        # Architecture status
+        # 1. Architecture status
         if architecture_file.exists():
             import json
             try:
@@ -174,7 +173,7 @@ class VisualRealityHook(PromptHook):
                 features = architecture.get("features", [])
                 if features:
                     visual_reality_parts.append("### Architecture Status")
-                    for feature in features[:5]:  # Limit to first 5
+                    for feature in features:
                         name = feature.get("name", "Unknown")
                         status = feature.get("status", "unknown")
                         completion = feature.get("completion_percentage", 0)
@@ -182,32 +181,59 @@ class VisualRealityHook(PromptHook):
             except Exception:
                 pass
         
-        # Blueprint comparison (if synchronizer available)
-        if self.blueprint_synchronizer:
+        # 2. Implementation Status & Drift
+        if self.blueprint_synchronizer and blueprint_file.exists():
             try:
-                status = self.blueprint_synchronizer.calculate_implementation_status()
-                if status:
+                from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
+                top_down = BlueprintLoader.load_blueprint(manifest_dir)
+                bottom_up = BlueprintLoader.load_code_blueprint(manifest_dir)
+                
+                status_info = self.blueprint_synchronizer.calculate_implementation_status(top_down, bottom_up)
+                
+                if status_info:
                     visual_reality_parts.append("\n### Implementation Status")
-                    implemented = status.get("implemented", 0)
-                    ghost = status.get("ghost", 0)
-                    drift = status.get("drift", 0)
-                    visual_reality_parts.append(f"- Implemented: {implemented} components")
-                    visual_reality_parts.append(f"- Ghost (unimplemented): {ghost} components")
-                    visual_reality_parts.append(f"- Drift (inconsistent): {drift} components")
-            except Exception:
-                pass
+                    component_statuses = status_info.get("component_statuses", {})
+                    
+                    counts = {"implemented": 0, "ghost": 0, "drift": 0, "extra": 0}
+                    for s in component_statuses.values():
+                        if s in counts:
+                            counts[s] += 1
+                    
+                    visual_reality_parts.append(f"- Implemented: {counts['implemented']} components")
+                    visual_reality_parts.append(f"- Ghost (unimplemented): {counts['ghost']} components")
+                    visual_reality_parts.append(f"- Drift (inconsistent): {counts['drift']} components")
+                    
+                    # Add specific drift details
+                    drifts = status_info.get("component_drifts", {})
+                    if drifts:
+                        visual_reality_parts.append("\n#### Active Drift Details:")
+                        for comp_id, messages in drifts.items():
+                            visual_reality_parts.append(f"- **{comp_id}**:")
+                            for msg in messages:
+                                visual_reality_parts.append(f"  - {msg}")
+            except Exception as e:
+                logger.error(f"Error generating implementation status for Visual Reality: {e}")
         
-        # Task status (if task_id in context)
+        # 3. Task status (if task_id in context)
         if context:
             task_id = context.get("task_id")
             if task_id:
                 tasks = self.state_manager.get_task_checklist()
                 task = next((t for t in tasks if t.get("id") == task_id), None)
                 if task:
-                    visual_reality_parts.append("\n### Current Task Status")
-                    visual_reality_parts.append(f"- Task: {task.get('name', 'Unknown')}")
-                    visual_reality_parts.append(f"- Status: {task.get('status', 'unknown')}")
-                    visual_reality_parts.append(f"- Stage: {task.get('stage', 'unknown')}")
+                    visual_reality_parts.append("\n### Current Task Context")
+                    visual_reality_parts.append(f"- **Task ID**: {task_id}")
+                    visual_reality_parts.append(f"- **Name**: {task.get('name', 'Unknown')}")
+                    visual_reality_parts.append(f"- **Status**: {task.get('status', 'unknown')}")
+                    visual_reality_parts.append(f"- **Stage**: {task.get('stage', 'unknown')}")
+                    
+                    # Add allowed modifications if available
+                    scope = task.get("scope", {})
+                    allowed_files = scope.get("allowed_files", [])
+                    if allowed_files:
+                        visual_reality_parts.append("- **Allowed Files**:")
+                        for f in allowed_files:
+                            visual_reality_parts.append(f"  - {f}")
         
         return "\n".join(visual_reality_parts) if visual_reality_parts else ""
     
