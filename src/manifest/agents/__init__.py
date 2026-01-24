@@ -2,7 +2,7 @@
 Agent modules - Multi-agent coordination and context management.
 """
 # Lazy imports to avoid circular dependencies
-__all__ = ["AgentCoordinator", "ContextProvider", "TaskScoper", "SkillsManager"]
+__all__ = ["AgentCoordinator", "ContextProvider", "TaskScoper", "SkillsManager", "WorkerSquadExecutor", "SprintExecutor"]
 
 def __getattr__(name):
     """Lazy import for agent modules."""
@@ -18,4 +18,10 @@ def __getattr__(name):
     elif name == "SkillsManager":
         from manifest.agents.skills_manager import SkillsManager
         return SkillsManager
+    elif name == "WorkerSquadExecutor":
+        from manifest.agents.worker_squad_executor import WorkerSquadExecutor
+        return WorkerSquadExecutor
+    elif name == "SprintExecutor":
+        from manifest.agents.sprint_executor import SprintExecutor
+        return SprintExecutor
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
