@@ -4,6 +4,9 @@ Allows injection of Visual Reality and other context modifications.
 """
 from typing import Dict, Any, Optional, List, Callable, Awaitable
 from abc import ABC, abstractmethod
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class PromptHook(ABC):
@@ -241,7 +244,7 @@ class HookManager:
                 )
             except Exception as e:
                 # Log error but continue with other hooks
-                print(f"Error in hook {hook.__class__.__name__}: {e}")
+                logger.error(f"Error in hook {hook.__class__.__name__}: {e}", exc_info=True)
                 continue
         
         return modified_prompt
