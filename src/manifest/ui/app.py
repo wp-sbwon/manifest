@@ -28,6 +28,7 @@ from manifest.agents.task_scoper import TaskScoper
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.agent_coordinator import AgentCoordinator
 from manifest.ui.commands.command_handler import CommandHandler
+from manifest.ui.data.data_loader import DataLoader
 from manifest.core.logger import get_logger
 
 try:
@@ -201,6 +202,9 @@ class ManifestApp(App):
         
         # Command handler
         self.command_handler: Optional[CommandHandler] = None
+        
+        # Data loader
+        self.data_loader = DataLoader(self.manifest_dir)
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -295,9 +299,9 @@ class ManifestApp(App):
             log.write("[bold yellow]Or set environment variables: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY[/]")
         
         # Load data
-        await self.load_intent_data()
-        await self.load_blueprint_data()
-        await self.load_project_data()
+        self.intent_data = await self.data_loader.load_intent_data()
+        self.blueprint_data = await self.data_loader.load_blueprint_data()
+        self.project_data = await self.data_loader.load_project_data()
         
         # Initialize task tree
         await self.update_task_tree()
@@ -347,24 +351,11 @@ class ManifestApp(App):
 
     async def load_intent_data(self):
         """Load intent.json data."""
-        intent_file = self.manifest_dir / "intent.json"
-        if intent_file.exists():
-            try:
-                with open(intent_file, "r") as f:
-                    self.intent_data = json.load(f)
-            except Exception:
-                self.intent_data = {"version": "1.0", "sprint": "", "features": []}
-        else:
-            self.intent_data = {"version": "1.0", "sprint": "", "features": []}
+        self.intent_data = await self.data_loader.load_intent_data()
 
     async def load_blueprint_data(self):
         """Load blueprint.json data with metadata."""
-        from manifest.audit.blueprint_loader import BlueprintLoader
-        self.blueprint_data = BlueprintLoader.load_blueprint(
-            self.manifest_dir,
-            with_metadata=True,
-            default_source="llm_design"
-        )
+        self.blueprint_data = await self.data_loader.load_blueprint_data()
 
     async def load_project_data(self):
         """Load project.json data (strict doc > view).
@@ -372,20 +363,7 @@ class ManifestApp(App):
         Note: project.json is now in docs/project-manifest/ for Manifest project documentation.
         For user projects, this would be in .manifest/ directory.
         """
-        # For Manifest project itself, load from docs/project-manifest/
-        project_file = Path("docs/project-manifest/project.json")
-        if not project_file.exists():
-            # Fallback: try .manifest/ for user projects
-            project_file = self.manifest_dir / "project.json"
-        
-        if project_file.exists():
-            try:
-                with open(project_file, "r") as f:
-                    self.project_data = json.load(f)
-            except Exception:
-                self.project_data = {}
-        else:
-            self.project_data = {}
+        self.project_data = await self.data_loader.load_project_data()
 
     async def update_architect_view(self):
         """Update the Architect view with intent data."""
