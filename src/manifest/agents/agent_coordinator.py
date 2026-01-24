@@ -301,6 +301,248 @@ class AgentCoordinator:
         
         return success
     
+    async def start_worker_agent_and_wait(
+        self,
+        task_id: str,
+        agent_type: str,
+        use_container: Optional[bool] = None,
+        stage: Optional[str] = None,
+        previous_stages: Optional[Dict[str, Any]] = None,
+        timeout: Optional[float] = None
+    ) -> Dict[str, Any]:
+        """Start a worker agent and wait for completion.
+        
+        This method starts an agent and waits for it to complete, then returns
+        the parsed results. This is used by Worker Squad to ensure each stage
+        completes before moving to the next.
+        
+        Args:
+            task_id: Unique identifier of the task the agent will work on.
+            agent_type: Type of worker agent to start.
+            use_container: Whether to force container execution.
+            stage: Current stage in the workflow.
+            previous_stages: Dictionary containing results from previous stages.
+            timeout: Optional timeout in seconds. If None, waits indefinitely.
+        
+        Returns:
+            Dictionary containing:
+            - success: Boolean indicating if agent completed successfully
+            - output: Full agent output text
+            - parsed_data: Parsed/structured data from output (if available)
+            - status: Agent completion status
+            - error: Optional error message if failed
+        """
+        import asyncio
+        
+        # Start the agent
+        success = await self.start_worker_agent(
+            task_id, agent_type, use_container, stage, previous_stages
+        )
+        
+        if not success:
+            return {
+                "success": False,
+                "output": "",
+                "parsed_data": {},
+                "status": "failed_to_start",
+                "error": "Failed to start agent"
+            }
+        
+        # Get channel for this agent
+        channel = f"squad-{task_id}-{agent_type}"
+        
+        # Wait for agent completion by monitoring channel
+        start_time = asyncio.get_event_loop().time()
+        last_message_count = 0
+        max_wait_iterations = 300  # 5 minutes max (1 second per iteration)
+        wait_iteration = 0
+        
+        while wait_iteration < max_wait_iterations:
+            # Check timeout
+            if timeout and (asyncio.get_event_loop().time() - start_time) > timeout:
+                return {
+                    "success": False,
+                    "output": "",
+                    "parsed_data": {},
+                    "status": "timeout",
+                    "error": f"Agent execution timed out after {timeout} seconds"
+                }
+            
+            # Check if agent is still active
+            if task_id not in self.active_agents:
+                # Agent completed (removed from active agents)
+                break
+            
+            # Check agent status via bridge (for direct execution)
+            if self.agent_bridge and task_id in self.agent_bridge._active_agents:
+                agent_info = self.agent_bridge._active_agents[task_id]
+                if agent_info.get("completed") or agent_info.get("status") in ["completed", "stopped", "failed"]:
+                    break
+            
+            # Check agent status
+            agent_status = await self.get_agent_status(task_id)
+            if agent_status.get("status") in ["completed", "stopped", "failed"]:
+                break
+            
+            # Check channel for "complete" message or new messages
+            history = self.state_manager.get_chat_history(channel)
+            current_message_count = len(history)
+            
+            # If new messages appeared, check if last message indicates completion
+            if current_message_count > last_message_count and history:
+                last_message = history[-1]
+                content = last_message.get("content", "")
+                
+                # Check for completion indicators
+                if any(indicator in content.lower() for indicator in [
+                    "[complete]", "[finished]", "[done]", "task completed"
+                ]):
+                    break
+            
+            last_message_count = current_message_count
+            
+            # Wait a bit before checking again
+            await asyncio.sleep(1.0)
+            wait_iteration += 1
+        
+        # Get final output from channel
+        history = self.state_manager.get_chat_history(channel)
+        output = "\n".join([
+            msg.get("content", "") 
+            for msg in history 
+            if msg.get("role") == "assistant"
+        ])
+        
+        # Parse output based on agent type and stage
+        parsed_data = self._parse_agent_output(agent_type, stage, output)
+        
+        # Determine final status
+        if wait_iteration >= max_wait_iterations:
+            status = "timeout"
+            success = False
+        elif task_id not in self.active_agents:
+            status = "completed"
+            success = True
+        else:
+            agent_status = await self.get_agent_status(task_id)
+            status = agent_status.get("status", "unknown")
+            success = status == "completed"
+        
+        return {
+            "success": success,
+            "output": output,
+            "parsed_data": parsed_data,
+            "status": status,
+            "error": None if success else f"Agent status: {status}"
+        }
+    
+    def _parse_agent_output(
+        self,
+        agent_type: str,
+        stage: Optional[str],
+        output: str
+    ) -> Dict[str, Any]:
+        """Parse agent output to extract structured data.
+        
+        Attempts to extract structured information from agent output based on
+        agent type and stage. This helps Worker Squad use agent results in
+        subsequent stages.
+        
+        Args:
+            agent_type: Type of agent that produced the output.
+            stage: Stage in the workflow.
+            output: Raw agent output text.
+        
+        Returns:
+            Dictionary with parsed/structured data. Structure varies by agent type.
+        """
+        import re
+        import json
+        
+        parsed = {}
+        
+        if agent_type == "planner":
+            # Extract plan structure
+            # Look for JSON blocks
+            json_match = re.search(r'\{[^{}]*"plan"[^{}]*\}', output, re.DOTALL)
+            if json_match:
+                try:
+                    plan_data = json.loads(json_match.group(0))
+                    parsed["plan"] = plan_data
+                except:
+                    pass
+            
+            # Extract task breakdown
+            task_pattern = r'(?:Task|Step)\s*\d+[:\-]\s*(.+?)(?:\n|$)'
+            tasks = re.findall(task_pattern, output, re.IGNORECASE | re.MULTILINE)
+            if tasks:
+                parsed["tasks"] = [t.strip() for t in tasks]
+            
+            # Extract estimated time
+            time_match = re.search(r'(?:estimate|time|duration)[:\s]+(\d+)\s*(?:hours?|hrs?)', output, re.IGNORECASE)
+            if time_match:
+                parsed["estimated_hours"] = int(time_match.group(1))
+        
+        elif agent_type == "test" and stage == "tdd_test":
+            # Extract test skeleton
+            test_skeleton_match = re.search(r'```(?:python|py)?\n(.*?)```', output, re.DOTALL)
+            if test_skeleton_match:
+                parsed["test_skeleton"] = test_skeleton_match.group(1)
+            
+            # Extract test plan
+            plan_match = re.search(r'(?:test\s+plan|plan)[:\s]+(.+?)(?:\n\n|\Z)', output, re.IGNORECASE | re.DOTALL)
+            if plan_match:
+                parsed["test_plan"] = plan_match.group(1).strip()
+        
+        elif agent_type == "test" and stage == "test":
+            # Extract test results
+            # Look for test result patterns
+            passed_match = re.search(r'(?:passed|PASSED)[:\s]+(\d+)', output, re.IGNORECASE)
+            failed_match = re.search(r'(?:failed|FAILED)[:\s]+(\d+)', output, re.IGNORECASE)
+            
+            if passed_match:
+                parsed["tests_passed"] = int(passed_match.group(1))
+            if failed_match:
+                parsed["tests_failed"] = int(failed_match.group(1))
+            
+            # Extract error messages
+            error_pattern = r'(?:error|ERROR|failure|FAILURE)[:\s]+(.+?)(?:\n|$)'
+            errors = re.findall(error_pattern, output, re.IGNORECASE | re.MULTILINE)
+            if errors:
+                parsed["errors"] = [e.strip() for e in errors]
+        
+        elif agent_type == "coder":
+            # Extract modified files
+            file_pattern = r'(?:modified|changed|updated)\s+file[:\s]+(.+?)(?:\n|$)'
+            files = re.findall(file_pattern, output, re.IGNORECASE | re.MULTILINE)
+            if files:
+                parsed["files_modified"] = [f.strip() for f in files]
+            
+            # Extract code blocks
+            code_blocks = re.findall(r'```(?:python|py|javascript|js|typescript|ts)?\n(.*?)```', output, re.DOTALL)
+            if code_blocks:
+                parsed["code_blocks"] = code_blocks
+        
+        elif agent_type == "approver":
+            # Extract decision
+            decision_match = re.search(r'(?:decision|result)[:\s]+(approved|rejected|pending)', output, re.IGNORECASE)
+            if decision_match:
+                parsed["decision"] = decision_match.group(1).lower()
+            
+            # Extract feedback
+            feedback_match = re.search(r'(?:feedback|comment)[:\s]+(.+?)(?:\n\n|\Z)', output, re.IGNORECASE | re.DOTALL)
+            if feedback_match:
+                parsed["feedback"] = feedback_match.group(1).strip()
+        
+        elif agent_type == "debug":
+            # Extract issues fixed
+            issue_pattern = r'(?:fixed|resolved|issue)[:\s]+(.+?)(?:\n|$)'
+            issues = re.findall(issue_pattern, output, re.IGNORECASE | re.MULTILINE)
+            if issues:
+                parsed["issues_fixed"] = [i.strip() for i in issues]
+        
+        return parsed
+    
     async def stop_agent(self, task_id: str) -> bool:
         """Stop an agent that's currently working on a task.
         
