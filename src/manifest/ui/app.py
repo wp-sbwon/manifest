@@ -28,12 +28,15 @@ from manifest.agents.task_scoper import TaskScoper
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.agent_coordinator import AgentCoordinator
 from manifest.ui.commands.command_handler import CommandHandler
+from manifest.core.logger import get_logger
 
 try:
     import git
     GIT_AVAILABLE = True
 except ImportError:
     GIT_AVAILABLE = False
+
+logger = get_logger(__name__)
 
 
 class ManifestApp(App):
@@ -356,9 +359,12 @@ class ManifestApp(App):
 
     async def load_blueprint_data(self):
         """Load blueprint.json data with metadata."""
-        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
-        blueprint_file = self.manifest_dir / "blueprint.json"
-        self.blueprint_data = load_blueprint_with_metadata(blueprint_file, "llm_design", False)
+        from manifest.audit.blueprint_loader import BlueprintLoader
+        self.blueprint_data = BlueprintLoader.load_blueprint(
+            self.manifest_dir,
+            with_metadata=True,
+            default_source="llm_design"
+        )
 
     async def load_project_data(self):
         """Load project.json data (strict doc > view).
@@ -626,9 +632,12 @@ class ManifestApp(App):
         bottom_up_blueprint = self.drift_auditor.generate_bottom_up_blueprint(Path("src"))
         
         # Load top-down blueprint
-        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
-        blueprint_file = self.manifest_dir / "blueprint.json"
-        top_down_blueprint = load_blueprint_with_metadata(blueprint_file, "llm_design", False)
+        from manifest.audit.blueprint_loader import BlueprintLoader
+        top_down_blueprint = BlueprintLoader.load_blueprint(
+            self.manifest_dir,
+            with_metadata=True,
+            default_source="llm_design"
+        )
         
         # Compare blueprints
         blueprint_conflicts = self.blueprint_comparator.compare_blueprints(
@@ -742,13 +751,14 @@ class ManifestApp(App):
 
     async def sync_blueprints(self):
         """Synchronize blueprints using blueprint_synchronizer."""
-        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
+        from manifest.audit.blueprint_loader import BlueprintLoader
         
-        blueprint_file = self.manifest_dir / "blueprint.json"
-        blueprint_code_file = self.manifest_dir / "blueprint_code.json"
-        
-        top_down_blueprint = load_blueprint_with_metadata(blueprint_file, "llm_design", False)
-        bottom_up_blueprint = load_blueprint_with_metadata(blueprint_code_file, "code_extraction", True)
+        top_down_blueprint = BlueprintLoader.load_blueprint(
+            self.manifest_dir,
+            with_metadata=True,
+            default_source="llm_design"
+        )
+        bottom_up_blueprint = BlueprintLoader.load_code_blueprint(self.manifest_dir)
         
         # Use workflow mode by default
         result = self.blueprint_synchronizer.sync_blueprints(
@@ -845,13 +855,14 @@ class ManifestApp(App):
         self.architecture_data = load_architecture_with_metadata(architecture_file)
         
         # Calculate status using BlueprintSynchronizer
-        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
+        from manifest.audit.blueprint_loader import BlueprintLoader
         
-        blueprint_file = self.manifest_dir / "blueprint.json"
-        blueprint_code_file = self.manifest_dir / "blueprint_code.json"
-        
-        top_down_blueprint = load_blueprint_with_metadata(blueprint_file, "llm_design", False)
-        bottom_up_blueprint = load_blueprint_with_metadata(blueprint_code_file, "code_extraction", True)
+        top_down_blueprint = BlueprintLoader.load_blueprint(
+            self.manifest_dir,
+            with_metadata=True,
+            default_source="llm_design"
+        )
+        bottom_up_blueprint = BlueprintLoader.load_code_blueprint(self.manifest_dir)
         
         # Calculate implementation status
         status_info = self.blueprint_synchronizer.calculate_implementation_status(
@@ -1230,7 +1241,7 @@ class ManifestApp(App):
                 return handler
             button.on_click = make_handler(channel_name)
         except Exception as e:
-            print(f"Error setting up channel button {button_id}: {e}")
+            logger.error(f"Error setting up channel button {button_id}: {e}", exc_info=True)
     
     async def _switch_channel(self, channel_name: str):
         """Switch to a different chat channel."""
@@ -1372,7 +1383,7 @@ class ManifestApp(App):
                         agent_type = parts[2]
                         await self.create_squad_channel(task_id, agent_type)
         except Exception as e:
-            print(f"Error displaying agent output: {e}")
+            logger.error(f"Error displaying agent output: {e}", exc_info=True)
 
     async def on_unmount(self) -> None:
         """Cleanup on app exit."""
