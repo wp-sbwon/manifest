@@ -1,5 +1,13 @@
 """
-Project Review Agent - Reviews project-level requirements compliance.
+Project review agent for requirements compliance verification.
+
+This module provides the ProjectReviewAgent class which reviews completed
+Worker Squad work at the project level. It verifies that PRD requirements
+are met, checks architecture/blueprint compliance, and ensures project-wide
+consistency.
+
+This is a higher-level review than the approver agent, which reviews
+individual tasks. The project review agent looks at the big picture.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
 from manifest.runtime.agent.executor import AgentExecutor
@@ -31,9 +39,18 @@ You DO:
 
 
 class ProjectReviewAgent:
-    """
-    Project Review agent - Project-level requirements reviewer.
-    Reviews Worker Squad work against PRD and Architecture.
+    """Project review agent for project-level requirements verification.
+    
+    Reviews completed Worker Squad work against PRD requirements, architecture
+    constraints, and blueprint specifications. This is a higher-level review
+    than task-level approval - it ensures the overall project goals are met
+    and maintains project-wide consistency.
+    
+    Attributes:
+        agent_id: Unique identifier for this agent instance.
+        executor: AgentExecutor for making LLM API calls.
+        state_manager: StateManager for persisting review results.
+        message_history: List of conversation messages for context.
     """
     
     def __init__(
@@ -42,13 +59,12 @@ class ProjectReviewAgent:
         executor: AgentExecutor,
         state_manager: StateManager
     ):
-        """
-        Initialize Project Review agent.
+        """Initialize the project review agent.
         
         Args:
-            agent_id: Agent identifier
-            executor: Agent executor for LLM calls
-            state_manager: State manager
+            agent_id: Unique identifier for this agent.
+            executor: Executor instance for LLM API calls.
+            state_manager: State manager for saving review results.
         """
         self.agent_id = agent_id
         self.executor = executor
@@ -64,19 +80,24 @@ class ProjectReviewAgent:
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Review project-level requirements compliance.
+        """Review project-level requirements compliance.
+        
+        Examines the completed Worker Squad output against PRD requirements,
+        architecture guidelines, and blueprint specifications. Identifies
+        any missing requirements or inconsistencies at the project level.
         
         Args:
-            prd_data: PRD document
-            architecture_data: Architecture document
-            blueprint_data: Blueprint document
-            worker_squad_output: Worker Squad execution output
-            context: Tiered context
-            model_config: Model configuration
-            
+            prd_data: Product Requirements Document containing project goals.
+            architecture_data: Architecture document with system design.
+            blueprint_data: Blueprint document with component specifications.
+            worker_squad_output: Complete output from Worker Squad execution.
+            context: Tiered context for additional information.
+            model_config: Dictionary with provider, model, and api_key.
+        
         Yields:
-            Review output chunks
+            Dictionaries with type "chunk" (streaming) or "complete" (finished).
+            Content contains review findings, requirements compliance status,
+            and recommendations.
         """
         # Generate review prompt
         prompt = self._generate_review_prompt(
@@ -157,8 +178,16 @@ RECOMMENDATIONS:
 """
         return prompt
     
-    async def _save_response(self, content: str):
-        """Save agent response to state."""
+    async def _save_response(self, content: str) -> None:
+        """Save project review results to state and chat history.
+        
+        Writes the review findings and recommendations to the appropriate
+        channel so they can be displayed in the UI and used for project
+        planning.
+        
+        Args:
+            content: The complete project review content.
+        """
         channel = f"squad-{self.agent_id}-project_review"
         self.state_manager.add_chat_message(channel, "assistant", content)
         await self.state_manager.save_state()

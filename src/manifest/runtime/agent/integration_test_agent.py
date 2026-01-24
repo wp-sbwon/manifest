@@ -1,6 +1,14 @@
 """
-Integration Test Agent - Integration testing agent.
-Handles component integration tests and API integration tests.
+Integration test agent for component and service integration testing.
+
+This module provides the IntegrationTestAgent class which handles writing
+and executing integration tests. Integration tests verify that components
+work together correctly, testing communication between services, APIs, and
+modules.
+
+The agent supports both TDD mode (write tests first) and execution mode
+(run tests after implementation), and operates at the Sprint level to test
+component integrations across the Sprint scope.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
 from manifest.runtime.agent.executor import AgentExecutor
@@ -143,8 +151,21 @@ Task Description: {task_description}
 
 
 class IntegrationTestAgent:
-    """
-    Integration Test Agent - Writes and executes integration tests.
+    """Integration test agent for writing and executing integration tests.
+    
+    Handles Sprint-level integration testing which verifies that components
+    communicate correctly with each other. Integration tests ensure APIs,
+    services, and modules work together as expected.
+    
+    The agent supports TDD mode (write tests before implementation) and
+    execution mode (run tests after implementation). Test results are saved
+    to Sprint data for tracking.
+    
+    Attributes:
+        agent_id: Unique identifier for this agent instance.
+        executor: AgentExecutor for making LLM API calls.
+        state_manager: StateManager for persisting test results.
+        message_history: List of conversation messages for context.
     """
     
     def __init__(
@@ -153,13 +174,12 @@ class IntegrationTestAgent:
         executor: AgentExecutor,
         state_manager: StateManager
     ):
-        """
-        Initialize Integration Test Agent.
+        """Initialize the integration test agent.
         
         Args:
-            agent_id: Agent identifier
-            executor: Agent executor for LLM calls
-            state_manager: State manager
+            agent_id: Unique identifier for this agent.
+            executor: Executor instance for LLM API calls.
+            state_manager: State manager for saving test results to Sprint data.
         """
         self.agent_id = agent_id
         self.executor = executor
@@ -172,16 +192,23 @@ class IntegrationTestAgent:
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Write TDD integration tests for Sprint scope (test-first approach).
+        """Write integration tests in TDD mode for a Sprint.
+        
+        In TDD mode, integration tests are written before implementation.
+        The agent analyzes the Sprint scope, blueprint components, and
+        contracts to create comprehensive integration tests that define
+        expected component interactions. These tests should initially fail.
         
         Args:
-            sprint_id: Sprint ID
-            context: Tiered context (PRD, Architecture, Blueprint, Sprint tasks)
-            model_config: Model configuration
-            
+            sprint_id: ID of the sprint to write integration tests for.
+            context: Tiered context including PRD, architecture, blueprint,
+                and Sprint task/component information.
+            model_config: Dictionary with provider, model, and api_key.
+        
         Yields:
-            Test writing output chunks
+            Dictionaries with type "chunk" (streaming) or "complete" (finished).
+            Content contains integration test code. Test information is extracted
+            and saved to Sprint data when complete.
         """
         # Generate TDD integration test prompt
         prompt = self._generate_sprint_tdd_integration_test_prompt(sprint_id, context)
@@ -213,17 +240,23 @@ class IntegrationTestAgent:
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Run integration tests after implementation.
+        """Run integration tests after a task completes.
+        
+        Executes the integration test suite to verify that component
+        integrations still work correctly after the task's changes. This
+        ensures the implementation doesn't break component communication.
         
         Args:
-            sprint_id: Sprint ID
-            task_id: Task ID that completed
-            context: Tiered context
-            model_config: Model configuration
-            
+            sprint_id: ID of the sprint the task belongs to.
+            task_id: ID of the task that just completed.
+            context: Tiered context including implementation details and
+                test file locations from TDD stage.
+            model_config: Dictionary with provider, model, and api_key.
+        
         Yields:
-            Test execution output chunks
+            Dictionaries with type "chunk" (streaming) or "complete" (finished).
+            Content contains test execution output. Results are parsed and
+            saved to Sprint data when complete.
         """
         # Generate integration test execution prompt
         prompt = self._generate_integration_test_execution_prompt(sprint_id, task_id, context)

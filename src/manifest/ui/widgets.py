@@ -1,5 +1,11 @@
 """
 Custom Textual widgets for Manifest TUI.
+
+This module provides custom widget classes that extend Textual's built-in
+widgets for displaying project data. Widgets include RequirementMap for
+feature/requirement visualization, ArchitectureGraph for component status,
+FeatureTree for hierarchical feature display, TaskTree for task organization,
+and GateController for approval workflows.
 """
 from textual.widgets import Tree, Button, Static, Label, ProgressBar
 from textual.containers import Container, Vertical, Horizontal

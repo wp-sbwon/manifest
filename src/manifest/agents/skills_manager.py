@@ -319,7 +319,19 @@ class SkillsManager:
         return skills
     
     def _skill_applies_to_agent(self, skill: Dict[str, Any], agent_type: str) -> bool:
-        """Check if a skill applies to a specific agent type."""
+        """Check if a skill applies to a specific agent type.
+        
+        If the skill has an explicit "agents" list, checks if the agent_type
+        is in that list. If no agents list is specified, the skill applies
+        to all agents.
+        
+        Args:
+            skill: Skill dictionary that may contain an "agents" list.
+            agent_type: Type of agent to check applicability for.
+        
+        Returns:
+            True if the skill applies to this agent type, False otherwise.
+        """
         # If skill has explicit agents list, check it
         if "agents" in skill:
             return agent_type in skill["agents"]
@@ -328,14 +340,36 @@ class SkillsManager:
         return True
     
     def get_skill_content(self, skill_id: str) -> Optional[str]:
-        """Get the content of a skill by ID."""
+        """Get the full content of a skill by its ID.
+        
+        Retrieves the markdown content of a skill definition. This is the
+        full text from the .claude/rules/*.md file.
+        
+        Args:
+            skill_id: ID of the skill to retrieve content for.
+        
+        Returns:
+            Full markdown content of the skill, or None if skill not found.
+        """
         skill_def = self._skill_definitions.get(skill_id)
         if skill_def:
             return skill_def.get("content", "")
         return None
     
     def format_skills_for_prompt(self, skills: List[Dict[str, Any]]) -> str:
-        """Format skills list for inclusion in agent prompt."""
+        """Format a list of skills for inclusion in agent prompts.
+        
+        Creates a formatted markdown section listing all skills with their
+        names, descriptions, and trigger keywords. This formatted text is
+        inserted into agent prompts to inform agents about available capabilities.
+        
+        Args:
+            skills: List of skill definition dictionaries to format.
+        
+        Returns:
+            Formatted markdown string ready to include in prompts, or empty
+            string if no skills provided.
+        """
         if not skills:
             return ""
         
@@ -362,14 +396,19 @@ class SkillsManager:
         return "\n".join(lines)
     
     def save_agent_skills(self, agent_skills: Dict[str, List[str]]) -> bool:
-        """
-        Save agent default skills to agent_config.json.
+        """Save agent default skills to agent_config.json.
+        
+        Updates the agent_skills section in agent_config.json with the
+        provided mapping of agent types to skill ID lists. Reloads skills
+        after saving to refresh the in-memory cache.
         
         Args:
-            agent_skills: Dictionary mapping agent_type -> list of skill IDs
-            
+            agent_skills: Dictionary mapping agent types to lists of skill IDs.
+                Example: {"coder": ["skill1", "skill2"], "planner": ["skill3"]}
+        
         Returns:
-            True if saved successfully, False otherwise
+            True if saved successfully, False if file doesn't exist or
+            saving fails. Errors are logged.
         """
         import json
         
@@ -402,15 +441,19 @@ class SkillsManager:
             return False
     
     def save_skill_file(self, skill_id: str, content: str) -> bool:
-        """
-        Save a skill file to .claude/rules/.
+        """Save a skill definition file to .claude/rules/.
+        
+        Writes a markdown file containing the skill definition. The file
+        is named {skill_id}.md. After saving, reloads skill definitions
+        to update the cache.
         
         Args:
-            skill_id: Skill identifier (filename without .md)
-            content: Markdown content for the skill
-            
+            skill_id: Skill identifier (used as filename without .md extension).
+            content: Markdown content for the skill definition.
+        
         Returns:
-            True if saved successfully, False otherwise
+            True if saved successfully, False if file creation fails.
+            Errors are logged.
         """
         skill_file = self.claude_rules_dir / f"{skill_id}.md"
         try:
@@ -425,14 +468,17 @@ class SkillsManager:
             return False
     
     def save_agents_md(self, content: str) -> bool:
-        """
-        Save AGENTS.md content.
+        """Save AGENTS.md file with updated content.
+        
+        Writes the provided content to AGENTS.md in the project root.
+        After saving, reloads project skills to update the cache.
         
         Args:
-            content: Markdown content for AGENTS.md
-            
+            content: Markdown content for AGENTS.md.
+        
         Returns:
-            True if saved successfully, False otherwise
+            True if saved successfully, False if file write fails.
+            Errors are logged.
         """
         try:
             with open(self.agents_md_file, "w", encoding="utf-8") as f:

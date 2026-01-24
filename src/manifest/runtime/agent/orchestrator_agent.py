@@ -1,5 +1,12 @@
 """
-Orchestrator Agent - Mission coordination and task delegation.
+Orchestrator agent for mission coordination and task delegation.
+
+This module provides the OrchestratorAgent class which coordinates high-level
+missions by breaking them down into tasks. The orchestrator operates at Tier
+0-1 context level and delegates actual implementation to worker agents.
+
+The orchestrator can also handle ideation mode for PRD creation and sprint
+planning based on PRD, architecture, and blueprint data.
 """
 import json
 from pathlib import Path
@@ -10,9 +17,20 @@ from manifest.core.state_manager import StateManager
 
 
 class OrchestratorAgent:
-    """
-    Orchestrator agent - Mission-level coordination.
-    Coordinates missions and delegates tasks to appropriate agents.
+    """Orchestrator agent for mission-level coordination.
+    
+    The orchestrator is the top-level agent that receives mission descriptions
+    and breaks them down into tasks. It works with Tier 0-1 context (policies
+    and architecture) and creates a plan for worker agents to execute.
+    
+    The orchestrator can also handle ideation (PRD creation) and sprint planning
+    based on project documentation.
+    
+    Attributes:
+        agent_id: Unique identifier for this agent instance.
+        executor: AgentExecutor for making LLM API calls.
+        state_manager: StateManager for persisting orchestrator output.
+        message_history: List of conversation messages for context.
     """
     
     def __init__(
@@ -21,13 +39,12 @@ class OrchestratorAgent:
         executor: AgentExecutor,
         state_manager: StateManager
     ):
-        """
-        Initialize Orchestrator agent.
+        """Initialize the orchestrator agent.
         
         Args:
-            agent_id: Agent identifier
-            executor: Agent executor for LLM calls
-            state_manager: State manager
+            agent_id: Unique identifier for this agent.
+            executor: Executor instance for LLM API calls.
+            state_manager: State manager for saving coordination output.
         """
         self.agent_id = agent_id
         self.executor = executor
@@ -40,16 +57,21 @@ class OrchestratorAgent:
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Coordinate a mission by delegating tasks.
+        """Coordinate a mission by breaking it down into tasks.
+        
+        Analyzes the mission description and creates a plan that breaks the
+        work into manageable tasks. The plan is then used to create tasks that
+        worker agents can execute.
         
         Args:
-            mission_description: Mission description
-            context: Tiered context
-            model_config: Model configuration
-            
+            mission_description: High-level description of what needs to be
+                accomplished. The orchestrator will break this into tasks.
+            context: Tiered context dictionary (Tier 0-1 for orchestrator).
+            model_config: Dictionary with provider, model, and api_key.
+        
         Yields:
-            Coordination output chunks
+            Dictionaries with type "chunk" (streaming) or "complete" (finished).
+            Content contains the mission breakdown and task plan.
         """
         # Generate prompt
         prompt = get_orchestrator_prompt(
@@ -78,8 +100,15 @@ class OrchestratorAgent:
             
             yield chunk
     
-    async def _save_response(self, content: str):
-        """Save agent response to state."""
+    async def _save_response(self, content: str) -> None:
+        """Save orchestrator response to state and chat history.
+        
+        Writes the orchestrator's output to the appropriate channel so it
+        can be displayed in the UI and used for task creation.
+        
+        Args:
+            content: The complete orchestrator output content.
+        """
         channel = f"squad-{self.agent_id}-orchestrator"
         self.state_manager.add_chat_message(channel, "assistant", content)
         await self.state_manager.save_state()
@@ -91,17 +120,24 @@ class OrchestratorAgent:
         model_config: Dict[str, Any],
         ideation_history: List[Dict[str, str]] = None
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Start ideation mode for PRD creation.
+        """Start ideation mode for collaborative PRD creation.
+        
+        In ideation mode, the orchestrator works with the user to create
+        a Product Requirements Document (PRD) through conversation. This
+        is an interactive process where the orchestrator asks clarifying
+        questions and refines requirements.
         
         Args:
-            user_input: Current user input
-            context: Tiered context
-            model_config: Model configuration
-            ideation_history: Previous ideation conversation history
-            
+            user_input: Current user input in the ideation conversation.
+            context: Tiered context for the ideation session.
+            model_config: Dictionary with provider, model, and api_key.
+            ideation_history: Previous conversation messages in this
+                ideation session. Used to maintain context.
+        
         Yields:
-            Ideation output chunks
+            Dictionaries with type "chunk" (streaming) or "complete" (finished).
+            Content contains the orchestrator's response, questions, or
+            PRD suggestions.
         """
         from manifest.runtime.agent.orchestrator_prompt import get_ideation_prompt
         
@@ -136,18 +172,26 @@ class OrchestratorAgent:
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Create Sprint plan based on PRD, Architecture, and Blueprint.
+        """Create a sprint plan based on PRD, architecture, and blueprint.
+        
+        Analyzes the PRD, architecture, and blueprint to break down work
+        into tasks and organize them into sprints. Tasks are grouped to
+        allow parallel execution (no file overlap, no dependencies).
+        
+        The plan follows task granularity rules and ensures tasks in a
+        sprint can be executed simultaneously.
         
         Args:
-            prd_data: PRD document data
-            architecture_data: Architecture data
-            blueprint_data: Blueprint data
-            context: Tiered context
-            model_config: Model configuration
-            
+            prd_data: Product Requirements Document data.
+            architecture_data: Architecture document data.
+            blueprint_data: Blueprint document data.
+            context: Tiered context for planning.
+            model_config: Dictionary with provider, model, and api_key.
+        
         Yields:
-            Sprint planning output chunks
+            Dictionaries with type "chunk" (streaming) or "complete" (finished).
+            Content contains the sprint plan with task list and parallel
+            execution groups.
         """
         from manifest.runtime.agent.orchestrator_prompt import get_orchestrator_prompt
         
