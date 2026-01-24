@@ -1,6 +1,13 @@
 """
-Shadow Manager - Executes agents in separate processes for isolation and output streaming.
-Manages shadow processes for agent execution and streams output to views.
+Shadow process management for isolated agent execution.
+
+This module provides the ShadowManager class which executes agents in separate
+Python processes for isolation. Shadow processes allow real-time output
+streaming, process monitoring, and safe execution without blocking the main
+process.
+
+Shadow processes are useful when you want complete isolation between agent
+executions or need to stream output in real-time to the UI.
 """
 import asyncio
 import json
@@ -17,7 +24,25 @@ logger = get_logger(__name__)
 
 @dataclass
 class ShadowProcess:
-    """Represents a shadow process running an agent."""
+    """Represents a shadow process running an agent.
+    
+    Contains all information about a shadow process including its subprocess
+    handle, status, timing, and output. Used for tracking and monitoring
+    agent execution in isolated processes.
+    
+    Attributes:
+        process_id: Unique identifier for this shadow process.
+        task_id: ID of the task the agent is working on.
+        agent_type: Type of agent running in the process.
+        process: Subprocess.Popen handle for the running process.
+        status: Current status. Values: "running", "completed", "failed", "cancelled".
+        start_time: ISO timestamp when the process started.
+        end_time: ISO timestamp when the process ended (None if still running).
+        output_channel: Channel name for streaming output to UI.
+        returncode: Process exit code (None if still running).
+        stdout: Collected standard output text.
+        stderr: Collected standard error text.
+    """
     process_id: str
     task_id: str
     agent_type: str
@@ -128,8 +153,17 @@ class ShadowManager:
         self,
         process_id: str,
         shadow_process: ShadowProcess
-    ):
-        """Monitor shadow process and stream output."""
+    ) -> None:
+        """Monitor a shadow process and stream its output.
+        
+        Reads stdout and stderr concurrently, streams output to the callback
+        if registered, and updates the shadow process status when the process
+        completes or fails.
+        
+        Args:
+            process_id: ID of the shadow process to monitor.
+            shadow_process: ShadowProcess dataclass containing process information.
+        """
         process = shadow_process.process
         output_callback = self._output_callbacks.get(process_id)
         
