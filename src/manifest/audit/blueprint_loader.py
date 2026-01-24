@@ -1,6 +1,12 @@
 """
-Blueprint Loader - Centralized Blueprint loading utility.
-Eliminates code duplication across multiple modules.
+Centralized blueprint loading utility.
+
+This module provides a single point for loading blueprint files, eliminating
+code duplication across the codebase. It handles loading blueprint.json,
+blueprint_code.json, and supports loading with or without metadata.
+
+The BlueprintLoader uses static methods so it can be called without
+instantiating a class, making it convenient for one-off loading operations.
 """
 import json
 from pathlib import Path
@@ -11,7 +17,12 @@ logger = get_logger(__name__)
 
 
 class BlueprintLoader:
-    """Centralized Blueprint loading utility."""
+    """Centralized utility for loading blueprint files.
+    
+    Provides static methods for loading blueprint.json and blueprint_code.json
+    files. Handles file existence checks, error handling, and optional metadata
+    loading. Returns default empty structures if files don't exist or loading fails.
+    """
     
     @staticmethod
     def load_blueprint(
@@ -19,16 +30,22 @@ class BlueprintLoader:
         with_metadata: bool = False,
         default_source: str = "llm_design"
     ) -> Dict[str, Any]:
-        """
-        Load blueprint.json with optional metadata.
+        """Load blueprint.json file from the manifest directory.
+        
+        If with_metadata is True, uses BlueprintMetadata to load with
+        additional metadata. Otherwise, loads the raw JSON file.
         
         Args:
-            manifest_dir: Path to .manifest directory
-            with_metadata: Whether to load with metadata
-            default_source: Default source for metadata
-            
+            manifest_dir: Path to the .manifest directory containing blueprint.json.
+            with_metadata: Whether to include metadata in the loaded blueprint.
+                Metadata includes source information and component details.
+            default_source: Default source identifier for metadata when loading
+                with metadata enabled.
+        
         Returns:
-            Blueprint data dictionary
+            Dictionary containing blueprint data (components, contracts, zones).
+            Returns default empty structure if file doesn't exist or loading fails.
+            Errors are logged but don't raise exceptions.
         """
         blueprint_file = manifest_dir / "blueprint.json"
         
@@ -63,14 +80,19 @@ class BlueprintLoader:
     
     @staticmethod
     def load_code_blueprint(manifest_dir: Path) -> Dict[str, Any]:
-        """
-        Load blueprint_code.json.
+        """Load blueprint_code.json file.
+        
+        This file contains blueprint information extracted from actual code
+        (as opposed to blueprint.json which is the intended design). Used
+        for comparing intended design vs actual implementation.
         
         Args:
-            manifest_dir: Path to .manifest directory
-            
+            manifest_dir: Path to the .manifest directory containing blueprint_code.json.
+        
         Returns:
-            Code-extracted blueprint data dictionary
+            Dictionary containing code-extracted blueprint data.
+            Returns default empty structure if file doesn't exist or loading fails.
+            Errors are logged but don't raise exceptions.
         """
         code_blueprint_file = manifest_dir / "blueprint_code.json"
         

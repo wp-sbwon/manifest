@@ -1,11 +1,17 @@
 """
-Context Provider - Provides tiered context to agents.
-Implements the Tiered Orchestration system:
-- Tier 0: The Law (manifest-policy.md)
-- Tier 1: The Intent (intent.json, architecture.json)
-- Tier 2: The Blueprint (blueprint.json - scoped)
-- Tier 3: Surgical Code (files - scoped)
-- Skills: Agent skills (from agent_config.json and AGENTS.md)
+Context provider for tiered agent context system.
+
+This module implements the Tiered Orchestration system that provides agents
+with context at different levels of abstraction:
+
+- Tier 0: The Law - Project policies and rules (manifest-policy.md)
+- Tier 1: The Intent - High-level goals and architecture (intent.json, architecture.json)
+- Tier 2: The Blueprint - Architecture components (blueprint.json, scoped to task)
+- Tier 3: Surgical Code - Actual code files (scoped to task)
+- Skills: Agent-specific capabilities and tools
+
+Different agent types receive different context tiers. Orchestrators get
+Tier 0-1 (high-level), while worker agents get Tier 0, 2-3 (scoped to their task).
 """
 import json
 from pathlib import Path
@@ -16,9 +22,37 @@ from manifest.core.state_manager import StateManager
 
 
 class ContextProvider:
-    """Provides tiered context to agents."""
+    """Provides tiered context to agents based on their role and task.
+    
+    Manages loading and providing context at different abstraction levels.
+    Orchestrator agents receive high-level context (Tier 0-1), while worker
+    agents receive scoped context (Tier 0, 2-3) relevant to their specific task.
+    
+    Attributes:
+        manifest_dir: Path to .manifest directory containing context files.
+        project_root: Root directory of the project.
+        task_scoper: TaskScoper instance for determining task scope.
+        skills_manager: SkillsManager instance for agent skills.
+        state_manager: StateManager instance for accessing state data.
+        policy_file: Path to manifest-policy.md (Tier 0).
+        intent_file: Path to intent.json (Tier 1).
+        architecture_file: Path to architecture.json (Tier 1).
+        blueprint_file: Path to blueprint.json (Tier 2).
+    """
     
     def __init__(self, manifest_dir: Path = None, task_scoper: Optional[TaskScoper] = None, project_root: Path = None, state_manager: Optional[StateManager] = None):
+        """Initialize the context provider.
+        
+        Sets up paths to all context files and initializes managers for
+        task scoping and skills. If managers are not provided, creates
+        new instances.
+        
+        Args:
+            manifest_dir: Path to .manifest directory. Defaults to .manifest.
+            task_scoper: Optional TaskScoper instance. Creates one if not provided.
+            project_root: Optional project root directory. Defaults to current directory.
+            state_manager: Optional StateManager instance. Creates one if not provided.
+        """
         self.manifest_dir = manifest_dir or Path(".manifest")
         self.project_root = project_root or Path.cwd()
         self.task_scoper = task_scoper or TaskScoper(manifest_dir)
@@ -30,7 +64,20 @@ class ContextProvider:
         self.blueprint_file = self.manifest_dir / "blueprint.json"
     
     def get_skills_context(self, agent_type: str, task_scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Get skills context for an agent."""
+        """Get skills context for a specific agent type.
+        
+        Retrieves available skills for the agent and formats them for
+        inclusion in prompts. Skills are filtered based on task scope
+        if provided.
+        
+        Args:
+            agent_type: Type of agent (e.g., "coder", "planner", "test").
+            task_scope: Optional task scope dictionary to filter skills.
+        
+        Returns:
+            Dictionary containing skills list, formatted skills string,
+            and skills count.
+        """
         skills = self.skills_manager.get_skills_for_agent(agent_type, task_scope)
         return {
             "skills": skills,
@@ -39,7 +86,15 @@ class ContextProvider:
         }
     
     def get_orchestrator_context(self) -> Dict[str, Any]:
-        """Context for orchestrator."""
+        """Get context for orchestrator agent.
+        
+        Orchestrators receive Tier 0 (policies) and Tier 1 (intent, architecture)
+        context. They don't get scoped blueprint or code since they work at
+        a high level breaking down missions into tasks.
+        
+        Returns:
+            Dictionary containing tier_0, tier_1, skills, and version.
+        """
         context = {
             "tier": "orchestrator",
             "tier_0": self._load_tier_0(),
@@ -50,7 +105,20 @@ class ContextProvider:
         return context
     
     def get_worker_context(self, task_id: str, agent_type: str) -> Dict[str, Any]:
-        """Context for worker agents (scoped to task)."""
+        """Get context for worker agents scoped to a specific task.
+        
+        Worker agents receive Tier 0 (policies), Tier 2 (scoped blueprint),
+        and Tier 3 (scoped code files). This ensures they only see context
+        relevant to their task, preventing them from modifying unrelated code.
+        
+        Args:
+            task_id: ID of the task the agent is working on.
+            agent_type: Type of worker agent (e.g., "coder", "planner").
+        
+        Returns:
+            Dictionary containing tier_0, tier_2, tier_3, task_scope, skills,
+            and version.
+        """
         # Get task scope
         task_context = self.task_scoper.get_task_context(task_id)
         
@@ -76,7 +144,15 @@ class ContextProvider:
         return context
     
     def _load_tier_0(self) -> Dict[str, Any]:
-        """Load Tier 0: The Law (manifest-policy.md)."""
+        """Load Tier 0 context: The Law (manifest-policy.md).
+        
+        Tier 0 contains project policies, rules, and constraints that all
+        agents must follow. This is the highest-level guidance.
+        
+        Returns:
+            Dictionary with source path, content, type, and optional error
+            or missing flags.
+        """
         if self.policy_file.exists():
             try:
                 with open(self.policy_file, "r", encoding="utf-8") as f:

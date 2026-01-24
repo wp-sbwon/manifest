@@ -1,6 +1,13 @@
 """
-Task Scoping System - Manages task boundaries and context scoping.
-Ensures worker agents only see relevant context for their assigned tasks.
+Task scoping system for managing task boundaries and context.
+
+This module provides the TaskScoper class which determines what context
+worker agents should receive for a specific task. It analyzes the blueprint
+and intent to identify relevant components, files, and requirements, ensuring
+agents only see what's necessary for their task.
+
+This scoping prevents agents from modifying unrelated code and helps maintain
+code boundaries and separation of concerns.
 """
 import json
 from pathlib import Path
@@ -37,20 +44,32 @@ class TaskScoper:
             self._intent_data = {"version": "1.0", "sprint": "", "features": []}
     
     def get_task_context(self, task_id: str) -> Dict[str, Any]:
-        """Get scoped context for a task."""
-        # Get task from state (would need state_manager, but keeping it simple for now)
-        # For now, we'll infer from blueprint and intent
+        """Get scoped context for a specific task.
         
+        Analyzes the blueprint and intent to determine which components,
+        files, and requirements are relevant to this task. This creates
+        a boundary that limits what the agent can see and modify.
+        
+        Args:
+            task_id: ID of the task to get context for.
+        
+        Returns:
+            Dictionary containing:
+            - components: List of blueprint components relevant to the task
+            - files: List of file paths the task can access
+            - requirements: List of requirements relevant to the task
+            - allowed_modifications: List of files/components that can be modified
+        """
         # Find components related to task
         components = self._get_task_components(task_id)
         
-        # Find files related to task
+        # Find files related to task based on components
         files = self._get_task_files(task_id, components)
         
-        # Get task-specific requirements
+        # Get task-specific requirements from intent
         requirements = self._get_task_requirements(task_id)
         
-        # Determine allowed file modifications
+        # Determine which files/components can be modified
         allowed_modifications = self._get_allowed_modifications(components, files)
         
         return {
@@ -61,7 +80,18 @@ class TaskScoper:
         }
     
     def _get_task_components(self, task_id: str) -> List[Dict[str, Any]]:
-        """Get blueprint components related to task."""
+        """Get blueprint components that are related to a task.
+        
+        Filters blueprint components based on task_id. If components have
+        a task_id field or tasks list, only matching components are returned.
+        If no mapping exists, returns all components (fallback behavior).
+        
+        Args:
+            task_id: ID of the task to find components for.
+        
+        Returns:
+            List of component dictionaries from the blueprint.
+        """
         # In a real implementation, tasks would be mapped to components
         # For now, return all components (can be refined later)
         components = self._blueprint_data.get("components", [])

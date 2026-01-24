@@ -1,6 +1,13 @@
 """
-Drift Auditor - Detects architecture drift by comparing code against blueprint.
-Uses AST parsing to detect structural mismatches.
+Architecture drift detection and auditing.
+
+This module provides the DriftAuditor class which compares the actual code
+structure against the blueprint to detect inconsistencies. It uses AST
+(Abstract Syntax Tree) parsing to extract structural information from Python
+files and compares it with blueprint components.
+
+Drift detection helps maintain architectural integrity by identifying when
+code diverges from the intended design.
 """
 import json
 import ast
@@ -38,27 +45,66 @@ class DriftConflict:
 
 
 class DriftAuditor:
-    """Audits code structure against blueprint.json."""
+    """Audits code structure against blueprint to detect drift.
+    
+    Compares actual code structure (classes, functions, imports) extracted
+    via AST parsing against the blueprint specification. Identifies missing
+    components, extra components, and structural mismatches.
+    
+    Attributes:
+        manifest_dir: Path to .manifest directory.
+        blueprint_file: Path to blueprint.json.
+        blueprint: Loaded blueprint data dictionary.
+    """
     
     def __init__(self, manifest_dir: Path = None):
+        """Initialize the drift auditor.
+        
+        Args:
+            manifest_dir: Path to .manifest directory. Defaults to .manifest.
+        """
         self.manifest_dir = manifest_dir or Path(".manifest")
         self.blueprint_file = self.manifest_dir / "blueprint.json"
         self.blueprint: Dict[str, Any] = {}
         self._load_blueprint()
     
-    def _load_blueprint(self):
-        """Load blueprint.json with metadata."""
+    def _load_blueprint(self) -> None:
+        """Load blueprint.json with metadata.
+        
+        Uses BlueprintLoader to load the blueprint file. The blueprint
+        is cached in the instance for use during auditing.
+        """
         from manifest.audit.blueprint_loader import BlueprintLoader
         self.blueprint = BlueprintLoader.load_blueprint(
             self.manifest_dir, with_metadata=True
         )
     
-    def reload_blueprint(self):
-        """Reload blueprint from file."""
+    def reload_blueprint(self) -> None:
+        """Reload blueprint from disk.
+        
+        Useful when the blueprint file has been updated and you want
+        to refresh the cached blueprint data.
+        """
         self._load_blueprint()
     
     def parse_python_file(self, file_path: Path) -> Dict[str, Any]:
-        """Parse a Python file and extract structure."""
+        """Parse a Python file and extract its structure using AST.
+        
+        Extracts classes, functions, and imports from the file. This
+        structural information is then compared against the blueprint
+        to detect drift.
+        
+        Args:
+            file_path: Path to the Python file to parse.
+        
+        Returns:
+            Dictionary containing:
+            - classes: List of class definitions with methods
+            - functions: List of top-level function definitions
+            - imports: List of imported modules
+            - file_path: Path to the parsed file
+            On error, returns dictionary with error information.
+        """
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
