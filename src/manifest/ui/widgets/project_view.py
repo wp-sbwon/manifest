@@ -4,6 +4,7 @@ Project View - Integrated view for Tasks and History.
 from textual.widgets import Tree, Static, RichLog
 from textual.containers import Vertical, Horizontal
 from textual import on
+from textual.message import Message
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 from datetime import datetime
@@ -91,7 +92,17 @@ class TaskTreeView(Tree):
                     "cancelled": "❌"
                 }.get(task_status, "○")
                 
-                task_label = f"{status_icon} {task_id}: {task_desc[:50]}"
+                # Calculate progress if worker squad stages exist
+                worker_squad = task.get("worker_squad", {})
+                stages = worker_squad.get("stages", {})
+                progress_info = ""
+                if stages:
+                    completed = sum(1 for s in stages.values() if s.get("status") == "completed")
+                    total = len(stages)
+                    progress_pct = (completed / total * 100) if total > 0 else 0
+                    progress_info = f" [{progress_pct:.0f}%]"
+                
+                task_label = f"{status_icon} {task_id}: {task_desc[:50]}{progress_info}"
                 task_node = sprint_node.add(task_label, expand=False)
                 task_node.data = {
                     "type": "task",
@@ -104,13 +115,91 @@ class TaskTreeView(Tree):
                 worker_squad_stages = task.get("worker_squad_stages", {})
                 if worker_squad_stages:
                     stages_node = task_node.add("Worker Squad Stages", expand=False)
+                    stages_node.data = {"type": "stages", "task_id": task_id}
+                    
+                    # Calculate progress percentage
+                    completed_stages = sum(
+                        1 for s in worker_squad_stages.values() 
+                        if s.get("status") == "completed"
+                    )
+                    total_stages = len(worker_squad_stages)
+                    progress_pct = (completed_stages / total_stages * 100) if total_stages > 0 else 0
+                    
                     for stage_name, stage_data in worker_squad_stages.items():
                         stage_status = stage_data.get("status", "pending")
-                        stage_icon = "✅" if stage_status == "completed" else "⏳"
-                        stage_label = f"{stage_icon} {stage_name}"
-                        stages_node.add(stage_label, expand=False)
+                        stage_icon = "✅" if stage_status == "completed" else "⚡" if stage_status == "in_progress" else "⏳"
+                        stage_label = f"{stage_icon} {stage_name}: {stage_status}"
+                        stage_node = stages_node.add(stage_label, expand=False)
+                        stage_node.data = {
+                            "type": "stage",
+                            "task_id": task_id,
+                            "stage_name": stage_name,
+                            "stage_status": stage_status
+                        }
+                    
+                    # Add progress indicator
+                    progress_label = f"Progress: {progress_pct:.0f}% ({completed_stages}/{total_stages} stages)"
+                    progress_node = stages_node.add(progress_label, expand=False)
+                    progress_node.data = {"type": "progress", "task_id": task_id, "progress": progress_pct}
         
         root.expand()
+    
+    @on(Tree.NodeSelected)
+    def on_task_selected(self, event: Tree.NodeSelected) -> None:
+        """Handle task node selection for status changes.
+        
+        When a task node is selected, emits a TaskSelected message that
+        the app can handle to show task details or allow status changes.
+        
+        Args:
+            event: Tree node selection event.
+        """
+        node_data = event.node.data
+        if node_data and node_data.get("type") == "task":
+            task_id = node_data.get("id")
+            task = node_data.get("task", {})
+            current_status = node_data.get("status", "pending")
+            
+            # Emit message for app to handle
+            self.post_message(TaskSelected(task_id, task, current_status))
+    
+    @on(Tree.NodeExpanded)
+    def on_node_expanded(self, event: Tree.NodeExpanded) -> None:
+        """Handle node expansion to show task details.
+        
+        When a task node is expanded, shows worker squad stages and
+        progress information.
+        
+        Args:
+            event: Tree node expansion event.
+        """
+        node_data = event.node.data
+        if node_data and node_data.get("type") == "task":
+            # Node is already expanded, stages should be visible
+            pass
+
+
+class TaskSelected(Message):
+    """Message sent when a task is selected in the tree.
+    
+    Attributes:
+        task_id: ID of the selected task.
+        task: Full task dictionary.
+        current_status: Current status of the task.
+    """
+    
+    def __init__(self, task_id: str, task: Dict[str, Any], current_status: str):
+        """Initialize task selected message.
+        
+        Args:
+            task_id: ID of the selected task.
+            task: Full task dictionary.
+            current_status: Current status of the task.
+        """
+        super().__init__()
+        self.task_id = task_id
+        self.task = task
+        self.current_status = current_status
 
 
 class SprintStatusView(Static):
