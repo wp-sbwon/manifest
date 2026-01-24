@@ -610,6 +610,16 @@ class CodeExtractor:
         current_nesting = 0
         
         def count_nesting(node: ast.AST, level: int = 0):
+            """Count nesting level of control structures in AST node.
+            
+            Recursively traverses the AST to count nested control structures
+            (for, while loops) which indicate code complexity. Updates the
+            max_nesting variable in the outer scope.
+            
+            Args:
+                node: AST node to analyze.
+                level: Current nesting level (incremented for loops).
+            """
             nonlocal max_nesting
             if isinstance(node, (ast.For, ast.While)):
                 level += 1
