@@ -18,6 +18,7 @@ import asyncio
 from typing import Dict, Any, Optional
 from manifest.core.logger import get_logger
 from manifest.agents.workflow_event_bus import WorkflowEvent, WorkflowEventType
+from manifest.agents.failure_recovery import FailureRecoveryManager
 
 logger = get_logger(__name__)
 
@@ -44,6 +45,7 @@ class WorkerSquadExecutor:
         """
         self.coordinator = coordinator
         self.state_manager = coordinator.state_manager
+        self.recovery_manager = FailureRecoveryManager(coordinator)
     
     async def execute(self, task_id: str) -> Dict[str, Any]:
         """Execute the complete Worker Squad workflow for a task.
@@ -94,15 +96,37 @@ class WorkerSquadExecutor:
         # Save stage result
         await self.state_manager.save_worker_squad_stage_async(task_id, "planner", planner_result)
         if not planner_result.get("success"):
-            # Publish workflow failed event
-            if hasattr(self.coordinator, 'event_bus'):
-                await self.coordinator.event_bus.publish(WorkflowEvent(
-                    event_type=WorkflowEventType.WORKFLOW_FAILED,
-                    task_id=task_id,
-                    stage="planner",
-                    data={"error": planner_result.get("error", "Planner stage failed")}
-                ))
-            return {"success": False, "stages": stages, "error": planner_result.get("error", "Planner stage failed")}
+            # Attempt recovery
+            recovery_result = await self.recovery_manager.attempt_recovery(
+                task_id=task_id,
+                stage="planner",
+                agent_type="planner",
+                failure_result=planner_result,
+                previous_stages=previous_stages
+            )
+            
+            if recovery_result.get("recovered"):
+                # Recovery succeeded, use recovered result
+                planner_result = recovery_result["result"]
+                planner_result["status"] = "completed"
+                planner_result["recovered"] = True
+                planner_result["recovery_strategy"] = recovery_result["strategy_used"].value
+                stages["planner"] = planner_result
+                previous_stages["planner"] = planner_result
+                await self.state_manager.save_worker_squad_stage_async(task_id, "planner", planner_result)
+                logger.info(f"Planner stage recovered for task {task_id} using {recovery_result['strategy_used'].value}")
+            else:
+                # Recovery failed
+                error_msg = recovery_result.get("error", planner_result.get("error", "Planner stage failed"))
+                # Publish workflow failed event
+                if hasattr(self.coordinator, 'event_bus'):
+                    await self.coordinator.event_bus.publish(WorkflowEvent(
+                        event_type=WorkflowEventType.WORKFLOW_FAILED,
+                        task_id=task_id,
+                        stage="planner",
+                        data={"error": error_msg, "recovery_failed": True}
+                    ))
+                return {"success": False, "stages": stages, "error": error_msg}
         
         # 2. Test (TDD - test first)
         tdd_test_result = await self._execute_tdd_test_stage(task_id, planner_result, previous_stages)
@@ -111,15 +135,40 @@ class WorkerSquadExecutor:
         # Save stage result
         await self.state_manager.save_worker_squad_stage_async(task_id, "tdd_test", tdd_test_result)
         if tdd_test_result.get("status") != "completed":
-            # Publish workflow failed event
-            if hasattr(self.coordinator, 'event_bus'):
-                await self.coordinator.event_bus.publish(WorkflowEvent(
-                    event_type=WorkflowEventType.WORKFLOW_FAILED,
-                    task_id=task_id,
-                    stage="tdd_test",
-                    data={"error": "TDD test stage failed"}
-                ))
-            return {"success": False, "stages": stages, "error": "TDD test stage failed"}
+            # Attempt recovery
+            failure_result = {
+                "success": tdd_test_result.get('success', False),
+                "error": tdd_test_result.get("error", "TDD test stage failed"),
+                "output": tdd_test_result.get("output", "")
+            }
+            recovery_result = await self.recovery_manager.attempt_recovery(
+                task_id=task_id,
+                stage="tdd_test",
+                agent_type="test",
+                failure_result=failure_result,
+                previous_stages=previous_stages
+            )
+            
+            if recovery_result.get("recovered"):
+                tdd_test_result = recovery_result["result"]
+                tdd_test_result["status"] = "completed"
+                tdd_test_result["recovered"] = True
+                tdd_test_result["recovery_strategy"] = recovery_result["strategy_used"].value
+                stages["tdd_test"] = tdd_test_result
+                previous_stages["tdd_test"] = tdd_test_result
+                await self.state_manager.save_worker_squad_stage_async(task_id, "tdd_test", tdd_test_result)
+                logger.info(f"TDD test stage recovered for task {task_id} using {recovery_result['strategy_used'].value}")
+            else:
+                error_msg = recovery_result.get("error", "TDD test stage failed")
+                # Publish workflow failed event
+                if hasattr(self.coordinator, 'event_bus'):
+                    await self.coordinator.event_bus.publish(WorkflowEvent(
+                        event_type=WorkflowEventType.WORKFLOW_FAILED,
+                        task_id=task_id,
+                        stage="tdd_test",
+                        data={"error": error_msg, "recovery_failed": True}
+                    ))
+                return {"success": False, "stages": stages, "error": error_msg}
         
         # 3. Coder (implement to pass tests)
         coder_result = await self._execute_coder_stage(task_id, test_plan=tdd_test_result, previous_stages=previous_stages)
