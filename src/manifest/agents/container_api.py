@@ -89,8 +89,18 @@ def create_container_api(state_manager=None) -> FastAPI:
         return MessageResponse(success=True, message_id=message.id)
     
     @app.get("/api/messages")
-    async def get_messages(topic: Optional[str] = None) -> Dict[str, Any]:
-        """Get messages from the message bus."""
+    async def get_messages(
+        topic: Optional[str] = None, 
+        since: Optional[str] = None,
+        target_agent: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Get messages from the message bus.
+        
+        Args:
+            topic: Optional topic filter.
+            since: Optional ISO timestamp to get messages after.
+            target_agent: Optional target agent ID filter.
+        """
         if topic:
             messages = _message_store.get(topic, [])
         else:
@@ -99,6 +109,14 @@ def create_container_api(state_manager=None) -> FastAPI:
             for topic_msgs in _message_store.values():
                 all_messages.extend(topic_msgs)
             messages = sorted(all_messages, key=lambda x: x.get("timestamp", ""))
+        
+        # Filter by timestamp
+        if since:
+            messages = [m for m in messages if m.get("timestamp", "") > since]
+            
+        # Filter by target agent (include broadcast messages with target_agent=None)
+        if target_agent:
+            messages = [m for m in messages if m.get("target_agent") in [None, target_agent]]
         
         return {"messages": messages}
     
