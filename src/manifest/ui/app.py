@@ -1,5 +1,19 @@
 """
-Manifest TUI - Main application with 5-view workspace.
+Manifest TUI - Main Textual-based user interface application.
+
+This module provides the main application class (ManifestApp) which implements
+a 5-view workspace using the Textual framework. The application handles user
+input, displays project data, manages agent communication, and provides a
+unified interface for interacting with the Manifest system.
+
+The UI is organized into:
+- Sidebar: Navigation and project structure
+- Main workspace: Design and inspector views
+- Bottom panel: Command input and agent output logs
+- Multiple tabs: Different views of project data
+
+The app delegates command processing to CommandHandler, data loading to
+DataLoader, and channel management to ChannelManager for better organization.
 """
 import asyncio
 import json
@@ -42,7 +56,27 @@ logger = get_logger(__name__)
 
 
 class ManifestApp(App):
-    """Manifest AI Native IDE - Unified Control Edition"""
+    """Main application class for the Manifest TUI.
+    
+    This is the root application class that manages the entire user interface.
+    It provides a 5-view workspace with sidebar navigation, main workspace area,
+    and bottom panel for commands and logs. The app handles user interactions,
+    displays project data, and coordinates with agents through the AgentBridge.
+    
+    The application uses Textual framework for the TUI and follows a modular
+    architecture with separate handlers for commands, data loading, and channel
+    management.
+    
+    Attributes:
+        manifest_dir: Path to the .manifest directory for project data.
+        state_manager: Manages application state persistence.
+        agent_bridge: Bridge for agent communication and execution.
+        agent_coordinator: Coordinates agent workflows.
+        command_handler: Handles user command processing.
+        data_loader: Loads project data (intent, blueprint, project).
+        channel_manager: Manages agent output channels.
+        Various UI widgets and components for displaying data.
+    """
 
     CSS = """
     /* --- Global Theme --- */
@@ -172,6 +206,13 @@ class ManifestApp(App):
     ]
 
     def __init__(self):
+        """Initialize the Manifest application.
+        
+        Sets up all managers, coordinators, and handlers needed for the
+        application to function. Initializes state management, agent
+        coordination, command processing, data loading, and channel
+        management components.
+        """
         super().__init__()
         self.config = get_config_manager()
         self.state_manager = StateManager()
@@ -199,16 +240,26 @@ class ManifestApp(App):
         self.context_provider = ContextProvider(self.manifest_dir, self.task_scoper)
         self.agent_coordinator: Optional[AgentCoordinator] = None
         
-        # Command handler
+        # Command handler for processing user commands
         self.command_handler: Optional[CommandHandler] = None
         
-        # Data loader
+        # Data loader for loading project data
         self.data_loader = DataLoader(self.manifest_dir)
         
-        # Channel manager
+        # Channel manager for agent output channels
         self.channel_manager: Optional[ChannelManager] = None
 
     def compose(self) -> ComposeResult:
+        """Compose the UI layout with all widgets and containers.
+        
+        This method is called by Textual to build the initial UI structure.
+        It creates the sidebar, main workspace, bottom panel, and all
+        nested widgets. The layout uses Textual's container system for
+        organization.
+        
+        Returns:
+            ComposeResult containing all widgets to be mounted.
+        """
         yield Header(show_clock=True)
         
         with Horizontal():
@@ -292,7 +343,19 @@ class ManifestApp(App):
         yield Footer()
 
     async def on_mount(self) -> None:
-        """Initialize the application."""
+        """Initialize the application after UI is mounted.
+        
+        This method is called by Textual after the UI is composed and mounted.
+        It performs all initialization tasks including:
+        - Checking API key configuration
+        - Loading project data (intent, blueprint, project)
+        - Initializing agent bridge and coordinator
+        - Setting up command handler and channel manager
+        - Loading initial views and data
+        - Starting background drift audit
+        
+        If API keys are missing, the app continues in demo mode with warnings.
+        """
         # Check API keys
         if not self.config.has_all_keys():
             log = self.query_one("#log-main", RichLog)
@@ -355,24 +418,39 @@ class ManifestApp(App):
         # Focus input field after everything is loaded
         self.query_one("#global-input").focus()
 
-    async def load_intent_data(self):
-        """Load intent.json data."""
+    async def load_intent_data(self) -> None:
+        """Load intent.json data into the application.
+        
+        Delegates to DataLoader to load the intent file which contains
+        project goals, sprints, and features. Updates self.intent_data.
+        """
         self.intent_data = await self.data_loader.load_intent_data()
 
-    async def load_blueprint_data(self):
-        """Load blueprint.json data with metadata."""
+    async def load_blueprint_data(self) -> None:
+        """Load blueprint.json data with metadata.
+        
+        Delegates to DataLoader to load the blueprint file which contains
+        architecture components and zones. Updates self.blueprint_data.
+        """
         self.blueprint_data = await self.data_loader.load_blueprint_data()
 
-    async def load_project_data(self):
-        """Load project.json data (strict doc > view).
+    async def load_project_data(self) -> None:
+        """Load project.json data.
         
-        Note: project.json is now in docs/project-manifest/ for Manifest project documentation.
-        For user projects, this would be in .manifest/ directory.
+        Delegates to DataLoader to load project metadata. For the Manifest
+        project itself, this is in docs/project-manifest/. For user projects,
+        it would be in .manifest/ directory.
+        
+        Updates self.project_data with project information.
         """
         self.project_data = await self.data_loader.load_project_data()
 
-    async def update_architect_view(self):
-        """Update the Architect view with intent data."""
+    async def update_architect_view(self) -> None:
+        """Update the Architect view with current intent data.
+        
+        Refreshes the architect diagram showing features, requirements,
+        and sprint information. Calculates and displays progress metrics.
+        """
         sprint = self.intent_data.get("sprint", "")
         features = self.intent_data.get("features", [])
         
@@ -397,8 +475,12 @@ class ManifestApp(App):
             content_lines.append(f"Feature: {name} ({status})")
         content.update("\n".join(content_lines) if content_lines else "No features defined")
 
-    async def update_feature_explorer(self):
-        """Update the Feature Explorer view with feature data."""
+    async def update_feature_explorer(self) -> None:
+        """Update the Feature Explorer view with current feature data.
+        
+        Refreshes the feature tree widget to show the current list of
+        features from intent data.
+        """
         features = self.intent_data.get("features", [])
         
         # Update feature tree
@@ -419,8 +501,12 @@ class ManifestApp(App):
         except Exception:
             pass
 
-    async def update_blueprint_view(self):
-        """Update the Blueprint view with blueprint data."""
+    async def update_blueprint_view(self) -> None:
+        """Update the Blueprint view with current blueprint data.
+        
+        Refreshes the blueprint diagram showing components organized by
+        zones. Updates component status and visual representation.
+        """
         components = self.blueprint_data.get("components", [])
         zones = self.blueprint_data.get("zones", {})
         
@@ -442,8 +528,12 @@ class ManifestApp(App):
                 content_lines.append(f"  {comp_name} ({comp_status})")
         content.update("\n".join(content_lines) if content_lines else "No components defined")
 
-    async def update_project_view(self):
-        """Update the Project Info view with project.json data (strict doc > view)."""
+    async def update_project_view(self) -> None:
+        """Update the Project Info view with current project data.
+        
+        Displays project metadata, status, and information from project.json.
+        This view shows high-level project information and documentation.
+        """
         if not self.project_data:
             return
         
@@ -554,8 +644,13 @@ class ManifestApp(App):
         # TODO: Add approval buttons/widgets
         # For now, user can approve via command: /approve_sprint {sprint_id}
     
-    async def update_task_tree(self):
-        """Update the task tree with current state."""
+    async def update_task_tree(self) -> None:
+        """Update the task tree widget with current tasks from state.
+        
+        Refreshes the sidebar task tree to show all current tasks with
+        their status and hierarchy. If no tasks exist, shows a default
+        empty structure.
+        """
         tasks = self.state_manager.get_task_checklist()
         if not tasks:
             # Create default task structure
@@ -583,8 +678,13 @@ class ManifestApp(App):
         except Exception:
             pass
 
-    async def update_history_view(self):
-        """Update the History view with git timeline."""
+    async def update_history_view(self) -> None:
+        """Update the History view with Git commit timeline.
+        
+        Displays recent Git commits in chronological order. Requires
+        GitPython to be installed. Shows a warning if GitPython is
+        not available.
+        """
         if not GIT_AVAILABLE:
             history_log = self.query_one("#history-log", RichLog)
             history_log.write("[bold yellow]GitPython not available. Install with: pip install GitPython[/]")
@@ -946,8 +1046,17 @@ class ManifestApp(App):
         await self.process_command(user_input, log)
 
     @work(exclusive=False)
-    async def process_command(self, user_input: str, log: RichLog):
-        """Process user command."""
+    async def process_command(self, user_input: str, log: RichLog) -> None:
+        """Process a user command entered in the input field.
+        
+        Delegates command processing to CommandHandler which routes commands
+        to appropriate handlers. Commands can start agents, load data, audit
+        drift, sync blueprints, and more.
+        
+        Args:
+            user_input: The command string entered by the user.
+            log: RichLog widget to write output and feedback to.
+        """
         try:
             await asyncio.sleep(0.1)  # Small delay for UI responsiveness
             
