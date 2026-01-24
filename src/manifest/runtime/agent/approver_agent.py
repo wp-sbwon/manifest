@@ -1,5 +1,10 @@
 """
-Approver Agent - Approves worker squad work.
+Approver agent for final approval of Worker Squad work.
+
+This module provides the ApproverAgent class which reviews all Worker Squad
+stages (planner, coder, test, self-review) and makes a final decision to
+approve or reject the work. If rejecting, provides specific feedback for
+improvement.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
 from manifest.runtime.agent.executor import AgentExecutor
@@ -31,9 +36,20 @@ You DO:
 
 
 class ApproverAgent:
-    """
-    Approver agent - Worker Squad final approver.
-    Reviews all stages and approves or rejects work.
+    """Approver agent for final review and approval of Worker Squad work.
+    
+    The approver is the final gate in the Worker Squad workflow. It reviews
+    all stages (planner plan, coder implementation, test results, self-review)
+    and makes a decision: approve (work is complete) or reject (needs rework).
+    
+    If rejecting, provides specific feedback that guides the workflow back
+    to the appropriate stage (usually coder) for fixes.
+    
+    Attributes:
+        agent_id: Unique identifier for this agent instance.
+        executor: AgentExecutor for making LLM API calls.
+        state_manager: StateManager for persisting approval decisions.
+        message_history: List of conversation messages for context.
     """
     
     def __init__(
@@ -42,13 +58,12 @@ class ApproverAgent:
         executor: AgentExecutor,
         state_manager: StateManager
     ):
-        """
-        Initialize Approver agent.
+        """Initialize the approver agent.
         
         Args:
-            agent_id: Agent identifier
-            executor: Agent executor for LLM calls
-            state_manager: State manager
+            agent_id: Unique identifier for this agent.
+            executor: Executor instance for LLM API calls.
+            state_manager: State manager for saving approval decisions.
         """
         self.agent_id = agent_id
         self.executor = executor
@@ -64,19 +79,25 @@ class ApproverAgent:
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Review and approve/reject Worker Squad work.
+        """Review all Worker Squad stages and make approval decision.
+        
+        Examines the complete workflow output: planner's plan, coder's
+        implementation, test results, and self-review findings. Verifies
+        that implementation matches the plan, tests pass, and quality
+        standards are met.
         
         Args:
-            planner_output: Planner's plan
-            coder_output: Coder's implementation summary
-            test_results: Test execution results
-            self_review_result: Self review findings
-            context: Tiered context
-            model_config: Model configuration
-            
+            planner_output: The original plan created by the planner.
+            coder_output: Summary of what the coder implemented.
+            test_results: Results from test execution (pass/fail counts, details).
+            self_review_result: Findings from coder's self-review.
+            context: Tiered context for additional context.
+            model_config: Dictionary with provider, model, and api_key.
+        
         Yields:
-            Approval decision output chunks
+            Dictionaries with type "chunk" (streaming) or "complete" (finished).
+            Content contains the approval decision (APPROVED/REJECTED) and
+            feedback explaining the decision.
         """
         # Generate approval prompt
         prompt = self._generate_approval_prompt(
@@ -111,7 +132,21 @@ class ApproverAgent:
         self_review_result: Dict[str, Any],
         context: Dict[str, Any]
     ) -> str:
-        """Generate approval prompt."""
+        """Generate a prompt for approval review.
+        
+        Creates a comprehensive prompt that includes all Worker Squad stage
+        outputs and asks the agent to review them and make an approval decision.
+        
+        Args:
+            planner_output: Planner's plan text.
+            coder_output: Coder's implementation summary.
+            test_results: Test execution results dictionary.
+            self_review_result: Self-review findings dictionary.
+            context: Tiered context for additional information.
+        
+        Returns:
+            Complete prompt string for approval review.
+        """
         prompt = f"""
 {APPROVER_IDENTITY}
 
@@ -159,8 +194,16 @@ FEEDBACK: [your feedback here]
 """
         return prompt
     
-    async def _save_response(self, content: str):
-        """Save agent response to state."""
+    async def _save_response(self, content: str) -> None:
+        """Save approval decision to state and chat history.
+        
+        Writes the approver's decision and feedback to the appropriate channel
+        so it can be displayed in the UI and used to determine next steps
+        in the workflow.
+        
+        Args:
+            content: The complete approval decision and feedback content.
+        """
         channel = f"squad-{self.agent_id}-approver"
         self.state_manager.add_chat_message(channel, "assistant", content)
         await self.state_manager.save_state()
