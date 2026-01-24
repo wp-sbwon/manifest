@@ -143,7 +143,19 @@ class AgentManager:
         context: Dict[str, Any],
         task_id: Optional[str] = None
     ) -> str:
-        """Generate agent prompt."""
+        """Generate the appropriate prompt for an agent type.
+        
+        Uses agent-specific prompt generators (get_coder_prompt, get_planner_prompt,
+        etc.) to create prompts tailored to each agent's role and context.
+        
+        Args:
+            agent_type: Type of agent to generate prompt for.
+            context: Tiered context dictionary for the agent.
+            task_id: Optional task ID for context in the prompt.
+        
+        Returns:
+            Complete prompt string ready to send to the LLM.
+        """
         if agent_type == "coder":
             # Get task description from context
             task_description = context.get("task_description", "Complete the assigned task")

@@ -1,6 +1,13 @@
 """
-Test Agent - Test writing and execution agent.
-Handles both TDD test creation and test execution.
+Test agent for writing and executing tests.
+
+This module provides the TestAgent class which handles both TDD (Test-Driven
+Development) test writing and test execution. In TDD mode, it writes tests
+before implementation. In execution mode, it runs tests after implementation
+and reports results.
+
+The agent extracts test information (files, cases, results) and saves it to
+task state for tracking throughout the Worker Squad workflow.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
 from manifest.runtime.agent.executor import AgentExecutor
@@ -118,8 +125,20 @@ Task Name: {task_name}
 
 
 class TestAgent:
-    """
-    Test Agent - Writes tests and executes them.
+    """Test agent for writing and executing tests.
+    
+    Handles two modes:
+    1. TDD mode: Writes tests before implementation (test-first)
+    2. Execution mode: Runs tests after implementation to verify correctness
+    
+    The agent extracts test information from its output and saves it to
+    task state, including test files created, test cases, and execution results.
+    
+    Attributes:
+        agent_id: Unique identifier for this agent instance.
+        executor: AgentExecutor for making LLM API calls.
+        state_manager: StateManager for persisting test results.
+        message_history: List of conversation messages for context.
     """
     
     def __init__(
@@ -128,13 +147,12 @@ class TestAgent:
         executor: AgentExecutor,
         state_manager: StateManager
     ):
-        """
-        Initialize Test Agent.
+        """Initialize the test agent.
         
         Args:
-            agent_id: Agent identifier
-            executor: Agent executor for LLM calls
-            state_manager: State manager
+            agent_id: Unique identifier for this agent.
+            executor: Executor instance for LLM API calls.
+            state_manager: State manager for saving test results.
         """
         self.agent_id = agent_id
         self.executor = executor
@@ -147,16 +165,22 @@ class TestAgent:
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Write TDD tests (test-first approach).
+        """Write tests in TDD (Test-Driven Development) mode.
+        
+        In TDD mode, tests are written before implementation. The agent
+        analyzes the planner's plan and writes comprehensive tests that
+        define the expected behavior. These tests should initially fail
+        since implementation doesn't exist yet.
         
         Args:
-            task_id: Task ID
-            context: Tiered context
-            model_config: Model configuration
-            
+            task_id: ID of the task to write tests for.
+            context: Tiered context including planner plan and task scope.
+            model_config: Dictionary with provider, model, and api_key.
+        
         Yields:
-            Test writing output chunks
+            Dictionaries with type "chunk" (streaming) or "complete" (finished).
+            Content contains test code and test plan. Test information is
+            extracted and saved to task state when complete.
         """
         # Generate TDD test prompt
         prompt = self._generate_tdd_test_prompt(task_id, context)
@@ -222,7 +246,19 @@ class TestAgent:
             yield chunk
     
     def _generate_tdd_test_prompt(self, task_id: str, context: Dict[str, Any]) -> str:
-        """Generate TDD test writing prompt."""
+        """Generate a prompt for TDD test writing mode.
+        
+        Creates a prompt that instructs the agent to write tests first,
+        before implementation. The prompt includes the planner's plan,
+        task scope, and requirements for comprehensive test coverage.
+        
+        Args:
+            task_id: ID of the task to write tests for.
+            context: Tiered context including planner plan and task scope.
+        
+        Returns:
+            Complete prompt string for TDD test writing.
+        """
         # Get task information
         tasks = self.state_manager.get_task_checklist()
         task = next((t for t in tasks if t.get("id") == task_id), None)
@@ -253,7 +289,20 @@ class TestAgent:
         )
     
     def _generate_test_execution_prompt(self, task_id: str, context: Dict[str, Any]) -> str:
-        """Generate test execution prompt."""
+        """Generate a prompt for test execution mode.
+        
+        Creates a prompt that instructs the agent to run tests and report
+        results. Includes implementation details and test file locations
+        from previous stages.
+        
+        Args:
+            task_id: ID of the task whose tests should be executed.
+            context: Tiered context including implementation details and
+                test files from TDD stage.
+        
+        Returns:
+            Complete prompt string for test execution.
+        """
         # Get task information
         tasks = self.state_manager.get_task_checklist()
         task = next((t for t in tasks if t.get("id") == task_id), None)
@@ -350,8 +399,17 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
                 return match.group(1) if match.groups() else match.group(0)
         return "Test plan extracted from test code"
     
-    async def _save_test_execution_results(self, task_id: str, content: str):
-        """Save test execution results."""
+    async def _save_test_execution_results(self, task_id: str, content: str) -> None:
+        """Save test execution results to task state.
+        
+        Parses the test output to extract pass/fail counts and determine
+        overall status. Saves the results to the task's worker_squad_stages
+        for tracking and decision-making in the workflow.
+        
+        Args:
+            task_id: ID of the task these test results belong to.
+            content: Complete test execution output from the agent.
+        """
         channel = f"squad-{task_id}-test"
         self.state_manager.add_chat_message(channel, "assistant", content)
         

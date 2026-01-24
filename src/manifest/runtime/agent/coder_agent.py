@@ -1,5 +1,12 @@
 """
-Coder Agent - Code implementation agent.
+Coder agent for code implementation.
+
+This module provides the CoderAgent class which implements code based on
+planner plans and task requirements. The coder agent receives scoped context
+(Tier 0, 2-3) and implements code within the allowed boundaries.
+
+The coder can also perform self-review to verify its implementation complies
+with the original plan.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
 from manifest.runtime.agent.executor import AgentExecutor
@@ -8,9 +15,18 @@ from manifest.core.state_manager import StateManager
 
 
 class CoderAgent:
-    """
-    Coder agent - Code implementer.
-    Implements code following plans and best practices.
+    """Coder agent for implementing code based on plans.
+    
+    The coder agent receives a task description, planner's plan, and scoped
+    context, then implements the code to fulfill the requirements. It works
+    within task boundaries to ensure it only modifies allowed files and
+    components.
+    
+    Attributes:
+        agent_id: Unique identifier for this agent instance.
+        executor: AgentExecutor for making LLM API calls.
+        state_manager: StateManager for persisting agent output.
+        message_history: List of conversation messages for context.
     """
     
     def __init__(
@@ -19,13 +35,12 @@ class CoderAgent:
         executor: AgentExecutor,
         state_manager: StateManager
     ):
-        """
-        Initialize Coder agent.
+        """Initialize the coder agent.
         
         Args:
-            agent_id: Agent identifier
-            executor: Agent executor for LLM calls
-            state_manager: State manager
+            agent_id: Unique identifier for this agent.
+            executor: Executor instance for LLM API calls.
+            state_manager: State manager for saving agent output to channels.
         """
         self.agent_id = agent_id
         self.executor = executor
@@ -39,17 +54,22 @@ class CoderAgent:
         task_scope: Optional[Dict[str, Any]],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Implement the task.
+        """Implement code for a task based on the planner's plan.
+        
+        Generates a coder-specific prompt with task description, context,
+        and scope boundaries, then executes the agent to produce implementation
+        code. Output is streamed in real-time and saved to the agent's channel.
         
         Args:
-            task_description: Task description
-            context: Tiered context
-            task_scope: Task scope (components, files, allowed modifications)
-            model_config: Model configuration
-            
+            task_description: Description of what needs to be implemented.
+            context: Tiered context dictionary (Tier 0, 2-3 for workers).
+            task_scope: Dictionary defining what files/components can be
+                modified. Includes allowed_files, allowed_components, etc.
+            model_config: Dictionary with provider, model, and api_key.
+        
         Yields:
-            Implementation output chunks
+            Dictionaries with type "chunk" (streaming) or "complete" (finished).
+            Content contains the implementation code and explanations.
         """
         # Generate prompt
         prompt = get_coder_prompt(
@@ -133,7 +153,19 @@ class CoderAgent:
         implementation_summary: str,
         context: Dict[str, Any]
     ) -> str:
-        """Generate self-review prompt."""
+        """Generate a prompt for self-review mode.
+        
+        Creates a prompt that asks the coder to compare its implementation
+        against the planner's plan and identify any discrepancies.
+        
+        Args:
+            planner_plan: The original plan to compare against.
+            implementation_summary: Summary of what was implemented.
+            context: Tiered context for additional information.
+        
+        Returns:
+            Complete prompt string for self-review.
+        """
         prompt = f"""
 ## SELF REVIEW MODE
 

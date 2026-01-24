@@ -1,5 +1,13 @@
 """
-Planner Agent - Detailed task planning and blueprint creation.
+Planner agent for detailed task planning.
+
+This module provides the PlannerAgent class which creates detailed work plans
+for tasks. The planner analyzes requirements, considers architecture and
+blueprint constraints, and creates a step-by-step plan that the coder will
+follow.
+
+The planner also extracts methodology, algorithm, and design pattern information
+from its output and updates the blueprint metadata accordingly.
 """
 import json
 import re
@@ -11,9 +19,21 @@ from manifest.core.state_manager import StateManager
 
 
 class PlannerAgent:
-    """
-    Planner agent - Detailed planning consultant.
-    Creates detailed work plans and blueprints but does not implement.
+    """Planner agent for creating detailed work plans.
+    
+    The planner agent receives a task description and creates a comprehensive
+    plan that breaks down the work into steps. It considers architecture,
+    blueprint constraints, and available tools/agents. The plan guides the
+    coder's implementation.
+    
+    The planner also extracts product logic information (algorithms, design
+    patterns, complexity) from its output and updates blueprint metadata.
+    
+    Attributes:
+        agent_id: Unique identifier for this agent instance.
+        executor: AgentExecutor for making LLM API calls.
+        state_manager: StateManager for persisting plans and output.
+        message_history: List of conversation messages for context.
     """
     
     def __init__(
@@ -22,13 +42,12 @@ class PlannerAgent:
         executor: AgentExecutor,
         state_manager: StateManager
     ):
-        """
-        Initialize Planner agent.
+        """Initialize the planner agent.
         
         Args:
-            agent_id: Agent identifier
-            executor: Agent executor for LLM calls
-            state_manager: State manager
+            agent_id: Unique identifier for this agent.
+            executor: Executor instance for LLM API calls.
+            state_manager: State manager for saving plans and output.
         """
         self.agent_id = agent_id
         self.executor = executor
@@ -41,16 +60,21 @@ class PlannerAgent:
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Create a detailed work plan for the task.
+        """Create a detailed work plan for a task.
+        
+        Analyzes the task description and context to create a step-by-step
+        plan. The plan should be detailed enough for the coder to follow
+        and implement. Output is streamed in real-time.
         
         Args:
-            task_description: Task description
-            context: Tiered context
-            model_config: Model configuration
-            
+            task_description: Description of what needs to be accomplished.
+            context: Tiered context dictionary (Tier 0-1 for planning).
+            model_config: Dictionary with provider, model, and api_key.
+        
         Yields:
-            Planning output chunks
+            Dictionaries with type "chunk" (streaming) or "complete" (finished).
+            Content contains the detailed plan with steps, considerations,
+            and implementation guidance.
         """
         # Generate prompt
         prompt = get_planner_prompt(
@@ -79,29 +103,42 @@ class PlannerAgent:
             
             yield chunk
     
-    async def _save_response(self, content: str):
-        """Save agent response to state and extract methodology information."""
+    async def _save_response(self, content: str) -> None:
+        """Save planner response and extract product logic metadata.
+        
+        Saves the planner's output to state and extracts information about
+        algorithms, design patterns, and complexity from the plan. This
+        metadata is then added to the blueprint to document the design decisions.
+        
+        Args:
+            content: The complete planner output content.
+        """
         channel = f"squad-{self.agent_id}-planner"
         self.state_manager.add_chat_message(channel, "assistant", content)
         
-        # Extract methodology/algorithm information from planner output
+        # Extract product logic information (algorithms, patterns, complexity)
         methodology_info = self._extract_methodology_info(content)
         
-        # Update Blueprint with methodology metadata if available
+        # Update blueprint with metadata if found
         if methodology_info:
             await self._update_blueprint_metadata(methodology_info)
         
         await self.state_manager.save_state()
     
     def _extract_methodology_info(self, content: str) -> Optional[Dict[str, Any]]:
-        """
-        Extract methodology, algorithm, and design pattern information from planner output.
+        """Extract algorithm, design pattern, and complexity information from planner output.
+        
+        Uses regex patterns to find mentions of algorithms (e.g., "Dijkstra"),
+        design patterns (e.g., "Strategy"), and complexity notation (e.g., "O(n log n)").
+        Note: Development methodologies (TDD, BDD) are excluded as they're not
+        product logic.
         
         Args:
-            content: Planner output content
-            
+            content: Planner output text to analyze.
+        
         Returns:
-            Dict with methodology information or None
+            Dictionary with algorithm, design_pattern, and/or complexity keys
+            if found, None if no product logic information is detected.
         """
         methodology_info = {}
         
@@ -159,13 +196,17 @@ class PlannerAgent:
         
         return methodology_info if methodology_info else None
     
-    async def _update_blueprint_metadata(self, methodology_info: Dict[str, Any]):
-        """
-        Update Blueprint with metadata (algorithm, design_pattern, complexity).
-        Note: methodology is excluded as it's a development methodology, not product logic.
+    async def _update_blueprint_metadata(self, methodology_info: Dict[str, Any]) -> None:
+        """Update blueprint with extracted product logic metadata.
+        
+        Adds algorithm, design pattern, and complexity information to the
+        blueprint components. This documents the design decisions made during
+        planning. Development methodologies are excluded as they're not
+        product logic.
         
         Args:
-            methodology_info: Metadata information dict (algorithm, design_pattern, complexity)
+            methodology_info: Dictionary containing algorithm, design_pattern,
+                and/or complexity information extracted from planner output.
         """
         from manifest.audit.blueprint_metadata import load_blueprint_with_metadata, save_blueprint_with_metadata
         
