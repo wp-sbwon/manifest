@@ -27,7 +27,7 @@ from textual.containers import Container, Horizontal, Vertical, VerticalScroll, 
 from textual.widgets import Header, Footer, Tree, Input, RichLog, TabbedContent, TabPane, Static, Label, Button
 from manifest.ui.widgets.structure_hierarchy_view import StructureHierarchyView
 from manifest.ui.widgets.structure_graph_view import StructureGraphView
-from manifest.ui.widgets.project_view import TaskTreeView, SprintStatusView, HistoryView, TaskSelected
+from manifest.ui.widgets.project_view import TaskTreeView, SprintStatusView, HistoryView, TaskSelected, SprintSelected
 from textual import on, work
 from manifest.agents.container_api import create_container_api
 from textual.binding import Binding
@@ -38,9 +38,8 @@ from manifest.bridge.agent_bridge import AgentBridge
 from manifest.audit.code.drift_auditor import DriftAuditor
 from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator
-from manifest.ui.widgets import RequirementMap, ArchitectureGraph, FeatureTree, TaskTree, GateController
+from manifest.ui.widgets import RequirementMap, ArchitectureGraph, FeatureTree, TaskTree, GateController, SprintApprovalWidget
 from manifest.audit.metadata.architecture_metadata import load_architecture_with_metadata
-from manifest.ui.bootstrap_ui import run_bootstrap
 from manifest.ui.settings_screen import SettingsScreen
 from manifest.agents.task_scoper import TaskScoper
 from manifest.agents.context_provider import ContextProvider
@@ -138,6 +137,20 @@ class ManifestApp(App):
 
     .status-header { background: #21262d; color: #8b949e; text-align: center; text-style: bold; padding: 1; }
     .side-title { color: #8b949e; text-style: bold; margin-bottom: 1; padding: 0 1; }
+
+    /* --- Project View Filters --- */
+    #task-filters {
+        height: 3;
+        margin-bottom: 1;
+        padding: 0 1;
+    }
+    #filter-status-select {
+        width: 30%;
+        margin-right: 1;
+    }
+    #task-search-input {
+        width: 70%;
+    }
 
     /* --- Architect Diagram --- */
     .feature-card {
@@ -273,6 +286,7 @@ class ManifestApp(App):
                 yield Label("MISSION CONTROL", classes="status-header")
                 yield TaskTree("Active Missions", id="task-tree")
                 yield GateController(id="gate-controller")
+                yield SprintApprovalWidget(id="sprint-approval-widget")
 
             # 2. Unified Workspace (Split Side-by-Side)
             with Container(id="main-workspace"):
@@ -294,18 +308,7 @@ class ManifestApp(App):
                         
                         # View 2: Project (Tasks + History)
                         with TabPane("Project", id="tab-project"):
-                            with VerticalScroll(id="project-scroll"):
-                                yield Label("PROJECT", classes="side-title")
-                                # Tasks Tree
-                                yield TaskTreeView(id="task-tree-view")
-                                yield Static("", classes="spacer")
-                                # Sprint Status
-                                yield Label("SPRINT STATUS", classes="side-title")
-                                yield SprintStatusView(id="sprint-status-view")
-                                yield Static("", classes="spacer")
-                                # History
-                                yield Label("HISTORY", classes="side-title")
-                                yield HistoryView(id="history-view")
+                            yield ProjectView(id="project-view")
 
                 # 2-B. Inspector Side (Verification)
                 with Vertical(id="inspector-side"):
@@ -701,8 +704,8 @@ class ManifestApp(App):
         
         # Update project view task tree
         try:
-            task_tree_view = self.query_one("#task-tree-view", TaskTreeView)
-            task_tree_view.load_tasks(tasks)
+            project_view = self.query_one("#project-view", ProjectView)
+            project_view.load_tasks(tasks)
         except Exception:
             pass
 
@@ -1004,17 +1007,11 @@ class ManifestApp(App):
         tasks = state.get("tasks", [])
         sprints = state.get("sprints", [])
         
-        # Update task tree
+        # Update project view
         try:
-            task_tree = self.query_one("#task-tree-view", TaskTreeView)
-            task_tree.load_tasks(tasks)
-        except Exception:
-            pass
-        
-        # Update sprint status
-        try:
-            sprint_status = self.query_one("#sprint-status-view", SprintStatusView)
-            sprint_status.load_sprints(sprints)
+            project_view = self.query_one("#project-view", ProjectView)
+            project_view.load_tasks(tasks)
+            project_view.load_sprints(sprints)
         except Exception:
             pass
         
@@ -1033,10 +1030,10 @@ class ManifestApp(App):
             except Exception:
                 pass
         
-        # Update history view
+        # Update history view in project view
         try:
-            history_view = self.query_one("#history-view", HistoryView)
-            history_view.load_history(history)
+            project_view = self.query_one("#project-view", ProjectView)
+            project_view.load_history(history)
         except Exception:
             pass
     
@@ -1344,6 +1341,92 @@ class ManifestApp(App):
         # Store selected task for status change
         self._selected_task_id = task_id
         self._selected_task_status = current_status
+
+    @on(SprintSelected)
+    async def on_sprint_selected(self, message: SprintSelected) -> None:
+        """Handle sprint selection from SprintStatusView.
+        
+        When a sprint is selected, shows sprint details and allows approval/start
+        via the SprintApprovalWidget.
+        
+        Args:
+            message: SprintSelected message with sprint information.
+        """
+        sprint_id = message.sprint_id
+        sprint = message.sprint
+        
+        log = self.query_one("#log-main", RichLog)
+        
+        # Show sprint details
+        sprint_name = sprint.get("name", f"Sprint {sprint_id}")
+        sprint_status = sprint.get("status", "pending")
+        tasks = sprint.get("tasks", [])
+        completed = len([t for t in tasks if t.get("status") == "done"])
+        total = len(tasks)
+        progress = (completed / total * 100) if total > 0 else 0
+        
+        log.write(f"[bold cyan]Sprint Selected: {sprint_name} ({sprint_id})[/]")
+        log.write(f"Status: [bold]{sprint_status}[/] | Progress: {progress:.1f}% ({completed}/{total} tasks)")
+        
+        # Show sprint approval widget
+        try:
+            approval_widget = self.query_one("#sprint-approval-widget", SprintApprovalWidget)
+            approval_widget.sprint_id = sprint_id
+            approval_widget.query_one("#sprint-label").update(f"Sprint: {sprint_name}")
+            approval_widget.styles.display = "block"
+            
+            # Hide gate controller if showing sprint approval
+            self.query_one("#gate-controller").styles.display = "none"
+        except Exception:
+            pass
+
+    @on(SprintApprovalWidget.Approved)
+    async def on_sprint_approved(self, message: SprintApprovalWidget.Approved):
+        """Handle sprint approval."""
+        sprint_id = message.sprint_id
+        log = self.query_one("#log-main", RichLog)
+        
+        # Promoting sprint status
+        if hasattr(self.state_manager, 'update_sprint_status'):
+            success = self.state_manager.update_sprint_status(sprint_id, "approved")
+            if success:
+                log.write(f"[bold green]Sprint {sprint_id} approved.[/]")
+                await self.state_manager.save_state()
+                await self._load_project_data()
+            else:
+                log.write(f"[bold red]Failed to approve sprint {sprint_id}.[/]")
+        
+        self.query_one("#sprint-approval-widget").styles.display = "none"
+
+    @on(SprintApprovalWidget.Rejected)
+    async def on_sprint_rejected(self, message: SprintApprovalWidget.Rejected):
+        """Handle sprint rejection."""
+        sprint_id = message.sprint_id
+        log = self.query_one("#log-main", RichLog)
+        log.write(f"[bold red]Sprint {sprint_id} rejected.[/]")
+        
+        if hasattr(self.state_manager, 'update_sprint_status'):
+            self.state_manager.update_sprint_status(sprint_id, "rejected")
+            await self.state_manager.save_state()
+            await self._load_project_data()
+        
+        self.query_one("#sprint-approval-widget").styles.display = "none"
+
+    @on(SprintApprovalWidget.Started)
+    async def on_sprint_started(self, message: SprintApprovalWidget.Started):
+        """Handle sprint start."""
+        sprint_id = message.sprint_id
+        log = self.query_one("#log-main", RichLog)
+        
+        if self.agent_coordinator:
+            log.write(f"[bold green]Starting sprint {sprint_id}...[/]")
+            success = await self.agent_coordinator.start_sprint(sprint_id)
+            if success:
+                log.write(f"[bold green]Sprint {sprint_id} started successfully.[/]")
+            else:
+                log.write(f"[bold red]Failed to start sprint {sprint_id}.[/]")
+        
+        self.query_one("#sprint-approval-widget").styles.display = "none"
     
     def action_change_task_status(self) -> None:
         """Change status of the currently selected task.

@@ -1,8 +1,8 @@
 """
 Project View - Integrated view for Tasks and History.
 """
-from textual.widgets import Tree, Static, RichLog
-from textual.containers import Vertical, Horizontal
+from textual.widgets import Tree, Static, RichLog, Input, Select
+from textual.containers import Vertical, Horizontal, VerticalScroll
 from textual import on
 from textual.message import Message
 from typing import Dict, Any, List, Optional
@@ -19,35 +19,77 @@ class ProjectView(Vertical):
         self.sprints: List[Dict[str, Any]] = []
         self.history: List[Dict[str, Any]] = []
     
+    def compose(self):
+        """Compose the project view."""
+        with VerticalScroll(id="project-scroll"):
+            yield Label("PROJECT", classes="side-title")
+            
+            # Task Filter Controls
+            with Horizontal(id="task-filters"):
+                yield Select(
+                    [
+                        (None, "All Status"),
+                        ("pending", "Pending"),
+                        ("in_progress", "In Progress"),
+                        ("done", "Done"),
+                        ("blocked", "Blocked"),
+                        ("cancelled", "Cancelled")
+                    ],
+                    prompt="Filter Status",
+                    id="filter-status-select"
+                )
+                yield Input(placeholder="Search tasks...", id="task-search-input")
+            
+            # Tasks Tree
+            yield TaskTreeView(id="task-tree-view")
+            yield Static("", classes="spacer")
+            
+            # Sprint Status
+            yield Label("SPRINT STATUS", classes="side-title")
+            yield SprintStatusView(id="sprint-status-view")
+            yield Static("", classes="spacer")
+            
+            # History
+            yield Label("HISTORY", classes="side-title")
+            yield HistoryView(id="history-view")
+
+    @on(Select.Changed, "#filter-status-select")
+    def on_filter_status_changed(self, event: Select.Changed):
+        """Handle status filter change."""
+        status = event.value
+        search = self.query_one("#task-search-input", Input).value
+        self.query_one("#task-tree-view", TaskTreeView).apply_filter(status, search)
+
+    @on(Input.Changed, "#task-search-input")
+    def on_search_changed(self, event: Input.Changed):
+        """Handle search query change."""
+        search = event.value
+        status = self.query_one("#filter-status-select", Select).value
+        self.query_one("#task-tree-view", TaskTreeView).apply_filter(status, search)
+
     def load_tasks(self, tasks: List[Dict[str, Any]]):
         """Load tasks data."""
         self.tasks = tasks
-        self._update_tasks_display()
+        try:
+            self.query_one("#task-tree-view", TaskTreeView).load_tasks(tasks)
+        except Exception:
+            pass
     
     def load_sprints(self, sprints: List[Dict[str, Any]]):
         """Load sprints data."""
         self.sprints = sprints
-        self._update_sprints_display()
+        try:
+            self.query_one("#sprint-status-view", SprintStatusView).load_sprints(sprints)
+        except Exception:
+            pass
     
     def load_history(self, history: List[Dict[str, Any]]):
         """Load history data."""
         self.history = history
-        self._update_history_display()
-    
-    def _update_tasks_display(self):
-        """Update tasks display."""
-        # This will be implemented with actual Tree widget
-        pass
-    
-    def _update_sprints_display(self):
-        """Update sprints display."""
-        # This will be implemented with actual Tree widget
-        pass
-    
-    def _update_history_display(self):
-        """Update history display."""
-        # This will be implemented with actual RichLog widget
-        pass
+        try:
+            self.query_one("#history-view", HistoryView).load_history(history)
+        except Exception:
+            pass
 
 
 class TaskTreeView(Tree):
@@ -56,16 +98,40 @@ class TaskTreeView(Tree):
     def __init__(self, *args, **kwargs):
         super().__init__("Tasks", *args, **kwargs)
         self.tasks: List[Dict[str, Any]] = []
+        self.filter_status: Optional[str] = None
+        self.search_query: str = ""
     
     def load_tasks(self, tasks: List[Dict[str, Any]]):
         """Load tasks into tree."""
         self.tasks = tasks
+        self._update_tree()
+
+    def apply_filter(self, status: Optional[str] = None, search: str = ""):
+        """Apply filter to tasks."""
+        self.filter_status = status
+        self.search_query = search.lower()
+        self._update_tree()
+
+    def _update_tree(self):
+        """Update the tree with filtered tasks."""
         self.clear()
         root = self.root
         
+        # Filter tasks
+        filtered_tasks = self.tasks
+        if self.filter_status:
+            filtered_tasks = [t for t in filtered_tasks if t.get("status") == self.filter_status]
+        if self.search_query:
+            filtered_tasks = [
+                t for t in filtered_tasks 
+                if self.search_query in t.get("id", "").lower() or 
+                   self.search_query in t.get("name", "").lower() or
+                   self.search_query in t.get("description", "").lower()
+            ]
+
         # Group tasks by sprint
         tasks_by_sprint: Dict[str, List[Dict[str, Any]]] = {}
-        for task in tasks:
+        for task in filtered_tasks:
             sprint_id = task.get("sprint_id", "unsorted")
             if sprint_id not in tasks_by_sprint:
                 tasks_by_sprint[sprint_id] = []
@@ -80,7 +146,8 @@ class TaskTreeView(Tree):
             # Add tasks
             for task in sprint_tasks:
                 task_id = task.get("id", "")
-                task_desc = task.get("description", "Unknown Task")
+                task_name = task.get("name", "Unknown Task")
+                task_desc = task.get("description", "")
                 task_status = task.get("status", "pending")
                 
                 # Status icon
@@ -102,8 +169,8 @@ class TaskTreeView(Tree):
                     progress_pct = (completed / total * 100) if total > 0 else 0
                     progress_info = f" [{progress_pct:.0f}%]"
                 
-                task_label = f"{status_icon} {task_id}: {task_desc[:50]}{progress_info}"
-                task_node = sprint_node.add(task_label, expand=False)
+                label = f"{status_icon} {task_id}: {task_name or task_desc[:50]}{progress_info}"
+                task_node = sprint_node.add(label, expand=False)
                 task_node.data = {
                     "type": "task",
                     "id": task_id,
@@ -113,6 +180,9 @@ class TaskTreeView(Tree):
                 
                 # Add worker squad stages if available
                 worker_squad_stages = task.get("worker_squad_stages", {})
+                if not worker_squad_stages and stages:
+                    worker_squad_stages = stages
+                    
                 if worker_squad_stages:
                     stages_node = task_node.add("Worker Squad Stages", expand=False)
                     stages_node.data = {"type": "stages", "task_id": task_id}
@@ -239,9 +309,35 @@ class SprintStatusView(Static):
                 "cancelled": "❌"
             }.get(sprint_status, "○")
             
-            lines.append(f"{status_icon} {sprint_name}: {completed_tasks}/{total_tasks} tasks ({completion:.1f}%)")
+            lines.append(f"[@click=select_sprint('{sprint_id}')]{status_icon} {sprint_name}: {completed_tasks}/{total_tasks} tasks ({completion:.1f}%)[/]")
         
         return "\n".join(lines) if lines else "No sprints"
+
+    def action_select_sprint(self, sprint_id: str) -> None:
+        """Handle sprint selection via click."""
+        sprint = next((s for s in self.sprints if s.get("id") == sprint_id), None)
+        if sprint:
+            self.post_message(SprintSelected(sprint_id, sprint))
+
+
+class SprintSelected(Message):
+    """Message sent when a sprint is selected in the view.
+    
+    Attributes:
+        sprint_id: ID of the selected sprint.
+        sprint: Full sprint dictionary.
+    """
+    
+    def __init__(self, sprint_id: str, sprint: Dict[str, Any]):
+        """Initialize sprint selected message.
+        
+        Args:
+            sprint_id: ID of the selected sprint.
+            sprint: Full sprint dictionary.
+        """
+        super().__init__()
+        self.sprint_id = sprint_id
+        self.sprint = sprint
 
 
 class HistoryView(RichLog):

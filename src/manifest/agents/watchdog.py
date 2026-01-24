@@ -192,8 +192,7 @@ class AgentWatchdog:
     
     async def _check_resources(self):
         """Check resource usage."""
-        # This would integrate with container stats or system monitoring
-        # For now, we'll check terminal router's active commands count
+        # Check terminal router's active commands count
         if hasattr(self.terminal_router, 'active_commands'):
             active_count = len(self.terminal_router.active_commands)
             
@@ -209,6 +208,52 @@ class AgentWatchdog:
                     "action": "monitoring"
                 }
                 await self._raise_alert(alert)
+        
+        # Check active containers resource usage
+        if self.resource_monitor:
+            try:
+                # Get all active containers from state
+                state = self.state_manager.get_state()
+                tasks = state.get("task_checklist", [])
+                
+                for task in tasks:
+                    agent_info = task.get("agent", {})
+                    if agent_info.get("status") == "active" and agent_info.get("container_id"):
+                        container_id = agent_info["container_id"]
+                        task_id = task.get("id")
+                        
+                        # Get stats for this container
+                        stats = await self.resource_monitor.get_container_stats(container_id)
+                        if stats:
+                            cpu_pct = stats.get("cpu_percent", 0.0)
+                            mem_usage = stats.get("memory_usage", 0)
+                            mem_limit = stats.get("memory_limit", 0)
+                            mem_pct = (mem_usage / mem_limit * 100.0) if mem_limit > 0 else 0.0
+                            
+                            # Thresholds for containers
+                            if cpu_pct > 90.0 or mem_pct > 90.0:
+                                alert = {
+                                    "type": "container_resource_alert",
+                                    "severity": "high",
+                                    "task_id": task_id,
+                                    "container_id": container_id,
+                                    "cpu_percent": cpu_pct,
+                                    "memory_percent": mem_pct,
+                                    "timestamp": datetime.now().isoformat(),
+                                    "action": "warning"
+                                }
+                                await self._raise_alert(alert)
+                                
+                                # If extremely high, consider stopping the container
+                                if cpu_pct > 98.0 or mem_pct > 98.0:
+                                    logger.warning(f"Container {container_id} for task {task_id} is using excessive resources. Stopping...")
+                                    # We would call coordinator.stop_agent(task_id) here
+                                    # For now, just raise a critical alert
+                                    alert["severity"] = "critical"
+                                    alert["action"] = "should_stop"
+                                    await self._raise_alert(alert)
+            except Exception as e:
+                logger.error(f"Error checking container resources: {e}")
     
     async def _check_resource_thresholds(self):
         """Check resource usage against thresholds."""
