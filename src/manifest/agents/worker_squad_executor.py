@@ -1,6 +1,13 @@
 """
-Worker Squad Executor - Executes Worker Squad workflow for tasks.
-Separated from AgentCoordinator to improve maintainability.
+Worker Squad workflow execution for tasks.
+
+This module implements the complete Worker Squad workflow, which is a
+Test-Driven Development (TDD) process for executing tasks. The workflow
+includes multiple stages: planning, test writing, coding, testing, debugging,
+self review, and approval.
+
+The WorkerSquadExecutor was separated from AgentCoordinator to improve
+code organization and follows the single responsibility principle.
 """
 import asyncio
 from typing import Dict, Any, Optional
@@ -10,48 +17,54 @@ logger = get_logger(__name__)
 
 
 class WorkerSquadExecutor:
-    """Executes Worker Squad workflow for tasks."""
+    """Executes the complete Worker Squad workflow for tasks.
+    
+    The Worker Squad is a multi-agent workflow that follows Test-Driven
+    Development principles. It coordinates multiple agent types through
+    a structured sequence of stages, with iteration and feedback loops
+    built in.
+    
+    Attributes:
+        coordinator: Reference to AgentCoordinator for starting agents.
+        state_manager: Reference to StateManager for persisting stage results.
+    """
     
     def __init__(self, coordinator: Any):
-        """
-        Initialize Worker Squad Executor.
+        """Initialize the Worker Squad executor.
         
         Args:
-            coordinator: AgentCoordinator instance (for accessing agent methods)
+            coordinator: AgentCoordinator instance that provides access to
+                agent startup methods and other services.
         """
         self.coordinator = coordinator
         self.state_manager = coordinator.state_manager
     
     async def execute(self, task_id: str) -> Dict[str, Any]:
-        """
-        Execute Worker Squad workflow for a task.
+        """Execute the complete Worker Squad workflow for a task.
         
-        Worker Squad flow (TDD):
-        1. Planner: Create plan
-        2. Test (TDD): Write test skeleton/plan first
-        3. Coder: Implement code to pass tests
-        4. Test: Run tests
-        5. Debug: Fix bugs if tests fail (iterative)
-        6. Self Review: Verify plan compliance
-        7. Approver: Final approval
+        This is the main entry point that orchestrates all stages of the
+        Worker Squad process. The workflow follows TDD principles:
+        
+        1. Planner: Creates a detailed plan for the task
+        2. TDD Test: Writes test skeleton and plan before implementation
+        3. Coder: Implements code to make the tests pass
+        4. Test: Runs the tests to verify implementation
+        5. Debug: Fixes issues if tests fail (iterates up to 5 times)
+        6. Self Review: Coder reviews own work for plan compliance
+        7. Approver: Final approval (may loop back to coder if rejected)
+        
+        Each stage's results are saved to state, and the workflow can
+        exit early if any critical stage fails. After successful approval,
+        Sprint-level tests are triggered in the background.
         
         Args:
-            task_id: Task ID
-            
+            task_id: Unique identifier of the task to execute.
+        
         Returns:
-            Dict with execution results:
-            {
-                "success": bool,
-                "stages": {
-                    "planner": {...},
-                    "tdd_test": {...},
-                    "coder": {...},
-                    "test": {...},
-                    "debug": {...},
-                    "self_review": {...},
-                    "approver": {...}
-                }
-            }
+            Dictionary containing:
+            - success: Boolean indicating if workflow completed successfully
+            - stages: Dictionary mapping stage names to their results
+            - error: Optional error message if workflow failed
         """
         stages = {}
         previous_stages = {}

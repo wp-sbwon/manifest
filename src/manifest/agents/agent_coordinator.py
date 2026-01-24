@@ -1,7 +1,15 @@
 """
-Agent Coordinator - Coordinates agents with task boundaries.
-Manages orchestrator and worker agent lifecycle with proper scoping.
-Supports both direct execution and Docker container execution.
+Agent coordination and lifecycle management for Manifest.
+
+This module provides the AgentCoordinator class which orchestrates the
+execution of different agent types (orchestrator, planner, coder, etc.)
+with proper task boundaries and scoping. It manages agent startup,
+execution, and communication, and supports both direct execution and
+Docker container-based execution.
+
+The coordinator delegates complex workflows to specialized executors:
+WorkerSquadExecutor for task execution workflows and SprintExecutor for
+sprint management.
 """
 import asyncio
 from typing import Dict, Any, Optional, List
@@ -19,7 +27,33 @@ logger = get_logger(__name__)
 
 
 class AgentCoordinator:
-    """Coordinates agents through agent bridge."""
+    """Coordinates agent execution and lifecycle management.
+    
+    This class serves as the central coordinator for all agent operations.
+    It manages orchestrator and worker agent startup, delegates complex
+    workflows to specialized executors, and handles both direct execution
+    and Docker container-based execution modes.
+    
+    The coordinator uses dependency injection to access various services
+    (AgentBridge, ContextProvider, TaskScoper, etc.) and creates executor
+    instances for Worker Squad and Sprint operations.
+    
+    Attributes:
+        agent_bridge: Bridge for agent communication and execution.
+        context_provider: Provides context data for agents.
+        task_scoper: Manages task scoping and boundaries.
+        config_manager: Handles configuration and API keys.
+        state_manager: Manages application state persistence.
+        active_agents: Dictionary tracking currently active agents.
+        terminal_router: Router for terminal command execution.
+        orchestrator: Orchestrator agent instance.
+        agent_manager: Manager for agent lifecycle.
+        container_manager: Manager for Docker container operations.
+        use_containers: Whether Docker containers are available and enabled.
+        state_sync: Container state synchronization handler (if using containers).
+        worker_squad_executor: Executor for Worker Squad workflows.
+        sprint_executor: Executor for Sprint operations.
+    """
     
     def __init__(
         self,
@@ -29,6 +63,19 @@ class AgentCoordinator:
         config_manager: ConfigManager,
         state_manager: StateManager
     ):
+        """Initialize the agent coordinator.
+        
+        Sets up all necessary components including container management,
+        state synchronization, and workflow executors. Detects if Docker
+        is available and configures container execution accordingly.
+        
+        Args:
+            agent_bridge: Bridge instance for agent communication.
+            context_provider: Provider for agent context data.
+            task_scoper: Scoper for managing task boundaries.
+            config_manager: Manager for configuration and API keys.
+            state_manager: Manager for state persistence.
+        """
         self.agent_bridge = agent_bridge
         self.context_provider = context_provider
         self.task_scoper = task_scoper
@@ -36,36 +83,51 @@ class AgentCoordinator:
         self.state_manager = state_manager
         self.active_agents: Dict[str, Dict[str, Any]] = {}  # task_id -> agent info
         
-        # Access to agent components
+        # Access to agent components from bridge
         self.terminal_router = agent_bridge.terminal_router
         self.orchestrator = agent_bridge.orchestrator
         self.agent_manager = agent_bridge.agent_manager
         
-        # Container manager for Docker-based agent execution
+        # Set up container management if Docker is available
         self.container_manager = ContainerManager()
         self.use_containers = self.container_manager.is_docker_available()
         
-        # Container communication (if using containers)
+        # Initialize container state synchronization if using containers
         if self.use_containers:
             from manifest.agents.container_communication import ContainerStateSync
             self.state_sync = ContainerStateSync(state_manager, self.container_manager.message_bus)
         else:
             self.state_sync = None
         
-        # Worker Squad Executor
+        # Create workflow executors
         self.worker_squad_executor = WorkerSquadExecutor(self)
-        
-        # Sprint Executor
         self.sprint_executor = SprintExecutor(self)
     
-    async def start(self):
-        """Start agent coordinator and container communication if enabled."""
+    async def start(self) -> None:
+        """Start the coordinator and initialize container communication.
+        
+        If container execution is enabled, starts the state synchronization
+        service to keep state consistent between the main process and
+        containerized agents.
+        """
         if self.use_containers and self.state_sync:
             await self.state_sync.start()
             logger.info("Container state synchronization started.")
     
     async def start_orchestrator(self, mission_description: str) -> bool:
-        """Start orchestrator via agent bridge."""
+        """Start the orchestrator agent with a mission description.
+        
+        The orchestrator is the top-level agent that breaks down high-level
+        missions into tasks. It receives Tier 0-1 context (policies, PRD,
+        architecture) and the mission description.
+        
+        Args:
+            mission_description: High-level description of what needs to be
+                accomplished. The orchestrator will break this down into tasks.
+        
+        Returns:
+            True if orchestrator started successfully, False otherwise.
+        """
         # Get orchestrator context (Tier 0-1)
         context = self.context_provider.get_orchestrator_context()
         
@@ -103,15 +165,31 @@ class AgentCoordinator:
         stage: Optional[str] = None,
         previous_stages: Optional[Dict[str, Any]] = None
     ) -> bool:
-        """
-        Start worker agent with task scope.
+        """Start a worker agent to work on a specific task.
+        
+        Worker agents (planner, coder, test, etc.) are started with task-specific
+        context and scope. The agent can run either directly or in a Docker
+        container, depending on configuration and availability.
+        
+        The agent receives context including the task description, scope boundaries,
+        and results from previous stages if this is part of a multi-stage workflow.
         
         Args:
-            task_id: Task identifier
-            agent_type: Type of agent (orchestrator, planner, coder, test, review)
-            use_container: Whether to use Docker container (None = auto-detect)
-            stage: Current stage (planner, tdd_test, coder, test, debug, self_review, approver)
-            previous_stages: Results from previous stages
+            task_id: Unique identifier of the task the agent will work on.
+            agent_type: Type of worker agent to start. Valid values: "planner",
+                "coder", "test", "debug", "approver", "self_review", etc.
+            use_container: Whether to force container execution. If None, uses
+                the coordinator's default (auto-detects Docker availability).
+            stage: Current stage in the workflow (e.g., "planner", "tdd_test",
+                "coder", "test", "debug", "self_review", "approver"). Used to
+                provide stage-specific context.
+            previous_stages: Dictionary containing results from previous stages
+                in the workflow. Used to provide context about what's already
+                been done.
+        
+        Returns:
+            True if the agent started successfully, False if the task doesn't
+            exist or startup failed.
         """
         # Validate task exists
         tasks = self.state_manager.get_task_checklist()
@@ -224,7 +302,19 @@ class AgentCoordinator:
         return success
     
     async def stop_agent(self, task_id: str) -> bool:
-        """Stop agent working on task."""
+        """Stop an agent that's currently working on a task.
+        
+        Stops the agent and cleans up resources. For containerized agents,
+        stops the Docker container. For direct execution, stops the agent
+        process through the agent bridge.
+        
+        Args:
+            task_id: ID of the task whose agent should be stopped.
+        
+        Returns:
+            True if the agent was found and stopped successfully, False
+            if the agent wasn't active or stopping failed.
+        """
         if task_id not in self.active_agents:
             return False
         
@@ -234,7 +324,7 @@ class AgentCoordinator:
         success = False
         
         if execution_mode == "container":
-            # Stop container
+            # Stop the Docker container
             success = await self.container_manager.stop_agent_container(task_id)
         else:
             # Stop via agent bridge
@@ -296,20 +386,32 @@ class AgentCoordinator:
         return agent_info.get("channel") if agent_info else None
     
     async def handle_blueprint_conflict(self, conflict_issue: Dict[str, Any], task_id: str) -> bool:
-        """Handle blueprint conflict by resending to worker squad with conflict context."""
+        """Handle a blueprint drift conflict by requesting planner review.
+        
+        When code drifts from the blueprint, this method creates a conflict
+        record and requests that the planner agent review the issue. The
+        conflict information is stored with the task for tracking.
+        
+        Args:
+            conflict_issue: Dictionary describing the conflict, including
+                component ID, conflict type, severity, and details.
+            task_id: ID of the task where the conflict was detected.
+        
+        Returns:
+            True if conflict was recorded successfully. Note that actual
+            planner review integration is pending.
+        """
         from manifest.audit.blueprint_synchronizer import BlueprintSynchronizer
         
         synchronizer = BlueprintSynchronizer()
         
-        # Create resend request
+        # Create request to resend task to worker squad with conflict context
         resend_request = synchronizer.resend_to_worker_squad(task_id, conflict_issue)
         
-        # Request planner review
+        # Request planner to review the conflict
         planner_request = synchronizer.request_planner_review(conflict_issue)
         
-        # Send to agent bridge for planner review
-        # This would integrate with agent bridge to send to planner
-        # For now, we'll update the task with conflict information
+        # Store conflict information with the task
         tasks = self.state_manager.get_task_checklist()
         for task in tasks:
             if task.get("id") == task_id:
@@ -328,30 +430,66 @@ class AgentCoordinator:
         return True
     
     async def start_sprint(self, sprint_id: str, max_parallel: int = 10) -> Dict[str, Any]:
-        """
-        Start a Sprint by executing all tasks in parallel.
-        Delegates to SprintExecutor.
+        """Start a sprint by executing all its tasks in parallel.
+        
+        Delegates to SprintExecutor which handles the actual sprint execution,
+        including test writing and task parallelization.
+        
+        Args:
+            sprint_id: ID of the sprint to start.
+            max_parallel: Maximum number of tasks to run simultaneously.
+                Defaults to 10.
+        
+        Returns:
+            Dictionary with execution results including started tasks,
+            failed tasks, and parallel groups.
         """
         return await self.sprint_executor.start_sprint(sprint_id, max_parallel)
     
     async def _start_task_worker_squad(self, task_id: str) -> bool:
+        """Start the Worker Squad workflow for a task in the background.
+        
+        This is an internal helper method that launches the Worker Squad
+        executor as a background task, making it non-blocking.
+        
+        Args:
+            task_id: ID of the task to start Worker Squad for.
+        
+        Returns:
+            Always returns True (execution happens in background).
         """
-        Start Worker Squad for a task (internal helper).
-        Executes the full Worker Squad workflow in background.
-        """
-        # Execute full Worker Squad workflow in background (non-blocking)
+        # Launch Worker Squad workflow asynchronously (non-blocking)
         asyncio.create_task(self.worker_squad_executor.execute(task_id))
         return True
     
     async def execute_worker_squad(self, task_id: str) -> Dict[str, Any]:
-        """
-        Execute Worker Squad workflow for a task.
-        Delegates to WorkerSquadExecutor.
+        """Execute the complete Worker Squad workflow for a task.
+        
+        Delegates to WorkerSquadExecutor which handles the multi-stage
+        workflow (planner, TDD test, coder, test, debug, self review, approver).
+        
+        Args:
+            task_id: ID of the task to execute Worker Squad for.
+        
+        Returns:
+            Dictionary with execution results including success status and
+            results from each stage.
         """
         return await self.worker_squad_executor.execute(task_id)
     
     async def _execute_planner_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> bool:
-        """Execute Planner stage."""
+        """Execute the Planner stage of Worker Squad.
+        
+        Starts the planner agent to create a plan for the task. This is
+        the first stage in the Worker Squad workflow.
+        
+        Args:
+            task_id: ID of the task to plan for.
+            previous_stages: Results from previous stages (empty for planner).
+        
+        Returns:
+            True if planner agent started successfully, False otherwise.
+        """
         return await self.start_worker_agent(task_id, "planner", stage="planner", previous_stages=previous_stages or {})
     
     async def _execute_coder_stage(
@@ -361,7 +499,22 @@ class AgentCoordinator:
         test_plan: Dict[str, Any] = None,
         previous_stages: Dict[str, Any] = None
     ) -> bool:
-        """Execute Coder stage."""
+        """Execute the Coder stage of Worker Squad.
+        
+        Starts the coder agent to implement code. If feedback is provided
+        (e.g., from approver rejection), it's added to the task context.
+        If a test plan is provided (from TDD stage), it's also included
+        in the context.
+        
+        Args:
+            task_id: ID of the task to code for.
+            feedback: Optional feedback from approver if this is a rework.
+            test_plan: Optional test plan from TDD stage to guide implementation.
+            previous_stages: Results from previous stages in the workflow.
+        
+        Returns:
+            True if coder agent started successfully, False otherwise.
+        """
         # If feedback provided, add it to context
         if feedback:
             # Update task with feedback
@@ -395,8 +548,22 @@ class AgentCoordinator:
         planner_result: Dict[str, Any],
         previous_stages: Dict[str, Any] = None
     ) -> Dict[str, Any]:
-        """Execute TDD Test stage (test-first approach)."""
-        # Start test agent with TDD context
+        """Execute the TDD (Test-Driven Development) test stage.
+        
+        In TDD mode, tests are written before implementation. This stage
+        starts the test agent with TDD context to create test skeletons
+        and plans that will guide the coder's implementation.
+        
+        Args:
+            task_id: ID of the task to write tests for.
+            planner_result: Results from the planner stage containing the plan.
+            previous_stages: Results from all previous stages.
+        
+        Returns:
+            Dictionary with stage results including status, test skeleton,
+            test plan, and TDD mode flag.
+        """
+        # Start test agent in TDD mode (write tests first)
         success = await self.start_worker_agent(
             task_id, "test", stage="tdd_test", previous_stages=previous_stages or {}
         )
@@ -408,7 +575,20 @@ class AgentCoordinator:
         }
     
     async def _execute_test_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Execute Test stage (run tests after implementation)."""
+        """Execute the test stage to run tests after implementation.
+        
+        This stage runs after the coder has implemented code. The test
+        agent executes the tests (which should pass if TDD was followed
+        correctly) and reports results.
+        
+        Args:
+            task_id: ID of the task to test.
+            previous_stages: Results from previous stages including coder output.
+        
+        Returns:
+            Dictionary with test execution results including status and
+            test results.
+        """
         success = await self.start_worker_agent(
             task_id, "test", stage="test", previous_stages=previous_stages or {}
         )
@@ -423,7 +603,21 @@ class AgentCoordinator:
         test_result: Dict[str, Any],
         previous_stages: Dict[str, Any] = None
     ) -> Dict[str, Any]:
-        """Execute Debug stage."""
+        """Execute the debug stage to fix failing tests.
+        
+        This stage runs when tests fail. The debug agent analyzes test
+        failures and fixes issues in the code. This can iterate multiple
+        times until tests pass.
+        
+        Args:
+            task_id: ID of the task to debug.
+            test_result: Results from the test stage showing what failed.
+            previous_stages: Results from all previous stages.
+        
+        Returns:
+            Dictionary with debug results including status and list of
+            issues that were fixed.
+        """
         success = await self.start_worker_agent(
             task_id, "debug", stage="debug", previous_stages=previous_stages or {}
         )
@@ -433,9 +627,21 @@ class AgentCoordinator:
         }
     
     async def _execute_self_review_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Execute Self Review stage (Coder self-review)."""
-        # Self review is done by Coder agent
-        # This is a placeholder - actual implementation would call coder's self_review method
+        """Execute the self review stage where coder reviews their own work.
+        
+        After tests pass, the coder agent reviews the implementation to
+        ensure it complies with the original plan and meets quality standards.
+        This is done by the coder agent in self-review mode.
+        
+        Args:
+            task_id: ID of the task to review.
+            previous_stages: Results from all previous stages.
+        
+        Returns:
+            Dictionary with review results including status, plan compliance
+            flag, and any findings.
+        """
+        # Self review is performed by the coder agent in review mode
         success = await self.start_worker_agent(
             task_id, "coder", stage="self_review", previous_stages=previous_stages or {}
         )
@@ -451,7 +657,21 @@ class AgentCoordinator:
         self_review_result: Dict[str, Any],
         previous_stages: Dict[str, Any] = None
     ) -> Dict[str, Any]:
-        """Execute Approver stage."""
+        """Execute the approver stage for final approval.
+        
+        The approver agent reviews the completed work and makes a final
+        decision: approve or reject. If rejected, feedback is provided
+        and the workflow may loop back to the coder stage.
+        
+        Args:
+            task_id: ID of the task to approve.
+            self_review_result: Results from the self review stage.
+            previous_stages: Results from all previous stages.
+        
+        Returns:
+            Dictionary with approval results including status, decision
+            ("approved" or "rejected"), and optional feedback.
+        """
         success = await self.start_worker_agent(
             task_id, "approver", stage="approver", previous_stages=previous_stages or {}
         )
@@ -462,25 +682,27 @@ class AgentCoordinator:
         }
     
     async def review_project_requirements(self, task_id: str) -> Dict[str, Any]:
-        """
-        Review project-level requirements compliance.
+        """Review project-level requirements compliance after task completion.
         
-        Workflow:
-        1. E2E Test: Run end-to-end tests
-        2. Project Review: Review requirements compliance
+        This is a higher-level review that happens after Worker Squad completes.
+        It runs E2E tests and performs a project review to ensure the work
+        meets overall project requirements, not just the specific task.
+        
+        The workflow:
+        1. Run E2E tests to verify end-to-end functionality
+        2. Run project review agent to check requirements compliance
         
         Args:
-            task_id: Task ID that completed Worker Squad
-            
+            task_id: ID of the task that completed Worker Squad and needs
+                project-level review.
+        
         Returns:
-            Dict with review results:
-            {
-                "requirements_met": bool,
-                "findings": List[str],
-                "recommendations": List[str],
-                "e2e_test": {...},
-                "project_review": {...}
-            }
+            Dictionary containing:
+            - requirements_met: Boolean indicating if requirements are satisfied
+            - findings: List of issues or observations
+            - recommendations: List of suggested improvements
+            - e2e_test: Results from E2E test execution
+            - project_review: Results from project review agent
         """
         results = {}
         
