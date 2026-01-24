@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 
-from manifest.audit.drift_auditor import Severity
+from manifest.audit.code.drift_auditor import Severity
 
 
 class ConflictType(Enum):

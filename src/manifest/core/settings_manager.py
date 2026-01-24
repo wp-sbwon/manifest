@@ -1,6 +1,21 @@
 """
-Settings Manager - Unified interface for all Manifest settings.
-Manages API keys, agent models, skills, and policy files.
+Unified settings management interface.
+
+This module provides the SettingsManager class which serves as a unified
+interface for all Manifest settings. It integrates ConfigManager (API keys,
+agent models) and SkillsManager (agent skills) into a single interface
+that's convenient for UI and programmatic access.
+
+SettingsManager provides:
+- API key management (delegated to ConfigManager)
+- Agent model configuration (delegated to ConfigManager)
+- Skills management (delegated to SkillsManager)
+- Policy file management (manifest-policy.md)
+- AGENTS.md management
+- Additional settings (Spec-First, Shadow Manager)
+
+This unified interface eliminates the need to interact with multiple
+managers separately, making settings management simpler and more consistent.
 """
 import json
 from pathlib import Path
@@ -13,15 +28,35 @@ logger = get_logger(__name__)
 
 
 class SettingsManager:
-    """Unified settings management for Manifest."""
+    """Unified interface for all Manifest settings management.
+    
+    Integrates ConfigManager and SkillsManager to provide a single interface
+    for managing all application settings. This includes API keys, agent
+    models, skills, policy files, and additional configuration options.
+    
+    The manager delegates to specialized managers (ConfigManager for API
+    keys and models, SkillsManager for skills) while providing a convenient
+    unified API for UI and programmatic access.
+    
+    Attributes:
+        manifest_dir: Path to .manifest directory.
+        project_root: Root directory of the project.
+        config_manager: ConfigManager instance for API keys and models.
+        skills_manager: SkillsManager instance for agent skills.
+        policy_file: Path to manifest-policy.md.
+        agents_md_file: Path to AGENTS.md.
+    """
     
     def __init__(self, manifest_dir: Path = None, project_root: Path = None):
-        """
-        Initialize Settings Manager.
+        """Initialize the settings manager.
+        
+        Creates instances of ConfigManager and SkillsManager to handle
+        different aspects of settings. The manager coordinates between
+        these specialized managers to provide a unified interface.
         
         Args:
-            manifest_dir: .manifest directory path
-            project_root: Project root directory
+            manifest_dir: Path to .manifest directory. Defaults to .manifest.
+            project_root: Root directory of the project. Defaults to current directory.
         """
         self.manifest_dir = manifest_dir or Path(".manifest")
         self.project_root = project_root or Path.cwd()

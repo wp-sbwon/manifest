@@ -2,8 +2,8 @@
 Unit tests for blueprint_comparator.py
 """
 import pytest
-from manifest.audit.blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
-from manifest.audit.drift_auditor import Severity
+from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
+from manifest.audit.code.drift_auditor import Severity
 
 
 @pytest.fixture

@@ -7,7 +7,7 @@ import tempfile
 import shutil
 from pathlib import Path
 
-from manifest.audit.code_extractor import CodeExtractor, Component, Contract
+from manifest.audit.code.code_extractor import CodeExtractor, Component, Contract
 
 
 @pytest.fixture

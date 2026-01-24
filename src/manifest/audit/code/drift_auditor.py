@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from enum import Enum
 
-from manifest.audit.code_extractor import CodeExtractor
+from manifest.audit.code.code_extractor import CodeExtractor
 
 
 class Severity(Enum):
@@ -74,7 +74,7 @@ class DriftAuditor:
         Uses BlueprintLoader to load the blueprint file. The blueprint
         is cached in the instance for use during auditing.
         """
-        from manifest.audit.blueprint_loader import BlueprintLoader
+        from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         self.blueprint = BlueprintLoader.load_blueprint(
             self.manifest_dir, with_metadata=True
         )

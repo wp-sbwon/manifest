@@ -10,7 +10,7 @@ The agent extracts test information (files, cases, results) and saves it to
 task state for tracking throughout the Worker Squad workflow.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
-from manifest.runtime.agent.executor import AgentExecutor
+from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.state_manager import StateManager
 
 

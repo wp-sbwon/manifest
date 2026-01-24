@@ -7,7 +7,7 @@ doesn't write code directly but provides clear instructions for the coder
 to implement fixes.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
-from manifest.runtime.agent.executor import AgentExecutor
+from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.state_manager import StateManager
 
 

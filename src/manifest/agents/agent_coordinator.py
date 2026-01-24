@@ -401,7 +401,7 @@ class AgentCoordinator:
             True if conflict was recorded successfully. Note that actual
             planner review integration is pending.
         """
-        from manifest.audit.blueprint_synchronizer import BlueprintSynchronizer
+        from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
         
         synchronizer = BlueprintSynchronizer()
         

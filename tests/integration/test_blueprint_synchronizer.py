@@ -8,9 +8,9 @@ import shutil
 from pathlib import Path
 from datetime import datetime
 
-from manifest.audit.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
-from manifest.audit.blueprint_comparator import BlueprintConflict, ConflictType
-from manifest.audit.drift_auditor import Severity
+from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
+from manifest.audit.blueprint.blueprint_comparator import BlueprintConflict, ConflictType
+from manifest.audit.code.drift_auditor import Severity
 
 
 @pytest.fixture

@@ -7,7 +7,7 @@ approve or reject the work. If rejecting, provides specific feedback for
 improvement.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
-from manifest.runtime.agent.executor import AgentExecutor
+from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.state_manager import StateManager
 
 

@@ -11,7 +11,7 @@ The agent supports both TDD mode (write tests first) and execution mode
 component integrations across the Sprint scope.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
-from manifest.runtime.agent.executor import AgentExecutor
+from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.state_manager import StateManager
 
 
