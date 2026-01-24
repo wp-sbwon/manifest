@@ -1,6 +1,13 @@
 """
-Agent Executor - Executes agents using LLM APIs.
-Handles LLM calls, message processing, and agent state management.
+Agent execution engine using LLM APIs.
+
+This module provides the AgentExecutor class which is responsible for actually
+executing agents by making API calls to LLM providers (Anthropic, OpenAI, etc.).
+It handles message preparation, streaming responses, prompt hooks, and
+session management.
+
+The executor supports multiple providers and can stream responses in real-time,
+making it suitable for interactive agent execution.
 """
 import asyncio
 import json
@@ -108,7 +115,20 @@ class AgentExecutor:
         prompt: str,
         history: List[Dict[str, str]]
     ) -> List[Dict[str, str]]:
-        """Prepare messages for LLM API."""
+        """Prepare message list for LLM API from prompt and history.
+        
+        Extracts system message from the prompt if present (separated by "##"),
+        then adds conversation history, and finally adds the current user message.
+        The format matches what LLM APIs expect (list of role/content dictionaries).
+        
+        Args:
+            prompt: Complete prompt string that may contain system and user parts.
+            history: Previous conversation messages as list of role/content dicts.
+        
+        Returns:
+            List of message dictionaries with "role" and "content" keys,
+            formatted for LLM API consumption.
+        """
         messages = []
         
         # Add system message (extract from prompt if needed)
@@ -137,7 +157,21 @@ class AgentExecutor:
         model: str,
         messages: List[Dict[str, str]]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """Call Anthropic Claude API."""
+        """Make API call to Anthropic Claude and stream responses.
+        
+        Handles Anthropic's streaming API format, extracting text deltas
+        from Server-Sent Events (SSE) format. Yields chunks as they arrive
+        for real-time display.
+        
+        Args:
+            api_key: Anthropic API key.
+            model: Model name (e.g., "claude-3-5-sonnet-20241022").
+            messages: List of conversation messages.
+        
+        Yields:
+            Dictionaries with type "chunk" (streaming) or "complete" (finished).
+            On error, yields type "error" with error message.
+        """
         # Extract system message if present
         system_message = None
         api_messages = []
