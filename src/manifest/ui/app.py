@@ -21,9 +21,6 @@ from manifest.audit.drift_auditor import DriftAuditor
 from manifest.audit.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
 from manifest.audit.blueprint_comparator import BlueprintComparator
 from manifest.ui.widgets import RequirementMap, ArchitectureGraph, FeatureTree, TaskTree, GateController
-from manifest.ui.widgets.structure_hierarchy_view import StructureHierarchyView
-from manifest.ui.widgets.structure_graph_view import StructureGraphView
-from manifest.ui.widgets.project_view import TaskTreeView, SprintStatusView, HistoryView
 from manifest.audit.architecture_metadata import load_architecture_with_metadata
 from manifest.ui.bootstrap_ui import run_bootstrap
 from manifest.ui.settings_screen import SettingsScreen
