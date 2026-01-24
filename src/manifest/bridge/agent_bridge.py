@@ -1,6 +1,14 @@
 """
-Agent Bridge - Direct integration with agent system.
-Integrates agent system and terminal router directly.
+Agent bridge for direct integration with the agent system.
+
+This module provides the AgentBridge class which serves as the main integration
+point between the UI/coordination layer and the actual agent execution system.
+It manages the orchestrator, agent manager, terminal router, and handles
+starting agent missions.
+
+The bridge coordinates multiple components including terminal execution,
+resource monitoring, watchdog supervision, and shadow process management for
+isolated agent execution.
 """
 import asyncio
 import json
@@ -18,8 +26,31 @@ logger = get_logger(__name__)
 
 
 class AgentBridge:
-    """
-    Direct integration bridge to agent functionality.
+    """Direct integration bridge to agent system functionality.
+    
+    This class provides the main interface for starting agents, executing
+    missions, and managing agent lifecycle. It coordinates multiple subsystems:
+    orchestrator, agent manager, terminal router, resource monitoring, and
+    watchdog supervision.
+    
+    The bridge can operate agents directly or in shadow processes for isolation.
+    It also manages prompt hooks for intercepting and modifying prompts before
+    they reach the LLM.
+    
+    Attributes:
+        state_manager: Manages application state persistence.
+        config_manager: Manages configuration and API keys.
+        working_dir: Working directory for agent operations.
+        resource_monitor: Monitors Docker container resources.
+        watchdog: Monitors and supervises agent operations.
+        terminal_router: Routes terminal commands for execution.
+        executor: Executes agents via LLM API calls.
+        orchestrator: Top-level orchestrator agent.
+        agent_manager: Manages agent lifecycle and creation.
+        shadow_manager: Manages isolated shadow process execution.
+        use_shadow_processes: Whether to use shadow processes (configurable).
+        is_connected: Whether the bridge is initialized and ready.
+        _active_agents: Dictionary tracking active agent sessions.
     """
     
     def __init__(
@@ -28,6 +59,17 @@ class AgentBridge:
         config_manager: Optional[ConfigManager] = None,
         working_dir: Optional[Path] = None
     ):
+        """Initialize the agent bridge.
+        
+        Sets up all subsystems including terminal router, orchestrator, agent
+        manager, resource monitoring, and watchdog. Configures prompt hooks
+        and shadow process management.
+        
+        Args:
+            state_manager: State manager for persistence.
+            config_manager: Optional config manager. If not provided, creates one.
+            working_dir: Optional working directory. Defaults to current directory.
+        """
         self.state_manager = state_manager
         self.config_manager = config_manager
         self.working_dir = working_dir or Path.cwd()
