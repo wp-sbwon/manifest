@@ -8,6 +8,9 @@ import json
 import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Set
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class SkillsManager:
@@ -58,7 +61,7 @@ class SkillsManager:
             self._agent_skills = agent_skills.copy()
             
         except Exception as e:
-            print(f"Warning: Failed to load agent skills: {e}")
+            logger.warning(f"Failed to load agent skills: {e}", exc_info=True)
             self._agent_skills = {}
     
     def _load_project_skills(self):
@@ -76,7 +79,7 @@ class SkillsManager:
             self._project_skills = skills
             
         except Exception as e:
-            print(f"Warning: Failed to load AGENTS.md: {e}")
+            logger.warning(f"Failed to load AGENTS.md: {e}", exc_info=True)
             self._project_skills = []
     
     def _parse_agents_md(self, content: str) -> List[Dict[str, Any]]:
@@ -153,7 +156,7 @@ class SkillsManager:
                 self._skill_definitions[skill_id] = skill_def
                 
             except Exception as e:
-                print(f"Warning: Failed to load skill {skill_id}: {e}")
+                logger.warning(f"Failed to load skill {skill_id}: {e}", exc_info=True)
     
     def _parse_skill_markdown(self, content: str, skill_id: str, file_path: Path) -> Dict[str, Any]:
         """Parse markdown file to extract skill definition."""
@@ -328,7 +331,7 @@ class SkillsManager:
                 with open(self.agent_config_file, "r") as f:
                     config = json.load(f)
             except Exception as e:
-                print(f"Error loading agent config: {e}")
+                logger.error(f"Error loading agent config: {e}", exc_info=True)
                 return False
         
         config["agent_skills"] = agent_skills
@@ -341,7 +344,7 @@ class SkillsManager:
             self._load_agent_default_skills()
             return True
         except Exception as e:
-            print(f"Error saving agent skills: {e}")
+            logger.error(f"Error saving agent skills: {e}", exc_info=True)
             return False
     
     def save_skill_file(self, skill_id: str, content: str) -> bool:
@@ -364,7 +367,7 @@ class SkillsManager:
             self._load_skill_definitions()
             return True
         except Exception as e:
-            print(f"Error saving skill file: {e}")
+            logger.error(f"Error saving skill file: {e}", exc_info=True)
             return False
     
     def save_agents_md(self, content: str) -> bool:
@@ -384,5 +387,5 @@ class SkillsManager:
             self._load_project_skills()
             return True
         except Exception as e:
-            print(f"Error saving AGENTS.md: {e}")
+            logger.error(f"Error saving AGENTS.md: {e}", exc_info=True)
             return False

@@ -9,6 +9,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from manifest.core.state_manager import StateManager
 from manifest.runtime.router.terminal_router import TerminalRouter
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class AgentWatchdog:
@@ -99,7 +102,7 @@ class AgentWatchdog:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"Error in watchdog loop: {e}")
+                logger.error(f"Error in watchdog loop: {e}", exc_info=True)
     
     async def _check_hanging_commands(self):
         """Check for hanging terminal commands."""
@@ -252,7 +255,7 @@ class AgentWatchdog:
                 else:
                     callback(alert)
             except Exception as e:
-                print(f"Error in alert callback: {e}")
+                logger.error(f"Error in alert callback: {e}", exc_info=True)
         
         # Save to state
         await self._save_alert(alert)

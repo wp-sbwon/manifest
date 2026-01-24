@@ -7,6 +7,9 @@ import psutil
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 import docker
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ResourceMonitor:
@@ -79,7 +82,7 @@ class ResourceMonitor:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"Error in resource monitor loop: {e}")
+                logger.error(f"Error in resource monitor loop: {e}", exc_info=True)
     
     async def _get_system_stats(self) -> Dict[str, Any]:
         """Get system-wide resource statistics."""
@@ -104,7 +107,7 @@ class ResourceMonitor:
                 }
             }
         except Exception as e:
-            print(f"Error getting system stats: {e}")
+            logger.error(f"Error getting system stats: {e}", exc_info=True)
             return {}
     
     async def _get_container_stats(self) -> Dict[str, Dict[str, Any]]:
@@ -153,10 +156,10 @@ class ResourceMonitor:
                     self.container_stats[container.id] = stats[container.id]
                     
                 except Exception as e:
-                    print(f"Error getting stats for container {container.id}: {e}")
+                    logger.error(f"Error getting stats for container {container.id}: {e}", exc_info=True)
         
         except Exception as e:
-            print(f"Error getting container stats: {e}")
+            logger.error(f"Error getting container stats: {e}", exc_info=True)
         
         return stats
     

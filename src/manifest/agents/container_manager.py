@@ -8,6 +8,9 @@ from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime
 from manifest.agents.container_communication import ContainerMessageBus, ContainerStateSync
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ContainerManager:
@@ -28,7 +31,7 @@ class ContainerManager:
             self.client.ping()  # Test connection
             self.docker_available = True
         except Exception as e:
-            print(f"Docker not available: {e}")
+            logger.warning(f"Docker not available: {e}", exc_info=True)
             self.client = None
             self.docker_available = False
         
@@ -146,7 +149,7 @@ class ContainerManager:
             
             return container.id
         except Exception as e:
-            print(f"Error starting container for task {task_id}: {e}")
+            logger.error(f"Error starting container for task {task_id}: {e}", exc_info=True)
             return None
     
     async def stop_agent_container(self, task_id: str) -> bool:
@@ -186,7 +189,7 @@ class ContainerManager:
             del self.active_containers[task_id]
             return True
         except Exception as e:
-            print(f"Error stopping container for task {task_id}: {e}")
+            logger.error(f"Error stopping container for task {task_id}: {e}", exc_info=True)
             return False
     
     async def get_container_status(self, task_id: str) -> Optional[Dict[str, Any]]:
@@ -221,7 +224,7 @@ class ContainerManager:
                 "metadata": self.container_metadata.get(task_id, {})
             }
         except Exception as e:
-            print(f"Error getting container status for task {task_id}: {e}")
+            logger.error(f"Error getting container status for task {task_id}: {e}", exc_info=True)
             return None
     
     def _calculate_cpu_percent(self, stats: Dict[str, Any]) -> float:
@@ -274,7 +277,7 @@ class ContainerManager:
                         yield line.decode('utf-8', errors='replace')
                 return log_stream()
         except Exception as e:
-            print(f"Error getting logs for task {task_id}: {e}")
+            logger.error(f"Error getting logs for task {task_id}: {e}", exc_info=True)
             return []
     
     def list_active_containers(self) -> List[str]:
