@@ -237,7 +237,7 @@ class ConfigManager:
                 encrypted_key = self._cipher.encrypt(api_key.encode())
                 config["api_key"] = encrypted_key.decode()
             except Exception as e:
-                print(f"Error encrypting API key: {e}")
+                logger.error(f"Error encrypting API key: {e}", exc_info=True)
                 return False
         
         agent_config["agent_models"][agent_type] = config

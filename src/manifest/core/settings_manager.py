@@ -235,7 +235,7 @@ class SettingsManager:
                 json.dump(settings, f, indent=2)
             return True
         except Exception as e:
-            print(f"Error saving spec-first settings: {e}")
+            logger.error(f"Error saving spec-first settings: {e}", exc_info=True)
             return False
     
     # Shadow Manager Settings
