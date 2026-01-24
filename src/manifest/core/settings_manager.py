@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from manifest.core.config import ConfigManager
 from manifest.agents.skills_manager import SkillsManager
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class SettingsManager:
@@ -99,7 +102,7 @@ class SettingsManager:
                 json.dump(agent_config, f, indent=2)
             return True
         except Exception as e:
-            print(f"Error saving default models: {e}")
+            logger.error(f"Error saving default models: {e}", exc_info=True)
             return False
     
     # Agent Skills Management
@@ -123,7 +126,7 @@ class SettingsManager:
             self.skills_manager._load_agent_default_skills()
             return True
         except Exception as e:
-            print(f"Error saving agent skills: {e}")
+            logger.error(f"Error saving agent skills: {e}", exc_info=True)
             return False
     
     def get_project_skills(self) -> List[Dict[str, Any]]:
@@ -149,7 +152,7 @@ class SettingsManager:
             self.skills_manager._load_skill_definitions()
             return True
         except Exception as e:
-            print(f"Error saving skill file: {e}")
+            logger.error(f"Error saving skill file: {e}", exc_info=True)
             return False
     
     @property
@@ -176,7 +179,7 @@ class SettingsManager:
                 f.write(content)
             return True
         except Exception as e:
-            print(f"Error saving policy: {e}")
+            logger.error(f"Error saving policy: {e}", exc_info=True)
             return False
     
     # AGENTS.md Management
@@ -199,7 +202,7 @@ class SettingsManager:
             self.skills_manager._load_project_skills()
             return True
         except Exception as e:
-            print(f"Error saving AGENTS.md: {e}")
+            logger.error(f"Error saving AGENTS.md: {e}", exc_info=True)
             return False
     
     # Structural Spec-First Management Settings
@@ -262,7 +265,7 @@ class SettingsManager:
                 json.dump(settings, f, indent=2)
             return True
         except Exception as e:
-            print(f"Error saving shadow settings: {e}")
+            logger.error(f"Error saving shadow settings: {e}", exc_info=True)
             return False
     
     # Validation
