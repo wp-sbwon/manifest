@@ -25,6 +25,7 @@ class TaskDict(TypedDict, total=False):
         status: Current status of the task. Valid values: "pending", "wip",
             "done", "blocked", "cancelled", "completed".
         sprint_id: Optional ID of the sprint this task belongs to.
+        dependencies: List of task IDs that this task depends on.
         agent: Optional dictionary containing agent assignment information.
         scope: Optional dictionary defining the task's scope and boundaries.
         worker_squad: Optional dictionary containing Worker Squad execution data.
@@ -34,6 +35,7 @@ class TaskDict(TypedDict, total=False):
     description: str
     status: str  # "pending", "wip", "done", "blocked", "cancelled", "completed"
     sprint_id: Optional[str]
+    dependencies: List[str]
     agent: Optional[Dict[str, Any]]
     scope: Optional[Dict[str, Any]]
     worker_squad: Optional[Dict[str, Any]]

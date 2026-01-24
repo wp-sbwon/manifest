@@ -13,8 +13,9 @@ import asyncio
 import json
 import subprocess
 import sys
+import os
 from pathlib import Path
-from typing import Dict, Any, Optional, AsyncIterator, Callable, Awaitable
+from typing import Dict, Any, Optional, AsyncIterator, Callable, Awaitable, List
 from datetime import datetime
 from dataclasses import dataclass, field
 from manifest.core.logger import get_logger
@@ -42,11 +43,12 @@ class ShadowProcess:
         returncode: Process exit code (None if still running).
         stdout: Collected standard output text.
         stderr: Collected standard error text.
+        sandbox_dir: Optional path to temporary sandbox directory.
     """
     process_id: str
     task_id: str
     agent_type: str
-    process: subprocess.Popen
+    process: asyncio.subprocess.Process
     status: str = "running"  # running, completed, failed, cancelled
     start_time: str = field(default_factory=lambda: datetime.utcnow().isoformat())
     end_time: Optional[str] = None
@@ -54,6 +56,7 @@ class ShadowProcess:
     returncode: Optional[int] = None
     stdout: str = ""
     stderr: str = ""
+    sandbox_dir: Optional[Path] = None
 
 
 class ShadowManager:
@@ -94,7 +97,8 @@ class ShadowManager:
         context: Dict[str, Any],
         model_config: Dict[str, Any],
         stage: Optional[str] = None,
-        output_callback: Optional[Callable[[str, str], Awaitable[None]]] = None
+        output_callback: Optional[Callable[[str, str], Awaitable[None]]] = None,
+        use_sandbox: bool = True
     ) -> str:
         """
         Start an agent in a shadow process.
@@ -106,7 +110,7 @@ class ShadowManager:
             model_config: Model configuration
             stage: Optional stage (tdd_test, test, etc.)
             output_callback: Optional callback for output streaming
-                Callback signature: async def callback(channel: str, content: str)
+            use_sandbox: Whether to use a temporary sandbox directory
             
         Returns:
             Process ID
@@ -114,6 +118,14 @@ class ShadowManager:
         process_id = f"shadow-{task_id}-{agent_type}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
         output_channel = f"shadow-{task_id}-{agent_type}"
         
+        # Setup sandbox if requested
+        sandbox_dir = None
+        if use_sandbox:
+            sandbox_dir = self._setup_sandbox(process_id)
+            cwd = str(sandbox_dir)
+        else:
+            cwd = str(self.working_dir)
+            
         # Prepare agent execution script
         script_path = self._create_agent_script(
             process_id, task_id, agent_type, context, model_config, stage
@@ -125,7 +137,7 @@ class ShadowManager:
             str(script_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=str(self.working_dir),
+            cwd=cwd,
             env=self._prepare_env()
         )
         
@@ -135,7 +147,8 @@ class ShadowManager:
             task_id=task_id,
             agent_type=agent_type,
             process=process,
-            output_channel=output_channel
+            output_channel=output_channel,
+            sandbox_dir=sandbox_dir
         )
         
         self._active_processes[process_id] = shadow_process
@@ -148,22 +161,79 @@ class ShadowManager:
         asyncio.create_task(self._monitor_process(process_id, shadow_process))
         
         return process_id
+
+    def _setup_sandbox(self, process_id: str) -> Path:
+        """Create a temporary sandbox directory and copy codebase."""
+        import shutil
+        import tempfile
+        
+        temp_dir = Path(tempfile.gettempdir()) / "manifest_sandbox" / process_id
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Copy necessary files (exclude .git, venv, etc.)
+        ignore_patterns = shutil.ignore_patterns('.git', 'venv', '__pycache__', '.pytest_cache', '*.pyc')
+        
+        # Copy src and .manifest
+        for item in ['src', '.manifest', 'requirements.txt', 'pyproject.toml']:
+            src_path = self.working_dir / item
+            if src_path.exists():
+                if src_path.is_dir():
+                    shutil.copytree(src_path, temp_dir / item, ignore=ignore_patterns)
+                else:
+                    shutil.copy2(src_path, temp_dir / item)
+                    
+        return temp_dir
+
+    def get_sandbox_diff(self, process_id: str) -> str:
+        """Get diff between sandbox and original codebase."""
+        if process_id not in self._active_processes:
+            return ""
+            
+        shadow_process = self._active_processes[process_id]
+        if not shadow_process.sandbox_dir:
+            return ""
+            
+        # Use git diff or a simple file comparison
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["diff", "-r", str(self.working_dir / "src"), str(shadow_process.sandbox_dir / "src")],
+                capture_output=True,
+                text=True
+            )
+            return result.stdout
+        except Exception as e:
+            logger.error(f"Error getting sandbox diff: {e}")
+            return ""
+
+    def promote_shadow_changes(self, process_id: str) -> bool:
+        """Apply changes from sandbox to main codebase."""
+        if process_id not in self._active_processes:
+            return False
+            
+        shadow_process = self._active_processes[process_id]
+        if not shadow_process.sandbox_dir:
+            return False
+            
+        import shutil
+        try:
+            # Copy src back to main codebase
+            shutil.copytree(
+                shadow_process.sandbox_dir / "src", 
+                self.working_dir / "src", 
+                dirs_exist_ok=True
+            )
+            return True
+        except Exception as e:
+            logger.error(f"Error promoting shadow changes: {e}")
+            return False
     
     async def _monitor_process(
         self,
         process_id: str,
         shadow_process: ShadowProcess
     ) -> None:
-        """Monitor a shadow process and stream its output.
-        
-        Reads stdout and stderr concurrently, streams output to the callback
-        if registered, and updates the shadow process status when the process
-        completes or fails.
-        
-        Args:
-            process_id: ID of the shadow process to monitor.
-            shadow_process: ShadowProcess dataclass containing process information.
-        """
+        """Monitor a shadow process and stream its output."""
         process = shadow_process.process
         output_callback = self._output_callbacks.get(process_id)
         
@@ -177,7 +247,6 @@ class ShadowManager:
                     async for line in process.stdout:
                         decoded = line.decode('utf-8', errors='replace')
                         stdout_lines.append(decoded)
-                        # Stream to callback if available
                         if output_callback:
                             await output_callback(shadow_process.output_channel, decoded)
             
@@ -186,20 +255,12 @@ class ShadowManager:
                     async for line in process.stderr:
                         decoded = line.decode('utf-8', errors='replace')
                         stderr_lines.append(decoded)
-                        # Stream stderr as well
                         if output_callback:
                             await output_callback(shadow_process.output_channel, f"[stderr] {decoded}")
             
-            # Read both streams concurrently
-            await asyncio.gather(
-                read_stdout(),
-                read_stderr()
-            )
-            
-            # Wait for process to complete
+            await asyncio.gather(read_stdout(), read_stderr())
             await process.wait()
             
-            # Update shadow process status
             shadow_process.returncode = process.returncode
             shadow_process.stdout = "".join(stdout_lines)
             shadow_process.stderr = "".join(stderr_lines)
@@ -219,10 +280,7 @@ class ShadowManager:
                     f"[error] Process monitoring failed: {str(e)}\n"
                 )
         finally:
-            # Clean up
-            if process_id in self._active_processes:
-                # Keep process record for status queries
-                pass
+            pass
     
     def _create_agent_script(
         self,
@@ -233,18 +291,12 @@ class ShadowManager:
         model_config: Dict[str, Any],
         stage: Optional[str]
     ) -> Path:
-        """
-        Create a Python script to run the agent in shadow process.
-        
-        Returns:
-            Path to the created script
-        """
+        """Create a Python script to run the agent in shadow process."""
         script_dir = self.manifest_dir / "shadow_scripts"
         script_dir.mkdir(parents=True, exist_ok=True)
         
         script_path = script_dir / f"{process_id}.py"
         
-        # Create script content
         script_content = f'''"""
 Shadow Agent Script - Auto-generated
 Process ID: {process_id}
@@ -270,7 +322,6 @@ from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronize
 async def main():
     """Run agent in shadow process."""
     manifest_dir = Path("{self.manifest_dir}")
-    working_dir = Path("{self.working_dir}")
     
     # Initialize managers
     state_manager = StateManager(manifest_dir)
@@ -301,11 +352,10 @@ async def main():
     )
     
     if not agent or not agent.get("instance"):
-        logger.error(f"Failed to create agent: {agent_type}")
+        print(f"Failed to create agent: {agent_type}")
         sys.exit(1)
     
     agent_instance = agent["instance"]
-    channel = f"shadow-{task_id}-{agent_type}"
     
     # Execute agent based on type and stage
     try:
@@ -323,13 +373,16 @@ async def main():
                     elif chunk.get("type") == "complete":
                         print(chunk.get("content", ""), flush=True)
         elif "{agent_type}" == "coder":
-            async for chunk in agent_instance.code("{task_id}", context, model_config):
+            task_description = context.get("task_description", "Implement task")
+            task_scope = context.get("task_scope", {{}})
+            async for chunk in agent_instance.implement(task_description, context, task_scope, model_config):
                 if chunk.get("type") == "chunk":
                     print(chunk.get("content", ""), end="", flush=True)
                 elif chunk.get("type") == "complete":
                     print(chunk.get("content", ""), flush=True)
         elif "{agent_type}" == "planner":
-            async for chunk in agent_instance.plan("{task_id}", context, model_config):
+            task_description = context.get("task_description", "Plan task")
+            async for chunk in agent_instance.plan(task_description, context, model_config):
                 if chunk.get("type") == "chunk":
                     print(chunk.get("content", ""), end="", flush=True)
                 elif chunk.get("type") == "complete":
@@ -345,14 +398,13 @@ async def main():
                 elif chunk.get("type") == "complete":
                     print(chunk.get("content", ""), flush=True)
         else:
-            # Generic agent execution
             async for chunk in agent_instance.execute("{task_id}", context, model_config):
                 if chunk.get("type") == "chunk":
                     print(chunk.get("content", ""), end="", flush=True)
                 elif chunk.get("type") == "complete":
                     print(chunk.get("content", ""), flush=True)
     except Exception as e:
-        logger.error(f"Agent execution failed: {str(e)}", exc_info=True)
+        print(f"Agent execution failed: {{str(e)}}", file=sys.stderr)
         import traceback
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
@@ -360,29 +412,16 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(main())
 '''
-        
-        # Write script
         with open(script_path, "w", encoding="utf-8") as f:
             f.write(script_content)
-        
         return script_path
     
     def _prepare_env(self) -> Dict[str, str]:
         """Prepare environment variables for shadow process."""
-        env = dict(os.environ)
-        # Add any necessary environment variables
-        return env
+        return dict(os.environ)
     
     async def stop_shadow_process(self, process_id: str) -> bool:
-        """
-        Stop a shadow process.
-        
-        Args:
-            process_id: Process ID
-            
-        Returns:
-            True if stopped successfully
-        """
+        """Stop a shadow process."""
         if process_id not in self._active_processes:
             return False
         
@@ -390,31 +429,17 @@ if __name__ == "__main__":
         process = shadow_process.process
         
         try:
-            if process.returncode is None:
-                process.terminate()
-                try:
-                    await asyncio.wait_for(process.wait(), timeout=5.0)
-                except asyncio.TimeoutExpired:
-                    process.kill()
-                    await process.wait()
-                
-                shadow_process.status = "cancelled"
-                shadow_process.end_time = datetime.utcnow().isoformat()
-                return True
+            process.terminate()
+            await asyncio.wait_for(process.wait(), timeout=5.0)
+            shadow_process.status = "cancelled"
+            shadow_process.end_time = datetime.utcnow().isoformat()
+            return True
         except Exception as e:
-            logger.error(f"Error stopping shadow process {process_id}: {e}", exc_info=True)
+            logger.error(f"Error stopping shadow process {process_id}: {e}")
             return False
     
     def get_process_status(self, process_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get status of a shadow process.
-        
-        Args:
-            process_id: Process ID
-            
-        Returns:
-            Process status dict or None if not found
-        """
+        """Get status of a shadow process."""
         if process_id not in self._active_processes:
             return None
         
@@ -430,7 +455,8 @@ if __name__ == "__main__":
             "returncode": shadow_process.returncode,
             "output_channel": shadow_process.output_channel,
             "stdout_length": len(shadow_process.stdout),
-            "stderr_length": len(shadow_process.stderr)
+            "stderr_length": len(shadow_process.stderr),
+            "has_sandbox": shadow_process.sandbox_dir is not None
         }
     
     def list_active_processes(self) -> List[Dict[str, Any]]:
@@ -441,14 +467,8 @@ if __name__ == "__main__":
         ]
     
     async def cleanup_completed_processes(self, max_age_hours: int = 24):
-        """
-        Clean up completed processes older than max_age_hours.
-        
-        Args:
-            max_age_hours: Maximum age in hours for completed processes
-        """
+        """Clean up completed processes older than max_age_hours."""
         from datetime import timedelta
-        
         cutoff_time = datetime.utcnow() - timedelta(hours=max_age_hours)
         
         to_remove = []
@@ -463,8 +483,3 @@ if __name__ == "__main__":
             del self._active_processes[process_id]
             if process_id in self._output_callbacks:
                 del self._output_callbacks[process_id]
-
-
-# Import os for environment
-import os
-from typing import List

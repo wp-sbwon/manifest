@@ -528,7 +528,8 @@ class StateManager:
         description: str = "",
         stage: str = "planning",
         status: str = "pending",
-        sprint_id: Optional[str] = None
+        sprint_id: Optional[str] = None,
+        dependencies: Optional[List[str]] = None
     ) -> str:
         """Create a new task.
         
@@ -541,13 +542,14 @@ class StateManager:
             stage: Current stage of the task (default: "planning").
             status: Current status of the task (default: "pending").
             sprint_id: Optional ID of the sprint this task belongs to.
+            dependencies: Optional list of task IDs that this task depends on.
         
         Returns:
             String ID of the newly created task.
         """
         from manifest.core.task_manager import TaskManager
         task_manager = TaskManager(self)
-        return task_manager.create_task(name, description, stage, status, sprint_id)
+        return task_manager.create_task(name, description, stage, status, sprint_id, dependencies)
     
     def update_task(
         self,
@@ -677,6 +679,21 @@ class StateManager:
         from manifest.core.task_manager import TaskManager
         task_manager = TaskManager(self)
         return task_manager.get_task(task_id)
+
+    def is_task_blocked(self, task_id: str) -> tuple:
+        """Check if a task is blocked by its dependencies.
+        
+        Delegates to TaskManager for implementation.
+        
+        Args:
+            task_id: ID of the task to check.
+            
+        Returns:
+            Tuple of (is_blocked, list_of_blocking_task_ids).
+        """
+        from manifest.core.task_manager import TaskManager
+        task_manager = TaskManager(self)
+        return task_manager.is_task_blocked(task_id)
     
     def save_worker_squad_stage(
         self,

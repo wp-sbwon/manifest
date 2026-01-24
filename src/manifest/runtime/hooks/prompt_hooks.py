@@ -249,6 +249,59 @@ class VisualRealityHook(PromptHook):
         return 10
 
 
+class PolicyInjectionHook(PromptHook):
+    """Hook that ensures Tier 0 policy is injected into every prompt.
+    
+    Tier 0 policy represents the fundamental principles and constraints
+    that all agents must follow. This hook ensures they are always present.
+    """
+    
+    def __init__(self, state_manager):
+        self.state_manager = state_manager
+    
+    async def intercept_prompt(
+        self,
+        agent_id: str,
+        agent_type: str,
+        prompt: str,
+        context: Optional[Dict[str, Any]] = None,
+        message_history: Optional[List[Dict[str, str]]] = None
+    ) -> str:
+        """Inject Tier 0 policy if not already present."""
+        if "## Tier 0: Policy" in prompt or "## POLICY" in prompt:
+            return prompt
+            
+        # Load policy from file
+        from pathlib import Path
+        policy_file = Path(".claude/rules/manifest-policy.md")
+        if policy_file.exists():
+            try:
+                with open(policy_file, "r") as f:
+                    policy = f.read()
+                
+                policy_section = f"""
+## TIER 0: GLOBAL POLICY & PRINCIPLES
+
+{policy}
+
+---
+"""
+                # Inject at the very beginning
+                return f"{policy_section}{prompt}"
+            except Exception:
+                pass
+                
+        return prompt
+    
+    def get_priority(self) -> int:
+        """Policy should be injected first.
+        
+        Returns:
+            Priority value of 0 (highest priority).
+        """
+        return 0
+
+
 class HookManager:
     """Manages prompt hooks and executes them in priority order.
     
