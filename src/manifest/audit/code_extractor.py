@@ -1,7 +1,13 @@
 """
-Code Extractor - Extracts code structure and generates bottom-up blueprint.
-Uses AST parsing to identify entities (classes, functions, variables) and
-infer relationships (imports, calls, inheritance) to create blueprint.json.
+Code structure extraction for bottom-up blueprint generation.
+
+This module extracts structural information from Python code using AST
+(Abstract Syntax Tree) parsing. It identifies classes, functions, variables,
+and their relationships (imports, function calls, inheritance) to generate
+a blueprint that represents the actual code structure.
+
+This bottom-up blueprint can then be compared against the top-down (intended)
+blueprint to detect architectural drift.
 """
 import ast
 import json
@@ -12,7 +18,26 @@ from dataclasses import dataclass, field
 
 @dataclass
 class Component:
-    """Represents a code component (class, function, or variable)."""
+    """Represents a code component extracted from source code.
+    
+    A component can be a class, function, or variable. It contains
+    structural information like location, methods, attributes, and
+    optional metadata about algorithms, design patterns, and complexity.
+    
+    Attributes:
+        id: Unique identifier for the component.
+        name: Name of the component (class/function/variable name).
+        type: Type of component ("class", "function", "variable").
+        file: Path to the file containing this component.
+        line: Line number where the component is defined.
+        methods: List of method names (for classes).
+        attributes: List of attribute names (for classes).
+        module_path: Python module path (e.g., "manifest.core.config").
+        algorithm: Optional algorithm name if component implements one.
+        design_pattern: Optional design pattern name if component uses one.
+        complexity: Optional complexity notation (e.g., "O(n log n)").
+        notes: Optional additional notes about the component.
+    """
     id: str
     name: str
     type: str  # "class", "function", "variable"
@@ -30,7 +55,19 @@ class Component:
 
 @dataclass
 class Contract:
-    """Represents a relationship between components."""
+    """Represents a relationship or contract between two components.
+    
+    Contracts describe how components interact: dependencies, function calls,
+    inheritance relationships, etc. They form the edges in the component
+    dependency graph.
+    
+    Attributes:
+        from_id: ID of the source component.
+        to_id: ID of the target component.
+        type: Type of relationship ("dependency", "call", "inheritance").
+        symbols: List of symbols (names) involved in the relationship.
+        file: Path to file where this relationship occurs.
+    """
     from_id: str
     to_id: str
     type: str  # "dependency", "call", "inheritance"
@@ -39,16 +76,44 @@ class Contract:
 
 
 class CodeExtractor:
-    """Extracts code structure and generates bottom-up blueprint."""
+    """Extracts code structure and generates bottom-up blueprint from source code.
+    
+    Scans Python files in a project, parses them with AST, and extracts
+    components (classes, functions) and contracts (relationships) to build
+    a blueprint that represents the actual code structure.
+    
+    Attributes:
+        root: Root directory of the project to extract from.
+        components: Dictionary mapping component IDs to Component objects.
+        contracts: List of Contract objects representing relationships.
+        module_map: Dictionary mapping file paths to Python module paths.
+    """
     
     def __init__(self, root: Path = Path(".")):
+        """Initialize the code extractor.
+        
+        Args:
+            root: Root directory of the project. Defaults to current directory.
+        """
         self.root = root
         self.components: Dict[str, Component] = {}
         self.contracts: List[Contract] = []
         self.module_map: Dict[str, str] = {}  # file_path -> module_path
     
     def extract_project_structure(self, root: Path = None) -> Dict[str, Any]:
-        """Extract entire project structure and generate blueprint."""
+        """Extract structure from entire project and generate blueprint.
+        
+        Scans all Python files in the project, extracts components and
+        relationships, and generates a blueprint JSON structure that can
+        be compared against the intended design blueprint.
+        
+        Args:
+            root: Optional root directory. Uses self.root if not provided.
+        
+        Returns:
+            Dictionary containing blueprint structure with components,
+            contracts, and metadata.
+        """
         if root is None:
             root = self.root
         
@@ -67,7 +132,18 @@ class CodeExtractor:
         return self._generate_blueprint()
     
     def _find_python_files(self, root: Path) -> List[Path]:
-        """Find all Python files in the project."""
+        """Find all Python files in the project directory.
+        
+        Recursively searches for .py files, excluding virtual environments,
+        hidden directories, and __pycache__ directories. Test files are
+        included but can be identified by their location.
+        
+        Args:
+            root: Root directory to search from.
+        
+        Returns:
+            List of Path objects pointing to Python files.
+        """
         python_files = []
         for path in root.rglob("*.py"):
             # Skip virtual environments and hidden directories
@@ -83,15 +159,20 @@ class CodeExtractor:
         return python_files
     
     def extract_file_structure(self, file_path: Path, root: Path = None) -> List[Component]:
-        """
-        Extract structure from a single file and return components.
+        """Extract structure from a single Python file.
+        
+        Parses the file using AST and extracts all components (classes,
+        functions, variables) found in it. This is useful for analyzing
+        individual files without processing the entire project.
         
         Args:
-            file_path: Path to the file
-            root: Project root (default: self.root)
-            
+            file_path: Path to the Python file to extract from.
+            root: Optional project root for calculating module paths.
+                Uses self.root if not provided.
+        
         Returns:
-            List of Component objects found in the file
+            List of Component objects found in the file. Returns empty
+            list if file can't be parsed or contains no extractable components.
         """
         if root is None:
             root = self.root

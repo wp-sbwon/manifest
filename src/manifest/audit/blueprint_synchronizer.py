@@ -1,6 +1,13 @@
 """
-Blueprint Synchronizer - Enforces synchronization between top-down and bottom-up blueprints.
-Handles conflict resolution workflow with worker squad, planner review, and user approval.
+Blueprint synchronization and conflict resolution.
+
+This module handles synchronization between top-down blueprints (intended design)
+and bottom-up blueprints (extracted from code). When conflicts are detected,
+it manages a resolution workflow involving worker squad review, planner analysis,
+and user approval.
+
+The synchronizer detects mismatches, creates conflict reports, and coordinates
+the resolution process through multiple stages.
 """
 import json
 from pathlib import Path
@@ -14,7 +21,25 @@ from manifest.audit.drift_auditor import Severity
 
 @dataclass
 class ConflictReport:
-    """Represents a conflict report for workflow processing."""
+    """Represents a conflict report for blueprint synchronization workflow.
+    
+    Contains all information about conflicts between top-down and bottom-up
+    blueprints, including the conflicts themselves, both blueprint versions,
+    and the resolution workflow status.
+    
+    Attributes:
+        task_id: ID of the task where conflicts were detected.
+        conflicts: List of BlueprintConflict objects describing the mismatches.
+        top_down_blueprint: The intended design blueprint.
+        bottom_up_blueprint: The blueprint extracted from actual code.
+        timestamp: ISO timestamp when the conflict was detected.
+        status: Current workflow status. Values: "pending", "planner_review",
+            "user_approval", "resolved", "rejected".
+        planner_flag: Planner's assessment. Values: "necessary" (change is needed),
+            "violation" (change violates architecture).
+        user_decision: User's final decision. Values: "approved", "rejected".
+        resolution_note: Optional note explaining how the conflict was resolved.
+    """
     task_id: str
     conflicts: List[BlueprintConflict]
     top_down_blueprint: Dict[str, Any]
@@ -26,7 +51,14 @@ class ConflictReport:
     resolution_note: Optional[str] = None
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary."""
+        """Convert the conflict report to a dictionary.
+        
+        Useful for serialization to JSON or storage. Converts nested
+        BlueprintConflict objects to dictionaries as well.
+        
+        Returns:
+            Dictionary representation of the conflict report.
+        """
         return {
             "task_id": self.task_id,
             "conflicts": [c.to_dict() for c in self.conflicts],
@@ -41,9 +73,26 @@ class ConflictReport:
 
 
 class BlueprintSynchronizer:
-    """Enforces synchronization between top-down and bottom-up blueprints."""
+    """Enforces synchronization between top-down and bottom-up blueprints.
+    
+    Detects conflicts when code structure (bottom-up) doesn't match the
+    intended design (top-down). Manages the conflict resolution workflow
+    through planner review and user approval stages.
+    
+    Attributes:
+        manifest_dir: Path to .manifest directory.
+        conflicts_dir: Directory where conflict reports are stored.
+        comparator: BlueprintComparator instance for comparing blueprints.
+    """
     
     def __init__(self, manifest_dir: Path = None, conflicts_dir: Path = None):
+        """Initialize the blueprint synchronizer.
+        
+        Args:
+            manifest_dir: Path to .manifest directory. Defaults to .manifest.
+            conflicts_dir: Optional custom directory for conflict reports.
+                Defaults to manifest_dir/conflicts.
+        """
         self.manifest_dir = manifest_dir or Path(".manifest")
         self.conflicts_dir = conflicts_dir or (self.manifest_dir / "conflicts")
         self.conflicts_dir.mkdir(parents=True, exist_ok=True)
@@ -54,7 +103,21 @@ class BlueprintSynchronizer:
         top_down: Dict[str, Any],
         bottom_up: Dict[str, Any]
     ) -> Optional[ConflictReport]:
-        """Detect conflicts between blueprints and create conflict report."""
+        """Detect conflicts between two blueprints and create a conflict report.
+        
+        Compares the top-down (intended) blueprint against the bottom-up
+        (extracted from code) blueprint. Only significant conflicts (ERROR or
+        WARNING severity) are included in the report; INFO-level conflicts
+        are filtered out.
+        
+        Args:
+            top_down: Dictionary containing the intended design blueprint.
+            bottom_up: Dictionary containing the blueprint extracted from code.
+        
+        Returns:
+            ConflictReport if conflicts are found, None if blueprints match
+            or only minor (INFO) conflicts exist.
+        """
         conflicts = self.comparator.compare_blueprints(top_down, bottom_up)
         
         if not conflicts:
