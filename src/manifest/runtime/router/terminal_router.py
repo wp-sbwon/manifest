@@ -119,7 +119,21 @@ class TerminalRouter:
         command_id: str,
         timeout: Optional[float]
     ) -> Dict[str, Any]:
-        """Execute command with buffered output."""
+        """Execute a command and collect all output before returning.
+        
+        Runs the command and waits for it to complete, collecting all
+        stdout and stderr output. This is useful when you need the complete
+        output before processing it.
+        
+        Args:
+            command: List containing command and arguments.
+            command_id: Unique identifier for this command execution.
+            timeout: Optional timeout in seconds. Command is killed if exceeded.
+        
+        Returns:
+            Dictionary with stdout, stderr, returncode, and command_id.
+            Command is removed from active_commands when done.
+        """
         process = await asyncio.create_subprocess_exec(
             *command,
             stdout=asyncio.subprocess.PIPE,
@@ -151,7 +165,21 @@ class TerminalRouter:
         command_id: str,
         timeout: Optional[float]
     ) -> Dict[str, Any]:
-        """Execute command with streaming output."""
+        """Execute a command and stream output in real-time.
+        
+        Runs the command and reads stdout/stderr as they're produced,
+        allowing for real-time output display. Output is still collected
+        and returned at the end.
+        
+        Args:
+            command: List containing command and arguments.
+            command_id: Unique identifier for this command execution.
+            timeout: Optional timeout in seconds. Command is killed if exceeded.
+        
+        Returns:
+            Dictionary with stdout, stderr, returncode, command_id, and
+            streamed=True flag. Command is removed from active_commands when done.
+        """
         process = await asyncio.create_subprocess_exec(
             *command,
             stdout=asyncio.subprocess.PIPE,
@@ -207,7 +235,15 @@ class TerminalRouter:
                 del self.active_commands[command_id]
     
     async def _read_stream(self, stream, lines_list):
-        """Read from stream and append to lines list."""
+        """Read lines from a stream and append them to a list.
+        
+        Helper method for streaming command output. Reads lines asynchronously
+        and decodes them, appending to the provided list for later collection.
+        
+        Args:
+            stream: Async stream to read from (stdout or stderr).
+            lines_list: List to append decoded lines to.
+        """
         if stream:
             async for line in stream:
                 decoded = line.decode('utf-8', errors='replace')
@@ -218,25 +254,36 @@ class TerminalRouter:
         command: str,
         args: Optional[list] = None
     ) -> AsyncIterator[str]:
-        """
-        Stream command output line by line.
-        Uses OpenCode adapter if available.
+        """Stream command output line by line as it's produced.
+        
+        Delegates to OpenCodeAdapter which handles OpenCode integration.
+        Output is yielded line by line for real-time display, useful for
+        long-running commands where you want to show progress.
+        
+        Args:
+            command: Command name to execute.
+            args: Optional list of command arguments.
         
         Yields:
-            Output lines as they are produced
+            Output lines as strings, one line at a time as they're produced
+            by the command.
         """
         async for line in self.opencode_adapter.stream_command_output(command, args):
             yield line
     
     def cancel_command(self, command_id: str) -> bool:
-        """
-        Cancel a running command.
+        """Cancel a currently running command.
+        
+        Sends a termination signal to the command process and removes it
+        from the active commands registry. The process may take a moment
+        to actually terminate.
         
         Args:
-            command_id: Command ID to cancel
-            
+            command_id: ID of the command to cancel.
+        
         Returns:
-            True if command was cancelled, False if not found
+            True if command was found and termination signal sent,
+            False if command wasn't in active_commands.
         """
         if command_id in self.active_commands:
             process = self.active_commands[command_id]
@@ -246,7 +293,15 @@ class TerminalRouter:
         return False
     
     def is_command_running(self, command_id: str) -> bool:
-        """Check if a command is currently running."""
+        """Check if a command is currently executing.
+        
+        Args:
+            command_id: ID of the command to check.
+        
+        Returns:
+            True if command is in active_commands and hasn't finished
+            (returncode is None), False otherwise.
+        """
         if command_id not in self.active_commands:
             return False
         
@@ -254,5 +309,10 @@ class TerminalRouter:
         return process.returncode is None
     
     def is_opencode_available(self) -> bool:
-        """Check if OpenCode is available and being used."""
+        """Check if OpenCode is available and configured.
+        
+        Returns:
+            True if OpenCode adapter reports OpenCode is available and
+            being used, False otherwise.
+        """
         return self.opencode_adapter.is_opencode_available()

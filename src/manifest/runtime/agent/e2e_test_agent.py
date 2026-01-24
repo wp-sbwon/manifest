@@ -1,6 +1,14 @@
 """
-E2E Test Agent - End-to-end testing agent.
-Runs integration and end-to-end tests for the entire system.
+E2E (End-to-End) test agent for system-wide testing.
+
+This module provides the E2ETestAgent class which handles writing and
+executing end-to-end tests. E2E tests verify complete user workflows from
+start to finish, testing the system as a whole rather than individual
+components.
+
+The agent supports both TDD mode (write tests first) and execution mode
+(run tests after implementation), and operates at the Sprint level to
+test complete user journeys.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
 from manifest.runtime.agent.executor import AgentExecutor
@@ -98,8 +106,21 @@ Provide:
 
 
 class E2ETestAgent:
-    """
-    E2E Test Agent - Runs end-to-end and integration tests.
+    """E2E test agent for writing and executing end-to-end tests.
+    
+    Handles Sprint-level E2E testing which verifies complete user workflows
+    across the entire system. E2E tests ensure that all components work
+    together correctly from the user's perspective.
+    
+    The agent supports TDD mode (write tests before implementation) and
+    execution mode (run tests after implementation). Test results are saved
+    to Sprint data for tracking.
+    
+    Attributes:
+        agent_id: Unique identifier for this agent instance.
+        executor: AgentExecutor for making LLM API calls.
+        state_manager: StateManager for persisting test results.
+        message_history: List of conversation messages for context.
     """
     
     def __init__(
@@ -108,13 +129,12 @@ class E2ETestAgent:
         executor: AgentExecutor,
         state_manager: StateManager
     ):
-        """
-        Initialize E2E Test Agent.
+        """Initialize the E2E test agent.
         
         Args:
-            agent_id: Agent identifier
-            executor: Agent executor for LLM calls
-            state_manager: State manager
+            agent_id: Unique identifier for this agent.
+            executor: Executor instance for LLM API calls.
+            state_manager: State manager for saving test results to Sprint data.
         """
         self.agent_id = agent_id
         self.executor = executor
@@ -127,16 +147,23 @@ class E2ETestAgent:
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Write TDD E2E tests for Sprint scope (test-first approach).
+        """Write E2E tests in TDD mode for a Sprint.
+        
+        In TDD mode, E2E tests are written before implementation. The agent
+        analyzes the Sprint scope, PRD user flows, architecture, and
+        blueprint to create comprehensive E2E tests that define expected
+        user workflows. These tests should initially fail.
         
         Args:
-            sprint_id: Sprint ID
-            context: Tiered context (PRD, Architecture, Blueprint, Sprint tasks)
-            model_config: Model configuration
-            
+            sprint_id: ID of the sprint to write E2E tests for.
+            context: Tiered context including PRD, architecture, blueprint,
+                and Sprint task information.
+            model_config: Dictionary with provider, model, and api_key.
+        
         Yields:
-            Test writing output chunks
+            Dictionaries with type "chunk" (streaming) or "complete" (finished).
+            Content contains E2E test code. Test information is extracted
+            and saved to Sprint data when complete.
         """
         # Generate TDD E2E test prompt
         prompt = self._generate_sprint_tdd_e2e_test_prompt(sprint_id, context)
@@ -167,16 +194,22 @@ class E2ETestAgent:
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """
-        Run end-to-end tests for the system.
+        """Run E2E tests after task implementation.
+        
+        Executes the E2E test suite to verify that user workflows still
+        function correctly after the task's changes. This ensures the
+        implementation doesn't break existing functionality.
         
         Args:
-            task_id: Task ID
-            context: Tiered context
-            model_config: Model configuration
-            
+            task_id: ID of the task whose changes should be tested.
+            context: Tiered context including implementation details and
+                test file locations.
+            model_config: Dictionary with provider, model, and api_key.
+        
         Yields:
-            Test execution output chunks
+            Dictionaries with type "chunk" (streaming) or "complete" (finished).
+            Content contains test execution output. Results are parsed and
+            saved to task state when complete.
         """
         # Generate prompt
         prompt = self._generate_e2e_test_prompt(task_id, context)

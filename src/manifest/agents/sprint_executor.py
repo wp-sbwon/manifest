@@ -146,16 +146,22 @@ class SprintExecutor:
         return True
     
     async def write_sprint_tests(self, sprint_id: str) -> Dict[str, Any]:
-        """
-        Write Integration/E2E tests for Sprint scope (TDD) - Background task.
+        """Write Integration and E2E tests for a sprint (TDD approach).
         
-        **NON-BLOCKING**: This method runs in background and does not block Sprint start.
+        This method runs as a background task and doesn't block sprint
+        execution. It starts two agents: one for integration tests and one
+        for E2E tests. Both agents write tests based on the Sprint scope
+        and context.
+        
+        The Sprint test status is updated throughout the process: "writing"
+        when started, "written" on success, or "failed" on error.
         
         Args:
-            sprint_id: Sprint ID
-            
+            sprint_id: ID of the sprint to write tests for.
+        
         Returns:
-            Dict with test writing results
+            Dictionary with test writing results including success status
+            and status for both integration and E2E tests.
         """
         try:
             # Update Sprint test status to "writing"
@@ -221,17 +227,22 @@ class SprintExecutor:
             return {"success": False, "error": str(e)}
     
     async def run_sprint_tests(self, sprint_id: str, task_id: str) -> Dict[str, Any]:
-        """
-        Run Sprint-level Integration/E2E tests after Task completion - Background task.
+        """Run Sprint-level Integration and E2E tests after a task completes.
         
-        **NON-BLOCKING**: This method runs in background and does not block Worker Squad completion.
+        This method is called automatically when a task finishes its Worker
+        Squad workflow. It runs both integration and E2E tests to verify
+        that the task's changes don't break Sprint-level functionality.
+        
+        This runs as a background task and doesn't block the Worker Squad
+        completion. Test results are stored with the Sprint data.
         
         Args:
-            sprint_id: Sprint ID
-            task_id: Task ID that completed
-            
+            sprint_id: ID of the sprint the task belongs to.
+            task_id: ID of the task that just completed.
+        
         Returns:
-            Dict with test execution results
+            Dictionary with test execution results including success status
+            and execution status for both test types.
         """
         try:
             # Get Sprint-level context

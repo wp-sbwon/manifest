@@ -409,14 +409,17 @@ class TaskManager:
             return None
     
     def save_task_git_diff(self, task_id: str) -> bool:
-        """
-        Save Git diff for a task.
+        """Capture and save the current Git diff for a task.
+        
+        Retrieves the current uncommitted changes using get_task_git_diff
+        and stores them with the task. This creates a snapshot of what code
+        was changed, which is useful when the task is completed.
         
         Args:
-            task_id: Task ID
-            
+            task_id: ID of the task to save diff for.
+        
         Returns:
-            True if saved successfully
+            True if the task was found and diff was saved, False otherwise.
         """
         tasks = self.state_manager.get_task_checklist()
         task = next((t for t in tasks if t.get("id") == task_id), None)
