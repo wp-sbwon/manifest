@@ -1,6 +1,13 @@
 """
-Sprint Executor - Executes Sprint workflows including test writing and task execution.
-Separated from AgentCoordinator to improve maintainability.
+Sprint workflow execution and management.
+
+This module handles Sprint-level operations including starting sprints,
+writing Sprint-level tests (integration and E2E), and executing tasks
+in parallel. Sprint tests are written in the background (non-blocking)
+while tasks start immediately.
+
+The SprintExecutor was separated from AgentCoordinator to improve code
+organization and maintainability.
 """
 import asyncio
 from typing import Dict, Any, Optional
@@ -11,14 +18,28 @@ logger = get_logger(__name__)
 
 
 class SprintExecutor:
-    """Executes Sprint workflows including test writing and task execution."""
+    """Executes Sprint workflows including test writing and task execution.
+    
+    Handles starting sprints, writing Sprint-level tests, and coordinating
+    parallel task execution. Sprint tests are written asynchronously in the
+    background so they don't block task execution.
+    
+    Attributes:
+        coordinator: Reference to AgentCoordinator for accessing services.
+        state_manager: Reference to StateManager for persistence.
+        context_provider: Reference to ContextProvider for Sprint context.
+        config_manager: Reference to ConfigManager for agent configurations.
+        agent_bridge: Reference to AgentBridge for starting agents.
+        task_scoper: Reference to TaskScoper for parallel execution validation.
+        sprint_manager: SprintManager instance for Sprint data operations.
+    """
     
     def __init__(self, coordinator: Any):
-        """
-        Initialize Sprint Executor.
+        """Initialize the Sprint executor.
         
         Args:
-            coordinator: AgentCoordinator instance (for accessing agent methods)
+            coordinator: AgentCoordinator instance that provides access to
+                all necessary services and managers.
         """
         self.coordinator = coordinator
         self.state_manager = coordinator.state_manager
@@ -29,24 +50,29 @@ class SprintExecutor:
         self.sprint_manager = SprintManager(self.state_manager)
     
     async def start_sprint(self, sprint_id: str, max_parallel: int = 10) -> Dict[str, Any]:
-        """
-        Start a Sprint by executing all tasks in parallel.
+        """Start a sprint by executing all its tasks in parallel.
         
-        **NON-BLOCKING**: Sprint test writing runs in background.
-        Tasks start immediately without waiting for test writing.
+        This method does two things simultaneously:
+        1. Starts writing Sprint-level tests in the background (non-blocking)
+        2. Immediately starts executing tasks in parallel (respecting max_parallel)
+        
+        Tasks don't wait for test writing to complete. The test writing
+        happens asynchronously and updates the Sprint data when done.
+        
+        Tasks are grouped for parallel execution based on dependency analysis
+        from TaskScoper. Conflicts are logged but don't prevent execution.
         
         Args:
-            sprint_id: Sprint ID
-            max_parallel: Maximum number of tasks to run in parallel
-            
+            sprint_id: Unique identifier of the sprint to start.
+            max_parallel: Maximum number of tasks to run simultaneously.
+                Defaults to 10. This prevents resource exhaustion.
+        
         Returns:
-            Dict with execution results:
-            {
-                "success": bool,
-                "started_tasks": List[str],
-                "failed_tasks": List[str],
-                "parallel_groups": List[List[str]]
-            }
+            Dictionary containing:
+            - success: True if all tasks started successfully
+            - started_tasks: List of task IDs that started
+            - failed_tasks: List of task IDs that failed to start
+            - parallel_groups: List of task groups for parallel execution
         """
         # 1. Start Sprint test writing in background (NON-BLOCKING)
         asyncio.create_task(self.write_sprint_tests(sprint_id))
