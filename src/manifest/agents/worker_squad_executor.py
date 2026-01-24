@@ -8,10 +8,16 @@ self review, and approval.
 
 The WorkerSquadExecutor was separated from AgentCoordinator to improve
 code organization and follows the single responsibility principle.
+
+The executor can operate in two modes:
+1. Sequential mode: Explicitly calls each stage in order (current default)
+2. Event-driven mode: Subscribes to workflow events and automatically
+   triggers next stages when agents complete (future enhancement)
 """
 import asyncio
 from typing import Dict, Any, Optional
 from manifest.core.logger import get_logger
+from manifest.agents.workflow_event_bus import WorkflowEvent, WorkflowEventType
 
 logger = get_logger(__name__)
 
@@ -57,6 +63,9 @@ class WorkerSquadExecutor:
         exit early if any critical stage fails. After successful approval,
         Sprint-level tests are triggered in the background.
         
+        The executor can work in event-driven mode by subscribing to
+        workflow events, but currently uses sequential mode for clarity.
+        
         Args:
             task_id: Unique identifier of the task to execute.
         
@@ -66,6 +75,14 @@ class WorkerSquadExecutor:
             - stages: Dictionary mapping stage names to their results
             - error: Optional error message if workflow failed
         """
+        # Publish workflow started event
+        if hasattr(self.coordinator, 'event_bus'):
+            await self.coordinator.event_bus.publish(WorkflowEvent(
+                event_type=WorkflowEventType.WORKFLOW_STARTED,
+                task_id=task_id,
+                data={"workflow_type": "worker_squad"}
+            ))
+        
         stages = {}
         previous_stages = {}
         
@@ -77,6 +94,14 @@ class WorkerSquadExecutor:
         # Save stage result
         await self.state_manager.save_worker_squad_stage_async(task_id, "planner", planner_result)
         if not planner_result.get("success"):
+            # Publish workflow failed event
+            if hasattr(self.coordinator, 'event_bus'):
+                await self.coordinator.event_bus.publish(WorkflowEvent(
+                    event_type=WorkflowEventType.WORKFLOW_FAILED,
+                    task_id=task_id,
+                    stage="planner",
+                    data={"error": planner_result.get("error", "Planner stage failed")}
+                ))
             return {"success": False, "stages": stages, "error": planner_result.get("error", "Planner stage failed")}
         
         # 2. Test (TDD - test first)
@@ -86,6 +111,14 @@ class WorkerSquadExecutor:
         # Save stage result
         await self.state_manager.save_worker_squad_stage_async(task_id, "tdd_test", tdd_test_result)
         if tdd_test_result.get("status") != "completed":
+            # Publish workflow failed event
+            if hasattr(self.coordinator, 'event_bus'):
+                await self.coordinator.event_bus.publish(WorkflowEvent(
+                    event_type=WorkflowEventType.WORKFLOW_FAILED,
+                    task_id=task_id,
+                    stage="tdd_test",
+                    data={"error": "TDD test stage failed"}
+                ))
             return {"success": False, "stages": stages, "error": "TDD test stage failed"}
         
         # 3. Coder (implement to pass tests)
@@ -129,6 +162,14 @@ class WorkerSquadExecutor:
                 break
         
         if not test_result.get("success"):
+            # Publish workflow failed event
+            if hasattr(self.coordinator, 'event_bus'):
+                await self.coordinator.event_bus.publish(WorkflowEvent(
+                    event_type=WorkflowEventType.WORKFLOW_FAILED,
+                    task_id=task_id,
+                    stage="test",
+                    data={"error": "Tests failed after max debug iterations"}
+                ))
             return {"success": False, "stages": stages, "error": "Tests failed after max debug iterations"}
         
         # 6. Self Review
@@ -178,6 +219,14 @@ class WorkerSquadExecutor:
             approver_iterations += 1
         
         if approver_result.get("decision") != "approved":
+            # Publish workflow failed event
+            if hasattr(self.coordinator, 'event_bus'):
+                await self.coordinator.event_bus.publish(WorkflowEvent(
+                    event_type=WorkflowEventType.WORKFLOW_FAILED,
+                    task_id=task_id,
+                    stage="approver",
+                    data={"error": "Approver did not approve after max iterations"}
+                ))
             return {"success": False, "stages": stages, "error": "Approver did not approve after max iterations"}
         
         # 8. Run Sprint tests in background (NON-BLOCKING)
@@ -187,6 +236,18 @@ class WorkerSquadExecutor:
         sprint_id = task.get("sprint_id") if task else None
         if sprint_id and hasattr(self.coordinator, 'sprint_executor'):
             asyncio.create_task(self.coordinator.sprint_executor.run_sprint_tests(sprint_id, task_id))
+        
+        # Publish workflow completed event
+        if hasattr(self.coordinator, 'event_bus'):
+            await self.coordinator.event_bus.publish(WorkflowEvent(
+                event_type=WorkflowEventType.WORKFLOW_COMPLETED,
+                task_id=task_id,
+                data={
+                    "workflow_type": "worker_squad",
+                    "stages": list(stages.keys()),
+                    "success": True
+                }
+            ))
         
         return {
             "success": True,

@@ -22,6 +22,7 @@ from manifest.agents.sprint_executor import SprintExecutor
 from manifest.core.config import ConfigManager
 from manifest.core.state_manager import StateManager
 from manifest.core.logger import get_logger
+from manifest.agents.workflow_event_bus import WorkflowEventBus, WorkflowEvent, WorkflowEventType
 
 logger = get_logger(__name__)
 
@@ -98,6 +99,9 @@ class AgentCoordinator:
             self.state_sync = ContainerStateSync(state_manager, self.container_manager.message_bus)
         else:
             self.state_sync = None
+        
+        # Create workflow event bus for automation
+        self.event_bus = WorkflowEventBus()
         
         # Create workflow executors
         self.worker_squad_executor = WorkerSquadExecutor(self)
@@ -211,6 +215,9 @@ class AgentCoordinator:
         if not task_scope.get("components") and not task_scope.get("allowed_files"):
             # No scope defined - warn but continue
             logger.warning(f"Task {task_id} has no defined scope")
+        
+        # Get model config for agent type (needed for context size validation)
+        model_config = self.config_manager.get_agent_model_config(agent_type)
         
         # Validate task granularity (with context for size validation)
         granularity_validation = self.task_scoper.validate_task_granularity(
@@ -454,6 +461,49 @@ class AgentCoordinator:
             status = agent_status.get("status", "unknown")
             success = status == "completed"
         
+        # Publish agent completion event
+        if success:
+            await self.event_bus.publish(WorkflowEvent(
+                event_type=WorkflowEventType.AGENT_COMPLETED,
+                task_id=task_id,
+                stage=stage,
+                agent_type=agent_type,
+                data={
+                    "parsed_data": parsed_data,
+                    "output_length": len(output)
+                }
+            ))
+            await self.event_bus.publish(WorkflowEvent(
+                event_type=WorkflowEventType.STAGE_COMPLETED,
+                task_id=task_id,
+                stage=stage,
+                agent_type=agent_type,
+                data={"result": parsed_data}
+            ))
+            # Trigger next stage event
+            await self.event_bus.publish(WorkflowEvent(
+                event_type=WorkflowEventType.TRIGGER_NEXT_STAGE,
+                task_id=task_id,
+                stage=stage,
+                agent_type=agent_type,
+                data={"completed_stage": stage, "next_stage": self._get_next_stage(stage)}
+            ))
+        else:
+            await self.event_bus.publish(WorkflowEvent(
+                event_type=WorkflowEventType.AGENT_FAILED,
+                task_id=task_id,
+                stage=stage,
+                agent_type=agent_type,
+                data={"error": f"Agent status: {status}"}
+            ))
+            await self.event_bus.publish(WorkflowEvent(
+                event_type=WorkflowEventType.STAGE_FAILED,
+                task_id=task_id,
+                stage=stage,
+                agent_type=agent_type,
+                data={"error": f"Agent status: {status}"}
+            ))
+        
         return {
             "success": success,
             "output": output,
@@ -461,6 +511,37 @@ class AgentCoordinator:
             "status": status,
             "error": None if success else f"Agent status: {status}"
         }
+    
+    def _get_next_stage(self, current_stage: Optional[str]) -> Optional[str]:
+        """Get the next stage in the workflow sequence.
+        
+        Args:
+            current_stage: Current stage name.
+        
+        Returns:
+            Next stage name, or None if current is the last stage.
+        """
+        stage_sequence = [
+            "planner",
+            "tdd_test",
+            "coder",
+            "test",
+            "debug",
+            "self_review",
+            "approver"
+        ]
+        
+        if not current_stage:
+            return "planner"
+        
+        try:
+            current_index = stage_sequence.index(current_stage)
+            if current_index < len(stage_sequence) - 1:
+                return stage_sequence[current_index + 1]
+        except ValueError:
+            pass
+        
+        return None
     
     def _parse_agent_output(
         self,
