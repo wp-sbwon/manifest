@@ -292,3 +292,180 @@
 5. Container Communication 완성
 6. Bootstrap UI 문제 해결
 7. Approval UI 개선
+
+---
+
+## 📋 PROJECT_REVIEW.md에서 추가로 확인된 개선 사항
+
+**참고**: `PROJECT_REVIEW.md` 문서에서 바이브코딩 관점의 추가 개선 사항들이 확인되었습니다.
+
+### High Priority (프로세스 개선)
+
+#### 1. 컨텍스트 크기 제한 및 Task Granularity 강화
+**현재 상태**: ⚠️ 부분 구현
+- ✅ Task Granularity 검증 로직 존재 (`task_scoper.py:199`)
+- ✅ Orchestrator에 granularity 규칙 주입 (`orchestrator_agent.py:198-202`)
+- ❌ 컨텍스트 크기 계산 및 제한 없음
+- ❌ 모델별 최대 토큰 수 고려 없음
+- ❌ 파일 내용 크기 제한 없음
+
+**필요 작업**:
+- 컨텍스트 크기 계산 로직 (토큰 수 추정)
+- 모델별 최대 토큰 수 설정 및 검증
+- 파일 크기 제한 (1000줄 이상이면 관련 부분만 추출)
+- Task가 너무 크면 자동 분할 제안
+
+**위치**: `src/manifest/agents/context_provider.py`, `task_scoper.py`
+
+#### 2. Task 상태 변경 UI 개선
+**현재 상태**: ⚠️ 부분 구현
+- ✅ Task Tree View 존재
+- ✅ CLI 명령어로 상태 변경 가능
+- ❌ UI에서 직접 클릭으로 변경 불가
+- ❌ Context menu 없음
+- ❌ 실시간 진행률 표시 없음
+
+**필요 작업**:
+- Task Tree에서 Task 클릭 시 상세 정보 및 액션 표시
+- Context menu로 상태 변경
+- 실시간 진행률 표시 (예: 50% complete)
+- 예상 완료 시간 표시
+
+**위치**: `src/manifest/ui/widgets/project_view.py`
+
+#### 3. 실패 복구 메커니즘
+**현재 상태**: ❌ 미구현
+- ✅ 각 Stage 실패 시 에러 처리
+- ✅ Debug 반복으로 자동 수정 시도
+- ❌ 실패 원인 분석 및 자동 복구 로직 없음
+- ❌ Fallback 전략 없음 (예: 다른 모델 사용)
+- ❌ 명확한 에러 메시지 및 해결 방안 제시 부족
+
+**필요 작업**:
+- 실패 원인 분석 로직
+- 자동 복구 시도 (다른 접근 방식)
+- Fallback 전략 (다른 모델, 다른 프롬프트)
+- 사용자에게 명확한 에러 메시지 및 해결 방안 제시
+
+**위치**: `src/manifest/agents/worker_squad_executor.py`
+
+### Medium Priority
+
+#### 4. Visual Reality Hook 정보 보강
+**현재 상태**: ⚠️ 부분 구현
+- ✅ Visual Reality Hook 기본 구조 존재
+- ✅ Architecture Status, Implementation Status 제공
+- ❌ 상위 5개 Feature만 표시 (제한적)
+- ❌ Implementation Status가 숫자만 표시 (구체적 정보 없음)
+- ❌ Drift 정보에 구체적 불일치 내용 없음
+
+**필요 작업**:
+- 더 상세한 컴포넌트 상태 정보 제공
+- Drift 구체적 내용 포함
+- 관련 파일 목록 표시
+- UI와 동일한 정보 제공
+
+**위치**: `src/manifest/runtime/hooks/prompt_hooks.py`
+
+#### 5. Task 필터링 및 검색
+**현재 상태**: ❌ 미구현
+- ✅ Task 목록 표시
+- ❌ Status별 필터링 없음
+- ❌ Sprint별 필터링 없음
+- ❌ Task 이름/ID 검색 없음
+- ❌ 정렬 기능 없음
+
+**필요 작업**:
+- Status별 필터링 (pending, in_progress, done, etc.)
+- Sprint별 필터링
+- Task 이름/ID 검색
+- 정렬 기능 (날짜, 상태, 우선순위)
+
+**위치**: `src/manifest/ui/widgets/project_view.py`
+
+#### 6. 타임아웃 및 리소스 제한
+**현재 상태**: ❌ 미구현
+- ✅ Watchdog으로 프로세스 모니터링
+- ❌ Stage별 타임아웃 없음
+- ❌ 리소스 사용량 제한 없음
+- ❌ 자동 취소 로직 없음
+
+**필요 작업**:
+- Stage별 타임아웃 설정
+- 리소스 사용량 모니터링 및 제한
+- 타임아웃 시 자동 취소 로직
+- 리소스 초과 시 경고 및 중단
+
+**위치**: `src/manifest/agents/worker_squad_executor.py`, `watchdog.py`
+
+### Low Priority
+
+#### 7. Task 의존성 시각화
+**현재 상태**: ❌ 미구현
+- ❌ Task 간 의존성 정보 없음
+- ❌ Blocked 상태의 원인 표시 없음
+- ❌ 병렬 실행 가능 여부 표시 없음
+
+**필요 작업**:
+- Task 의존성 그래프
+- Blocked 상태의 원인 표시
+- 병렬 실행 가능 여부 표시
+
+#### 8. 코드 품질 검증 강화
+**현재 상태**: ⚠️ 부분 구현
+- ✅ Self Review와 Approver 존재
+- ❌ 코드 품질 검사 (linting, formatting) 없음
+- ❌ 보안 검사 없음
+- ❌ 성능 검사 없음
+- ❌ 아키텍처 준수 검증 없음
+
+**필요 작업**:
+- 코드 품질 검사 통합
+- 보안 검사
+- 성능 검사
+- 아키텍처 준수 검증
+
+#### 9. 롤백 메커니즘 완성
+**현재 상태**: ⚠️ 부분 구현
+- ✅ `/cancel_task` 명령어 존재
+- ❌ Git 기반 롤백 기능 없음
+- ❌ 특정 Stage로 롤백 없음
+- ❌ 변경사항 미리보기 없음
+
+**필요 작업**:
+- Git 기반 롤백 기능
+- Stage별 롤백
+- 변경사항 미리보기 및 선택적 롤백
+
+---
+
+## 📊 통합 우선순위 (기능 구현 + 프로세스 개선)
+
+### Critical (즉시 필요)
+1. **Agent 완료 대기 및 결과 파싱** (기능 구현)
+2. **Agent Output Display 개선** (기능 구현)
+3. **컨텍스트 크기 제한 및 Task Granularity 강화** (프로세스 개선)
+
+### High Priority
+4. **Multi-Agent Workflow 자동화** (기능 구현)
+5. **Agent Bridge → Planner 통합** (기능 구현)
+6. **Task 상태 변경 UI 개선** (프로세스 개선)
+7. **실패 복구 메커니즘** (프로세스 개선)
+
+### Medium Priority
+8. **Container Communication 완성** (기능 구현)
+9. **Bootstrap UI 이벤트 루프 해결** (기능 구현)
+10. **Approval Buttons/Widgets** (기능 구현)
+11. **Visual Reality Hook 정보 보강** (프로세스 개선)
+12. **Task 필터링 및 검색** (프로세스 개선)
+13. **타임아웃 및 리소스 제한** (프로세스 개선)
+
+### Low Priority
+14. **Context Injection Hooks** (기능 구현)
+15. **Structural Spec-First Management** (기능 구현)
+16. **Shadow Manager 완전 구현** (기능 구현)
+17. **Git Integration 고급 기능** (기능 구현)
+18. **Task 생명주기 관리** (기능 구현)
+19. **Task 의존성 시각화** (프로세스 개선)
+20. **코드 품질 검증 강화** (프로세스 개선)
+21. **롤백 메커니즘 완성** (프로세스 개선)
