@@ -2,7 +2,7 @@
 Planner Agent Prompt
 Detailed task planning and blueprint creation.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 # Core identity and constraints
 PLANNER_IDENTITY = """
@@ -80,7 +80,8 @@ This takes 2-3 minutes but saves hours of debugging.
 def get_planner_prompt(
     task_description: str,
     context: Dict[str, Any],
-    available_agents: List[str] = None
+    available_agents: List[str] = None,
+    stage: Optional[str] = None
 ) -> str:
     """
     Generate Planner prompt with context.
@@ -89,11 +90,16 @@ def get_planner_prompt(
         task_description: Task description from orchestrator or user
         context: Tiered context (Tier 0, Tier 1, Tier 2)
         available_agents: List of available agent types
+        stage: Optional stage (e.g., "conflict_review" for blueprint conflict review)
         
     Returns:
         Complete prompt string
     """
     available_agents = available_agents or ["coder", "test", "review"]
+    
+    # Check if this is a conflict review request
+    if stage == "conflict_review" or context.get("conflict_review"):
+        return _get_conflict_review_prompt(task_description, context)
     
     prompt = f"""
 {PLANNER_SYSTEM_PROMPT}
@@ -117,6 +123,87 @@ def get_planner_prompt(
 3. Create blueprint specifications
 4. Break down into implementable tasks
 5. Delegate to Coder for implementation
+"""
+    return prompt
+
+
+def _get_conflict_review_prompt(task_description: str, context: Dict[str, Any]) -> str:
+    """Generate prompt for blueprint conflict review.
+    
+    Args:
+        task_description: Conflict review task description
+        context: Context including conflict_review information
+        
+    Returns:
+        Complete prompt string for conflict review
+    """
+    conflict_review = context.get("conflict_review", {})
+    conflict_issue = conflict_review.get("conflict_issue", {})
+    review_request = conflict_review.get("review_request", {})
+    
+    conflict_type = conflict_issue.get("type", "unknown")
+    component_id = conflict_issue.get("component_id", "unknown")
+    severity = conflict_issue.get("severity", "unknown")
+    message = conflict_issue.get("message", "")
+    file_path = conflict_issue.get("file_path", "")
+    
+    prompt = f"""
+{PLANNER_SYSTEM_PROMPT}
+
+## BLUEPRINT CONFLICT REVIEW MODE
+
+You are reviewing a blueprint conflict where code has drifted from the intended design.
+
+### CONFLICT INFORMATION
+
+**Conflict Type**: {conflict_type}
+**Component ID**: {component_id}
+**Severity**: {severity}
+**File Path**: {file_path}
+
+**Conflict Details**:
+{message}
+
+### REVIEW QUESTION
+
+{review_request.get('question', 'Is this code change necessary or an architectural violation?')}
+
+### CONTEXT
+
+{_format_context(context)}
+
+### YOUR TASK
+
+Analyze this conflict and provide:
+
+1. **DECISION**: Choose one:
+   - `necessary`: The code change is necessary for the implementation and should be accepted
+   - `violation`: The code change violates the architectural blueprint and should be reverted
+
+2. **REASONING**: Provide detailed analysis:
+   - Why is this change necessary (or why is it a violation)?
+   - What are the architectural implications?
+   - What are the trade-offs?
+
+3. **RECOMMENDATION**: What should be done:
+   - If `necessary`: Should the blueprint be updated to reflect this change?
+   - If `violation`: Should the code be reverted? What should be done instead?
+
+### OUTPUT FORMAT
+
+Your response must include these sections:
+
+```
+DECISION: [necessary|violation]
+
+REASONING:
+[Your detailed analysis here]
+
+RECOMMENDATION:
+[Your recommendation here]
+```
+
+**IMPORTANT**: Be thorough in your analysis. This decision will determine whether the code change is accepted or rejected.
 """
     return prompt
 

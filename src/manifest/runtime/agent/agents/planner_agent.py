@@ -76,11 +76,19 @@ class PlannerAgent:
             Content contains the detailed plan with steps, considerations,
             and implementation guidance.
         """
-        # Generate prompt
+        # Check if this is a conflict review (from context or stage)
+        stage = context.get("stage")  # Stage might be passed in context
+        is_conflict_review = (
+            context.get("conflict_review") is not None or
+            stage == "conflict_review"
+        )
+        
+        # Generate prompt (will handle conflict review mode internally)
         prompt = get_planner_prompt(
             task_description=task_description,
             context=context,
-            available_agents=context.get("available_agents", ["coder", "test", "review"])
+            available_agents=context.get("available_agents", ["coder", "test", "review"]),
+            stage=stage or ("conflict_review" if is_conflict_review else None)
         )
         
         # Execute agent

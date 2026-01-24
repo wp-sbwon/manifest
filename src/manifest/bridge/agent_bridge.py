@@ -401,7 +401,30 @@ class AgentBridge:
                             await self.state_manager.save_state()
             elif agent_type == "planner":
                 # Planner agent: call plan method
-                task_description = context.get("task_description", "Plan the task")
+                # Check if this is a conflict review
+                if stage == "conflict_review" or context.get("conflict_review"):
+                    # Conflict review mode - use task description from context
+                    conflict_review = context.get("conflict_review", {})
+                    task_description = context.get("task_description", "Review blueprint conflict")
+                    # Create a special task description for conflict review
+                    conflict_issue = conflict_review.get("conflict_issue", {}")
+                    review_request = conflict_review.get("review_request", {})
+                    
+                    # Build conflict review task description
+                    conflict_desc = f"""
+BLUEPRINT CONFLICT REVIEW
+
+Conflict Type: {conflict_issue.get('type', 'unknown')}
+Component: {conflict_issue.get('component_id', 'unknown')}
+Severity: {conflict_issue.get('severity', 'unknown')}
+File: {conflict_issue.get('file_path', 'unknown')}
+
+Details: {conflict_issue.get('message', 'No details')}
+
+Review Question: {review_request.get('question', 'Is this change necessary or a violation?')}
+"""
+                    task_description = conflict_desc
+                
                 async for chunk in agent_instance.plan(task_description, context, model_config):
                     channel = f"squad-{task_id}-planner"
                     if chunk.get("type") == "chunk":
@@ -412,6 +435,11 @@ class AgentBridge:
                         self.state_manager.add_chat_message(
                             channel, "assistant", chunk.get("content", "")
                         )
+                        # Parse planner decision if this is a conflict review
+                        if stage == "conflict_review" or context.get("conflict_review"):
+                            await self._parse_planner_conflict_review(
+                                task_id, chunk.get("content", ""), context
+                            )
                         await self.state_manager.save_state()
             elif agent_type == "coder":
                 # Coder agent: call implement method
@@ -574,3 +602,113 @@ class AgentBridge:
             await self.state_manager.save_state()
         
         return success
+    
+    async def send_to_planner(
+        self,
+        planner_request: Dict[str, Any],
+        task_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Send a blueprint conflict review request to the planner agent.
+        
+        When blueprint conflicts are detected, this method starts a planner
+        agent to review the conflict and determine if the code change is
+        necessary or an architectural violation.
+        
+        Args:
+            planner_request: Dictionary containing:
+                - action: "planner_review"
+                - conflict_issue: Conflict details
+                - request: Review request with question and options
+            task_id: Optional task ID where the conflict was detected.
+                If not provided, generates a temporary ID.
+        
+        Returns:
+            Dictionary with:
+                - success: Boolean indicating if planner was started
+                - planner_task_id: ID of the planner review task
+                - channel: Channel name for planner output
+        """
+        if not self.is_connected:
+            logger.error("Agent bridge not connected, cannot send to planner")
+            return {
+                "success": False,
+                "error": "Agent bridge not connected"
+            }
+        
+        # Generate task ID if not provided
+        review_task_id = task_id or f"planner-review-{planner_request.get('conflict_issue', {}).get('component_id', 'unknown')}"
+        
+        # Extract conflict information
+        conflict_issue = planner_request.get("conflict_issue", {})
+        review_request = planner_request.get("request", {})
+        
+        # Create conflict review task description
+        conflict_type = conflict_issue.get("type", "unknown")
+        component_id = conflict_issue.get("component_id", "unknown")
+        severity = conflict_issue.get("severity", "unknown")
+        message = conflict_issue.get("message", "")
+        file_path = conflict_issue.get("file_path", "")
+        
+        task_description = f"""
+BLUEPRINT CONFLICT REVIEW REQUEST
+
+Conflict Type: {conflict_type}
+Component ID: {component_id}
+Severity: {severity}
+File: {file_path}
+
+Conflict Details:
+{message}
+
+Review Question: {review_request.get('question', 'Is this code change necessary or an architectural violation?')}
+
+Please review this conflict and determine:
+1. Is this change necessary for the implementation?
+2. Does this change violate the architectural blueprint?
+3. Should the blueprint be updated to reflect this change, or should the code be reverted?
+
+Respond with:
+- DECISION: necessary | violation
+- REASONING: [your analysis]
+- RECOMMENDATION: [what should be done]
+"""
+        
+        # Get context for planner (Tier 0-1, plus conflict details)
+        from manifest.agents.context_provider import ContextProvider
+        context_provider = ContextProvider()
+        context = context_provider.get_orchestrator_context()
+        
+        # Add conflict information to context
+        context["conflict_review"] = {
+            "conflict_issue": conflict_issue,
+            "review_request": review_request,
+            "task_id": review_task_id
+        }
+        
+        # Get model config for planner
+        model_config = self.config_manager.get_agent_model_config("planner")
+        
+        # Start planner agent for conflict review
+        success = await self.start_agent_mission(
+            task_id=review_task_id,
+            agent_type="planner",
+            context=context,
+            model_config=model_config,
+            stage="conflict_review"
+        )
+        
+        if success:
+            channel = f"squad-{review_task_id}-planner"
+            logger.info(f"Planner review started for conflict in task {task_id or 'unknown'}")
+            
+            return {
+                "success": True,
+                "planner_task_id": review_task_id,
+                "channel": channel
+            }
+        else:
+            logger.error(f"Failed to start planner review for task {task_id or 'unknown'}")
+            return {
+                "success": False,
+                "error": "Failed to start planner agent"
+            }
