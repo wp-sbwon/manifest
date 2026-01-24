@@ -24,7 +24,7 @@ from textual.containers import Container, Horizontal, Vertical, VerticalScroll, 
 from textual.widgets import Header, Footer, Tree, Input, RichLog, TabbedContent, TabPane, Static, Label, Button
 from manifest.ui.widgets.structure_hierarchy_view import StructureHierarchyView
 from manifest.ui.widgets.structure_graph_view import StructureGraphView
-from manifest.ui.widgets.project_view import TaskTreeView, SprintStatusView, HistoryView
+from manifest.ui.widgets.project_view import TaskTreeView, SprintStatusView, HistoryView, TaskSelected
 from textual import on, work
 from textual.binding import Binding
 
@@ -203,6 +203,7 @@ class ManifestApp(App):
         ("h", "show_history", "Show History"),
         ("p", "show_project", "Show Project Info"),
         ("ctrl+comma", "open_settings", "Open Settings"),
+        ("s", "change_task_status", "Change Task Status"),
     ]
 
     def __init__(self):
@@ -1276,6 +1277,87 @@ class ManifestApp(App):
         log = self.query_one("#log-main", RichLog)
         log.write(f"[bold red]Task {task_id} rejected.[/]")
         await self.state_manager.save_state()
+    
+    @on(TaskSelected)
+    async def on_task_selected(self, message: TaskSelected) -> None:
+        """Handle task selection from TaskTreeView.
+        
+        When a task is selected, shows task details and allows status changes
+        via keyboard shortcuts or a status change dialog.
+        
+        Args:
+            message: TaskSelected message with task information.
+        """
+        task_id = message.task_id
+        task = message.task
+        current_status = message.current_status
+        
+        log = self.query_one("#log-main", RichLog)
+        
+        # Show task details
+        task_desc = task.get("description", "No description")
+        task_stage = task.get("stage", "unknown")
+        worker_squad = task.get("worker_squad", {})
+        stages = worker_squad.get("stages", {})
+        
+        log.write(f"[bold cyan]Task Selected: {task_id}[/]")
+        log.write(f"Status: [bold]{current_status}[/] | Stage: {task_stage}")
+        log.write(f"Description: {task_desc[:100]}")
+        
+        # Show worker squad progress if available
+        if stages:
+            completed = sum(1 for s in stages.values() if s.get("status") == "completed")
+            total = len(stages)
+            progress = (completed / total * 100) if total > 0 else 0
+            log.write(f"Worker Squad Progress: {progress:.0f}% ({completed}/{total} stages)")
+            log.write("[dim]Press 's' to change status, 'Enter' to view details[/]")
+        else:
+            log.write("[dim]Press 's' to change status, 'Enter' to view details[/]")
+        
+        # Store selected task for status change
+        self._selected_task_id = task_id
+        self._selected_task_status = current_status
+    
+    def action_change_task_status(self) -> None:
+        """Change status of the currently selected task.
+        
+        Cycles through status values: pending -> in_progress -> done -> blocked -> cancelled -> pending
+        """
+        if not hasattr(self, '_selected_task_id') or not self._selected_task_id:
+            log = self.query_one("#log-main", RichLog)
+            log.write("[bold yellow]No task selected. Select a task first.[/]")
+            return
+        
+        task_id = self._selected_task_id
+        current_status = getattr(self, '_selected_task_status', 'pending')
+        
+        # Status cycle
+        status_cycle = ["pending", "in_progress", "done", "blocked", "cancelled"]
+        try:
+            current_index = status_cycle.index(current_status)
+            next_index = (current_index + 1) % len(status_cycle)
+            new_status = status_cycle[next_index]
+        except ValueError:
+            new_status = "pending"
+        
+        # Update task status
+        success = self.state_manager.update_task(task_id, status=new_status)
+        if success:
+            # Save state
+            import asyncio
+            asyncio.create_task(self.state_manager.save_state())
+            
+            # Update UI
+            asyncio.create_task(self.update_task_tree())
+            
+            log = self.query_one("#log-main", RichLog)
+            log.write(f"[bold green]Task {task_id} status changed: {current_status} → {new_status}[/]")
+            
+            # Update selected status
+            self._selected_task_status = new_status
+        else:
+            log = self.query_one("#log-main", RichLog)
+            log.write(f"[bold red]Failed to update task {task_id} status.[/]")
     
     async def create_squad_channel(self, task_id: str, agent_type: str) -> Optional[str]:
         """Create a squad channel for agent output."""
