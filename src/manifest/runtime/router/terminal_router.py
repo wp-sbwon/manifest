@@ -1,6 +1,12 @@
 """
-Terminal Router - OpenCode router for terminal command execution.
-Routes terminal commands through OpenCode router system.
+Terminal command routing and execution.
+
+This module provides the TerminalRouter class which executes terminal commands
+on behalf of agents. It integrates with OpenCode (if available) for enhanced
+command execution, with fallback to standard subprocess execution.
+
+The router handles command execution, streaming output, cancellation, and
+monitoring through an optional watchdog system.
 """
 import asyncio
 import subprocess
@@ -10,10 +16,20 @@ from manifest.runtime.opencode_adapter import OpenCodeAdapter
 
 
 class TerminalRouter:
-    """
-    Routes terminal commands through OpenCode router system.
-    Terminal command execution router.
-    Uses OpenCodeAdapter for OpenCode integration with fallback.
+    """Routes and executes terminal commands for agents.
+    
+    Provides a unified interface for executing terminal commands, with
+    optional OpenCode integration for enhanced capabilities. Handles command
+    execution, output streaming, cancellation, and monitoring.
+    
+    The router uses OpenCodeAdapter which automatically detects OpenCode
+    availability and falls back to standard subprocess execution if needed.
+    
+    Attributes:
+        working_dir: Directory where commands are executed.
+        active_commands: Dictionary tracking currently running commands.
+        watchdog: Optional watchdog instance for monitoring command execution.
+        opencode_adapter: OpenCodeAdapter instance for OpenCode integration.
     """
     
     def __init__(
@@ -22,20 +38,25 @@ class TerminalRouter:
         watchdog=None,
         use_opencode: Optional[bool] = None
     ):
-        """
-        Initialize terminal router.
+        """Initialize the terminal router.
+        
+        Sets up the working directory and OpenCode adapter. The adapter
+        shares the active_commands dictionary and watchdog for unified
+        command tracking.
         
         Args:
-            working_dir: Working directory for command execution
-            watchdog: Optional watchdog instance for monitoring
-            use_opencode: Force use of OpenCode (True) or internal (False).
-                         If None, auto-detect based on availability.
+            working_dir: Directory where commands should be executed.
+                Defaults to current working directory.
+            watchdog: Optional watchdog instance for monitoring command
+                execution and resource usage.
+            use_opencode: Force OpenCode usage. True forces OpenCode,
+                False forces internal execution, None auto-detects.
         """
         self.working_dir = working_dir or Path.cwd()
         self.active_commands: Dict[str, subprocess.Popen] = {}
         self.watchdog = watchdog
         
-        # Initialize OpenCode adapter with shared active_commands and watchdog
+        # Initialize OpenCode adapter with shared resources
         self.opencode_adapter = OpenCodeAdapter(
             working_dir=working_dir,
             use_opencode=use_opencode,
@@ -50,18 +71,27 @@ class TerminalRouter:
         timeout: Optional[float] = None,
         stream: bool = False
     ) -> Dict[str, Any]:
-        """
-        Execute a terminal command through the router.
-        Uses OpenCodeAdapter which handles OpenCode integration with fallback.
+        """Execute a terminal command and return results.
+        
+        Delegates to OpenCodeAdapter which handles OpenCode integration
+        and fallback. The command is registered with the watchdog if
+        available for monitoring.
         
         Args:
-            command: Command to execute
-            args: Command arguments
-            timeout: Command timeout in seconds
-            stream: Whether to stream output
-            
+            command: Command name to execute (e.g., "git", "python").
+            args: Optional list of command arguments.
+            timeout: Optional timeout in seconds. Command will be killed
+                if it exceeds this time.
+            stream: Whether to stream output in real-time. If True, output
+                is yielded as it arrives rather than buffered.
+        
         Returns:
-            Dict with 'stdout', 'stderr', 'returncode', 'command_id', 'backend'
+            Dictionary containing:
+            - stdout: Standard output text
+            - stderr: Standard error text
+            - returncode: Exit code of the command
+            - command_id: Unique ID for this command execution
+            - backend: Which backend was used ("opencode" or "internal")
         """
         full_command = [command] + (args or [])
         command_id = f"cmd_{id(full_command)}"
