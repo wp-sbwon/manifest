@@ -1,6 +1,11 @@
 """
-Data Loader - Handles loading and refreshing of application data.
-Separated from ManifestApp to improve maintainability.
+Data loading for Manifest application.
+
+This module handles loading of all application data files including intent.json,
+blueprint.json, and project.json. The DataLoader was separated from ManifestApp
+to improve code organization and follows the single responsibility principle.
+
+All loading methods are async to support non-blocking I/O operations.
 """
 import json
 from pathlib import Path
@@ -12,14 +17,24 @@ logger = get_logger(__name__)
 
 
 class DataLoader:
-    """Handles loading and refreshing of application data."""
+    """Handles loading and refreshing of all application data files.
+    
+    Manages loading of intent.json, blueprint.json, and project.json files.
+    Caches loaded data in instance attributes and provides methods to reload
+    individual files or all files at once.
+    
+    Attributes:
+        manifest_dir: Path to the .manifest directory where data files are stored.
+        intent_data: Cached intent.json data.
+        blueprint_data: Cached blueprint.json data.
+        project_data: Cached project.json data.
+    """
     
     def __init__(self, manifest_dir: Path):
-        """
-        Initialize Data Loader.
+        """Initialize the data loader.
         
         Args:
-            manifest_dir: Path to .manifest directory
+            manifest_dir: Path to the .manifest directory containing data files.
         """
         self.manifest_dir = manifest_dir
         self.intent_data: Dict[str, Any] = {}
@@ -27,11 +42,15 @@ class DataLoader:
         self.project_data: Dict[str, Any] = {}
     
     async def load_intent_data(self) -> Dict[str, Any]:
-        """
-        Load intent.json data.
+        """Load intent.json file from the manifest directory.
+        
+        The intent file contains project goals, sprints, and features.
+        If the file doesn't exist or loading fails, returns default empty
+        structure. Errors are logged but don't raise exceptions.
         
         Returns:
-            Intent data dictionary
+            Dictionary containing intent data. Includes version, sprint,
+            and features fields.
         """
         intent_file = self.manifest_dir / "intent.json"
         if intent_file.exists():
@@ -47,11 +66,18 @@ class DataLoader:
         return self.intent_data
     
     async def load_blueprint_data(self) -> Dict[str, Any]:
-        """
-        Load blueprint.json data with metadata.
+        """Load blueprint.json data with metadata.
+        
+        Uses BlueprintLoader to load the blueprint file which contains
+        architecture components, contracts, and zones. Metadata is
+        included to provide additional context about components.
+        
+        If loading fails, returns a default empty blueprint structure.
+        Errors are logged but don't raise exceptions.
         
         Returns:
-            Blueprint data dictionary
+            Dictionary containing blueprint data with components, contracts,
+            zones, and metadata.
         """
         try:
             self.blueprint_data = BlueprintLoader.load_blueprint(
@@ -71,14 +97,17 @@ class DataLoader:
         return self.blueprint_data
     
     async def load_project_data(self) -> Dict[str, Any]:
-        """
-        Load project.json data (strict doc > view).
+        """Load project.json data.
         
-        Note: project.json is now in docs/project-manifest/ for Manifest project documentation.
-        For user projects, this would be in .manifest/ directory.
+        For the Manifest project itself, looks in docs/project-manifest/.
+        For user projects, looks in .manifest/ directory. This follows the
+        "strict doc > view" principle where documentation takes precedence.
+        
+        If the file doesn't exist or loading fails, returns an empty dictionary.
+        Errors are logged but don't raise exceptions.
         
         Returns:
-            Project data dictionary
+            Dictionary containing project metadata and information.
         """
         # For Manifest project itself, load from docs/project-manifest/
         project_file = Path("docs/project-manifest/project.json")
@@ -99,11 +128,17 @@ class DataLoader:
         return self.project_data
     
     async def reload_all(self) -> Dict[str, Any]:
-        """
-        Reload all data sources.
+        """Reload all data files from disk.
+        
+        Convenience method that reloads intent, blueprint, and project data
+        in sequence. Useful for refreshing the UI after external changes
+        to data files.
         
         Returns:
-            Dictionary with all loaded data
+            Dictionary containing all three data types:
+            - intent: Intent data
+            - blueprint: Blueprint data
+            - project: Project data
         """
         await self.load_intent_data()
         await self.load_blueprint_data()

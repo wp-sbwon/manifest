@@ -1,6 +1,13 @@
 """
-Channel Manager - Handles squad channel creation and management.
-Separated from ManifestApp to improve maintainability.
+Channel management for agent output and communication.
+
+This module handles creation and management of communication channels for
+agent output. Each agent gets its own channel (tab) in the UI, allowing
+users to see output from different agents separately. Channels are created
+dynamically when agents start and can be switched between.
+
+The ChannelManager was separated from ManifestApp to improve code organization
+and maintainability.
 """
 from typing import Dict, Any, Optional
 from textual.widgets import RichLog, Button, Horizontal, TabbedContent
@@ -10,15 +17,26 @@ logger = get_logger(__name__)
 
 
 class ChannelManager:
-    """Handles squad channel creation and management."""
+    """Manages communication channels for agent output.
+    
+    Creates and manages UI channels (tabs) where agent output is displayed.
+    Each agent working on a task gets its own channel, allowing users to
+    monitor multiple agents simultaneously. Channels can be switched via
+    buttons in the channel selector.
+    
+    Attributes:
+        app: Reference to ManifestApp for UI widget access.
+        state_manager: Reference to StateManager for chat history persistence.
+        squad_channels: Dictionary tracking all created channels.
+        active_channel: Name of the currently active/visible channel.
+    """
     
     def __init__(self, app: Any, state_manager: Any):
-        """
-        Initialize Channel Manager.
+        """Initialize the channel manager.
         
         Args:
-            app: ManifestApp instance (for UI access)
-            state_manager: StateManager instance
+            app: ManifestApp instance that provides access to UI widgets.
+            state_manager: StateManager instance for loading/saving chat history.
         """
         self.app = app
         self.state_manager = state_manager
@@ -26,15 +44,19 @@ class ChannelManager:
         self.active_channel: str = "main"  # Currently active channel
     
     async def create_squad_channel(self, task_id: str, agent_type: str) -> Optional[str]:
-        """
-        Create a squad channel for agent output.
+        """Create a new channel for an agent's output.
+        
+        Creates a UI tab and button for the channel, allowing users to
+        view and switch to this agent's output. The channel name follows
+        the pattern "squad-{task_id}-{agent_type}".
         
         Args:
-            task_id: Task identifier
-            agent_type: Agent type (e.g., "coder", "planner")
-            
+            task_id: ID of the task the agent is working on.
+            agent_type: Type of agent (e.g., "coder", "planner", "test").
+        
         Returns:
-            Tab ID if successful, None otherwise
+            Tab ID string if channel was created successfully, None if
+            creation failed. Returns existing tab ID if channel already exists.
         """
         channel_name = f"squad-{task_id}-{agent_type}"
         tab_id = f"tab-{channel_name}"

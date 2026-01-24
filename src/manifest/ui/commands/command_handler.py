@@ -1,6 +1,13 @@
 """
-Command Handler - Handles user commands with routing.
-Replaces the large if-elif chain in ManifestApp.process_command.
+Command handling and routing for user commands.
+
+This module provides the CommandHandler class which processes user commands
+entered in the UI. It uses a handler registry pattern to route commands to
+appropriate handler methods, replacing the large if-elif chain that was
+previously in ManifestApp.process_command.
+
+Commands are prefixed with "/" and are parsed into command name and arguments.
+Each command has a dedicated handler method that performs the appropriate action.
 """
 from typing import Dict, Any, Optional, Callable, Awaitable, List
 from textual.widgets import RichLog
@@ -8,22 +15,36 @@ from manifest.ui.commands.command_parser import CommandParser
 
 
 class CommandHandler:
-    """Handles user commands with routing."""
+    """Handles user commands with routing to appropriate handlers.
+    
+    Maintains a registry of command handlers and routes user input to the
+    correct handler based on the command name. Commands must start with "/"
+    to be recognized as commands.
+    
+    Attributes:
+        app: Reference to ManifestApp for accessing application methods.
+        parser: CommandParser instance for parsing user input.
+        handlers: Dictionary mapping command names to handler functions.
+    """
     
     def __init__(self, app: Any):
-        """
-        Initialize Command Handler.
+        """Initialize the command handler.
         
         Args:
-            app: ManifestApp instance
+            app: ManifestApp instance that provides access to application
+                methods and state.
         """
         self.app = app
         self.parser = CommandParser()
         self.handlers: Dict[str, Callable[[List[str], RichLog], Awaitable[None]]] = {}
         self._register_handlers()
     
-    def _register_handlers(self):
-        """Register all command handlers."""
+    def _register_handlers(self) -> None:
+        """Register all available command handlers.
+        
+        Maps command names to their handler methods. This is called during
+        initialization to set up the command routing table.
+        """
         self.handlers = {
             "audit": self._handle_audit,
             "reload": self._handle_reload,
@@ -48,15 +69,19 @@ class CommandHandler:
         }
     
     async def handle(self, user_input: str, log: RichLog) -> bool:
-        """
-        Handle user input (command or regular message).
+        """Process user input and route to appropriate handler.
+        
+        Checks if the input is a command (starts with "/") and routes it
+        to the registered handler. If it's not a command, returns False
+        so it can be handled as a regular message.
         
         Args:
-            user_input: User input string
-            log: RichLog widget for output
-            
+            user_input: The input string from the user.
+            log: RichLog widget to write command output and feedback to.
+        
         Returns:
-            True if handled as command, False if regular message
+            True if the input was recognized and handled as a command,
+            False if it's a regular message (not a command).
         """
         if not user_input.startswith("/"):
             return False
