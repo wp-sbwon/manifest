@@ -1,5 +1,13 @@
 """
-Agent Manager - Manages agent lifecycle.
+Agent lifecycle management.
+
+This module provides the AgentManager class which creates, manages, and
+controls the lifecycle of different agent types. It handles agent creation,
+prompt generation, starting/stopping agents, and maintains a registry of
+active agents.
+
+The manager creates appropriate agent instances based on agent type and
+configures them with the correct prompts and context.
 """
 from typing import Dict, Any, Optional, List
 from manifest.core.state_manager import StateManager
@@ -9,8 +17,17 @@ from manifest.runtime.agent.orchestrator_prompt import get_orchestrator_prompt, 
 
 
 class AgentManager:
-    """
-    Agent Manager for creating and managing agents.
+    """Manages agent lifecycle and creation.
+    
+    Handles creating agent instances of different types, generating appropriate
+    prompts, and managing their lifecycle. Maintains a registry of active
+    agents and provides methods to start, stop, and query agents.
+    
+    Attributes:
+        state_manager: Manages state persistence for agents.
+        agents: Dictionary mapping agent IDs to agent instances.
+        agent_prompts: Dictionary mapping agent types to their identity prompts.
+        executor: AgentExecutor instance for LLM API calls.
     """
     
     def __init__(
@@ -18,12 +35,16 @@ class AgentManager:
         state_manager: StateManager,
         executor: Optional["AgentExecutor"] = None
     ):
-        """
-        Initialize agent manager.
+        """Initialize the agent manager.
+        
+        Sets up the agent registry and loads identity prompts for different
+        agent types. If no executor is provided, agents will need to be
+        created with an executor later.
         
         Args:
-            state_manager: State manager for persistence
-            executor: Optional agent executor (creates one if not provided)
+            state_manager: State manager for persisting agent state.
+            executor: Optional AgentExecutor instance. If not provided,
+                agents must be created with an executor later.
         """
         self.state_manager = state_manager
         self.agents: Dict[str, Any] = {}  # agent_id -> agent instance
@@ -48,17 +69,23 @@ class AgentManager:
         model_config: Dict[str, Any],
         task_id: Optional[str] = None
     ) -> Any:
-        """
-        Create a new agent.
+        """Create a new agent instance of the specified type.
+        
+        Generates the appropriate prompt based on agent type and context,
+        then creates the corresponding agent class instance. The agent
+        is registered in the manager's agent dictionary.
         
         Args:
-            agent_type: Type of agent (orchestrator, planner, coder, test, review)
-            context: Agent context (tiered context)
-            model_config: Model configuration
-            task_id: Optional task ID
-            
+            agent_type: Type of agent to create. Valid values: "orchestrator",
+                "planner", "coder", "test", "debug", "approver", "project_review",
+                "e2e_test", "integration_test".
+            context: Tiered context dictionary for the agent (Tier 0-3).
+            model_config: Dictionary with provider, model, and api_key.
+            task_id: Optional task ID. If not provided, generates a unique ID.
+        
         Returns:
-            Agent instance with prompt and configuration
+            Agent instance (specific type depends on agent_type). The agent
+            is ready to use but not yet started.
         """
         agent_id = task_id or f"agent_{len(self.agents)}"
         
