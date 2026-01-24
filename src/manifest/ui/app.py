@@ -29,6 +29,7 @@ from manifest.agents.context_provider import ContextProvider
 from manifest.agents.agent_coordinator import AgentCoordinator
 from manifest.ui.commands.command_handler import CommandHandler
 from manifest.ui.data.data_loader import DataLoader
+from manifest.ui.channels.channel_manager import ChannelManager
 from manifest.core.logger import get_logger
 
 try:
@@ -197,14 +198,15 @@ class ManifestApp(App):
         self.task_scoper = TaskScoper(self.manifest_dir)
         self.context_provider = ContextProvider(self.manifest_dir, self.task_scoper)
         self.agent_coordinator: Optional[AgentCoordinator] = None
-        self.squad_channels: Dict[str, Dict[str, Any]] = {}  # channel_name -> channel info
-        self.active_channel: str = "main"  # Currently active channel
         
         # Command handler
         self.command_handler: Optional[CommandHandler] = None
         
         # Data loader
         self.data_loader = DataLoader(self.manifest_dir)
+        
+        # Channel manager
+        self.channel_manager: Optional[ChannelManager] = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -331,13 +333,17 @@ class ManifestApp(App):
         # Initialize command handler
         self.command_handler = CommandHandler(self)
         
+        # Initialize channel manager
+        self.channel_manager = ChannelManager(self, self.state_manager)
+        
         # Load state
         state = self.state_manager.get_state()
         if state.get("last_action"):
             self.query_one("#log-main", RichLog).write(f"[bold blue]Resuming: {state.get('last_action')}[/]")
         
         # Update squad channels based on active tasks
-        await self.update_squad_channels()
+        if self.channel_manager:
+            await self.channel_manager.update_squad_channels(self.agent_coordinator)
         
         # Initialize views
         await self._load_structure_data()
@@ -521,8 +527,8 @@ class ManifestApp(App):
         """Show Orchestrator chat channel."""
         # Create or show Orchestrator channel
         channel_name = "orchestrator"
-        if channel_name not in self.squad_channels:
-            await self.create_squad_channel("orchestrator", "orchestrator")
+        if self.channel_manager and channel_name not in self.channel_manager.squad_channels:
+            await self.channel_manager.create_squad_channel("orchestrator", "orchestrator")
         
         # Switch to Orchestrator tab
         chat_tabs = self.query_one("#chat-tabs", TabbedContent)
@@ -1164,139 +1170,14 @@ class ManifestApp(App):
     
     async def create_squad_channel(self, task_id: str, agent_type: str) -> Optional[str]:
         """Create a squad channel for agent output."""
-        channel_name = f"squad-{task_id}-{agent_type}"
-        tab_id = f"tab-{channel_name}"
-        
-        # Check if channel already exists
-        if channel_name in self.squad_channels:
-            return tab_id
-        
-        try:
-            # Create channel button in selector
-            channel_selector = self.query_one("#channel-selector", Horizontal)
-            
-            # Create button for this channel
-            button_id = f"btn-channel-{channel_name}"
-            channel_button = Button(
-                f"{agent_type.title()} ({task_id[:8]})",
-                id=button_id,
-                variant="default"
-            )
-            
-            # Mount button
-            await channel_selector.mount(channel_button)
-            
-            # Track channel
-            self.squad_channels[channel_name] = {
-                "tab_id": tab_id,
-                "button_id": button_id,
-                "task_id": task_id,
-                "agent_type": agent_type
-            }
-            
-            # Set up button click handler
-            self.set_timer(0.1, lambda: self._setup_channel_button(button_id, channel_name))
-            
-            # Load existing chat history if any
-            history = self.state_manager.get_chat_history(channel_name)
-            if history:
-                log = self.query_one("#log-main", RichLog)
-                log.write(f"[bold cyan]Channel {channel_name} has {len(history)} messages[/]")
-            
-            return tab_id
-        except Exception as e:
-            print(f"Error creating squad channel: {e}")
-            return None
-    
-    def _setup_channel_button(self, button_id: str, channel_name: str):
-        """Set up click handler for channel button."""
-        try:
-            button = self.query_one(f"#{button_id}", Button)
-            # Use a closure to properly capture channel_name
-            def make_handler(ch_name):
-                def handler():
-                    self._switch_channel(ch_name)
-                return handler
-            button.on_click = make_handler(channel_name)
-        except Exception as e:
-            logger.error(f"Error setting up channel button {button_id}: {e}", exc_info=True)
-    
-    async def _switch_channel(self, channel_name: str):
-        """Switch to a different chat channel."""
-        # Update active channel
-        self.active_channel = channel_name
-        
-        # Update button states
-        for ch_name, ch_info in self.squad_channels.items():
-            button_id = ch_info.get("button_id")
-            if button_id:
-                try:
-                    button = self.query_one(f"#{button_id}", Button)
-                    if ch_name == channel_name:
-                        button.variant = "primary"
-                    else:
-                        button.variant = "default"
-                except Exception:
-                    pass
-        
-        # Update main button
-        try:
-            main_button = self.query_one("#btn-channel-main", Button)
-            if channel_name == "main" or channel_name == "main-orchestrator":
-                main_button.variant = "primary"
-            else:
-                main_button.variant = "default"
-        except Exception:
-            pass
-        
-        # Refresh log display
-        await self._refresh_channel_log(channel_name)
-    
-    async def _refresh_channel_log(self, channel_name: str):
-        """Refresh log display for current channel."""
-        log = self.query_one("#log-main", RichLog)
-        log.clear()
-        
-        # Load chat history for this channel
-        history = self.state_manager.get_chat_history(channel_name)
-        for msg in history:
-            role = msg.get("role", "assistant")
-            content = msg.get("content", "")
-            
-            if role == "user":
-                log.write(f"[bold blue]User:[/] {content}")
-            else:
-                log.write(f"[bold green]Assistant:[/] {content}")
+        if self.channel_manager:
+            return await self.channel_manager.create_squad_channel(task_id, agent_type)
+        return None
     
     async def update_squad_channels(self):
         """Update squad channels based on active tasks."""
-        if not self.agent_coordinator:
-            return
-        
-        # Get active agents
-        active_agents = self.agent_coordinator.get_active_agents()
-        active_channels = set()
-        
-        # Create channels for active agents
-        for task_id, agent_info in active_agents.items():
-            if agent_info.get("status") == "active":
-                channel_name = agent_info.get("channel")
-                if channel_name:
-                    agent_type = agent_info.get("agent_type", "unknown")
-                    tab_id = await self.create_squad_channel(task_id, agent_type)
-                    if tab_id:
-                        active_channels.add(channel_name)
-        
-        # Also check tasks for agent assignments
-        tasks = self.state_manager.get_task_checklist()
-        for task in tasks:
-            agent_info = task.get("agent")
-            if agent_info and agent_info.get("status") == "active":
-                task_id = task.get("id")
-                agent_type = agent_info.get("type", "unknown")
-                channel_name = agent_info.get("channel")
-                if channel_name and channel_name not in self.squad_channels:
-                    await self.create_squad_channel(task_id, agent_type)
+        if self.channel_manager:
+            await self.channel_manager.update_squad_channels(self.agent_coordinator)
     
     async def handle_agent_output(self, channel: str, content: str, role: str = "assistant"):
         """
@@ -1307,61 +1188,8 @@ class ManifestApp(App):
             content: Message content
             role: Message role ("user" or "assistant")
         """
-        # Update state
-        self.state_manager.add_chat_message(channel, role, content)
-        await self.state_manager.save_state()
-        
-        # Display in UI only if this is the active channel
-        try:
-            # Normalize channel names
-            display_channel = channel
-            if channel == "main-orchestrator":
-                display_channel = "main"
-            
-            # Only display if this is the active channel
-            if self.active_channel == channel or self.active_channel == display_channel or (self.active_channel == "main" and channel == "main-orchestrator"):
-                log = self.query_one("#log-main", RichLog)
-                
-                if channel == "main" or channel == "main-orchestrator":
-                    # Main channel
-                    if role == "user":
-                        log.write(f"[bold blue]User:[/] {content}")
-                    else:
-                        log.write(f"[bold green]Assistant:[/] {content}")
-                else:
-                    # Squad or shadow channel - format with better visual distinction
-                    parts = channel.split("-")
-                    if len(parts) >= 3:
-                        task_id_short = parts[1][:8] if len(parts[1]) > 8 else parts[1]
-                        agent_type = parts[2] if len(parts) > 2 else "agent"
-                        
-                        channel_label = f"{agent_type.title()}[{task_id_short}]"
-                        if channel.startswith("shadow-"):
-                            channel_label = f"Shadow:{agent_type.title()}[{task_id_short}]"
-                        
-                        if role == "user":
-                            log.write(f"[bold blue][{channel_label}] User:[/] {content}")
-                        else:
-                            if channel.startswith("shadow-"):
-                                log.write(f"[bold yellow][{channel_label}] {agent_type.title()}:[/] {content}")
-                            else:
-                                log.write(f"[bold cyan][{channel_label}] {agent_type.title()}:[/] {content}")
-                    else:
-                        # Fallback for unknown channel format
-                        if role == "user":
-                            log.write(f"[bold blue][{channel}] User:[/] {content}")
-                        else:
-                            log.write(f"[bold green][{channel}] Assistant:[/] {content}")
-                
-                # Ensure channel button exists
-                if channel not in self.squad_channels and channel != "main" and channel != "main-orchestrator":
-                    parts = channel.split("-")
-                    if len(parts) >= 3:
-                        task_id = parts[1]
-                        agent_type = parts[2]
-                        await self.create_squad_channel(task_id, agent_type)
-        except Exception as e:
-            logger.error(f"Error displaying agent output: {e}", exc_info=True)
+        if self.channel_manager:
+            await self.channel_manager.handle_agent_output(channel, content, role)
 
     async def on_unmount(self) -> None:
         """Cleanup on app exit."""
