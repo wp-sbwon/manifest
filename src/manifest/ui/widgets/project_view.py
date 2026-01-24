@@ -159,6 +159,16 @@ class TaskTreeView(Tree):
                     "cancelled": "❌"
                 }.get(task_status, "○")
                 
+                # Check if blocked by dependencies
+                is_blocked = False
+                blocking_info = ""
+                dependencies = task.get("dependencies", [])
+                if dependencies:
+                    # We need access to state_manager or a way to check blocked status
+                    # For now, we'll assume the status is already updated to 'blocked' if needed
+                    # or we can just show the dependency count
+                    blocking_info = f" (deps: {len(dependencies)})"
+                
                 # Calculate progress if worker squad stages exist
                 worker_squad = task.get("worker_squad", {})
                 stages = worker_squad.get("stages", {})
@@ -169,7 +179,7 @@ class TaskTreeView(Tree):
                     progress_pct = (completed / total * 100) if total > 0 else 0
                     progress_info = f" [{progress_pct:.0f}%]"
                 
-                label = f"{status_icon} {task_id}: {task_name or task_desc[:50]}{progress_info}"
+                label = f"{status_icon} {task_id}: {task_name or task_desc[:50]}{progress_info}{blocking_info}"
                 task_node = sprint_node.add(label, expand=False)
                 task_node.data = {
                     "type": "task",

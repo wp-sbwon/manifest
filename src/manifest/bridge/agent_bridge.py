@@ -97,14 +97,14 @@ class AgentBridge:
         self.watchdog.terminal_router = self.terminal_router
         
         # Hook manager for prompt interception
-        from manifest.runtime.hooks.prompt_hooks import HookManager, VisualRealityHook
+        from manifest.runtime.hooks.prompt_hooks import HookManager, VisualRealityHook, PolicyInjectionHook
         from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
         
         hook_manager = HookManager()
-        # Register Visual Reality hook
+        # Register hooks
         blueprint_synchronizer = BlueprintSynchronizer()
-        visual_reality_hook = VisualRealityHook(state_manager, blueprint_synchronizer)
-        hook_manager.register_hook(visual_reality_hook)
+        hook_manager.register_hook(PolicyInjectionHook(state_manager))
+        hook_manager.register_hook(VisualRealityHook(state_manager, blueprint_synchronizer))
         
         # Agent executor for LLM calls (with hooks)
         self.executor = AgentExecutor(

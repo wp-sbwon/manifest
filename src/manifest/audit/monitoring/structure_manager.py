@@ -838,3 +838,59 @@ class StructureManager:
         except Exception as e:
             logger.warning(f"Failed to create Blueprint backup: {e}", exc_info=True)
             return False
+
+    def _on_files_changed(self, changed_files: List[str]):
+        """Callback when files are changed."""
+        logger.info(f"Files changed: {changed_files}")
+        # This will be used to trigger automatic detection in background
+        pass
+
+    def apply_code_change(self, suggestion: CodeChangeSuggestion) -> bool:
+        """Apply a code change suggestion."""
+        try:
+            file_path = Path(suggestion.file_path)
+            
+            if suggestion.suggestion_type == "create_file":
+                # Create directory if needed
+                file_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # Create file with basic skeleton
+                content = f'"""\n{suggestion.action}\n"""\n\n'
+                if suggestion.blueprint_component_id:
+                    blueprint = self._load_blueprint()
+                    comp = self._find_component_in_blueprint(suggestion.blueprint_component_id, blueprint)
+                    if comp:
+                        content += self._generate_class_skeleton(comp)
+                
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                return True
+                
+            elif suggestion.suggestion_type == "add_method":
+                # This would require more complex AST manipulation or simple appending
+                # For now, we'll just log it
+                logger.info(f"Would add method to {suggestion.file_path}")
+                return False
+                
+            return False
+        except Exception as e:
+            logger.error(f"Error applying code change: {e}")
+            return False
+
+    def _generate_class_skeleton(self, component: Dict[str, Any]) -> str:
+        """Generate a basic Python class skeleton."""
+        name = component.get("name", "NewClass")
+        methods = component.get("methods", [])
+        
+        skeleton = f"class {name}:\n"
+        skeleton += f'    """{component.get("type", "Component")} implementation."""\n\n'
+        
+        if not methods:
+            skeleton += "    pass\n"
+        else:
+            for method in methods:
+                skeleton += f"    def {method}(self):\n"
+                skeleton += f'        """{method} implementation."""\n'
+                skeleton += "        pass\n\n"
+                
+        return skeleton

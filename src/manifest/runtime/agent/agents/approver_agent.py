@@ -6,9 +6,11 @@ stages (planner, coder, test, self-review) and makes a final decision to
 approve or reject the work. If rejecting, provides specific feedback for
 improvement.
 """
+import json
 from typing import Dict, Any, Optional, List, AsyncIterator
 from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.state_manager import StateManager
+from manifest.audit.code.quality_manager import CodeQualityManager
 
 
 APPROVER_IDENTITY = """
@@ -69,6 +71,7 @@ class ApproverAgent:
         self.executor = executor
         self.state_manager = state_manager
         self.message_history: List[Dict[str, str]] = []
+        self.quality_manager = CodeQualityManager()
     
     async def approve(
         self,
@@ -79,29 +82,31 @@ class ApproverAgent:
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """Review all Worker Squad stages and make approval decision.
+        """Review all Worker Squad stages and make approval decision."""
+        # Run automated quality checks
+        quality_info = {}
+        task_id = self.agent_id
         
-        Examines the complete workflow output: planner's plan, coder's
-        implementation, test results, and self-review findings. Verifies
-        that implementation matches the plan, tests pass, and quality
-        standards are met.
+        # Get files modified from coder output
+        import re
+        files = re.findall(r'(?:modified|changed|updated|created)\s+file[:\s]+(.+?)(?:\n|$)', coder_output, re.IGNORECASE)
         
-        Args:
-            planner_output: The original plan created by the planner.
-            coder_output: Summary of what the coder implemented.
-            test_results: Results from test execution (pass/fail counts, details).
-            self_review_result: Findings from coder's self-review.
-            context: Tiered context for additional context.
-            model_config: Dictionary with provider, model, and api_key.
+        if files:
+            quality_info["lint_results"] = {}
+            quality_info["security_results"] = {}
+            for f in files:
+                f = f.strip()
+                quality_info["lint_results"][f] = self.quality_manager.run_lint(f)
+                quality_info["security_results"][f] = self.quality_manager.run_security_check(f)
         
-        Yields:
-            Dictionaries with type "chunk" (streaming) or "complete" (finished).
-            Content contains the approval decision (APPROVED/REJECTED) and
-            feedback explaining the decision.
-        """
-        # Generate approval prompt
+        # Check architecture compliance if component_id is available
+        component_id = context.get("component_id")
+        if component_id and files:
+            quality_info["architecture_compliance"] = self.quality_manager.check_architecture_compliance(files[0], component_id)
+
+        # Generate approval prompt with quality info
         prompt = self._generate_approval_prompt(
-            planner_output, coder_output, test_results, self_review_result, context
+            planner_output, coder_output, test_results, self_review_result, context, quality_info
         )
         
         # Execute agent
@@ -130,23 +135,10 @@ class ApproverAgent:
         coder_output: str,
         test_results: Dict[str, Any],
         self_review_result: Dict[str, Any],
-        context: Dict[str, Any]
+        context: Dict[str, Any],
+        quality_info: Optional[Dict[str, Any]] = None
     ) -> str:
-        """Generate a prompt for approval review.
-        
-        Creates a comprehensive prompt that includes all Worker Squad stage
-        outputs and asks the agent to review them and make an approval decision.
-        
-        Args:
-            planner_output: Planner's plan text.
-            coder_output: Coder's implementation summary.
-            test_results: Test execution results dictionary.
-            self_review_result: Self-review findings dictionary.
-            context: Tiered context for additional information.
-        
-        Returns:
-            Complete prompt string for approval review.
-        """
+        """Generate a prompt for approval review."""
         prompt = f"""
 {APPROVER_IDENTITY}
 
@@ -165,7 +157,15 @@ class ApproverAgent:
 ## SELF REVIEW RESULT
 
 {self_review_result}
+"""
+        if quality_info:
+            prompt += f"""
+## AUTOMATED QUALITY CHECKS
 
+{json.dumps(quality_info, indent=2)}
+"""
+
+        prompt += f"""
 ## CONTEXT
 
 {context.get("tier_2", "No task-specific context")}
@@ -176,12 +176,14 @@ class ApproverAgent:
 2. Verify implementation matches the plan
 3. Check test results (all tests should pass)
 4. Review self-review findings
-5. Make a decision: APPROVE or REJECT
+5. Review automated quality checks (lint, security, architecture)
+6. Make a decision: APPROVE or REJECT
 
 If APPROVING:
 - Confirm all requirements are met
 - Confirm plan compliance
 - Confirm tests pass
+- Confirm code quality standards are met
 
 If REJECTING:
 - Clearly state what is missing or incorrect

@@ -34,6 +34,7 @@ from textual.binding import Binding
 
 from manifest.core.config import get_config_manager
 from manifest.core.state_manager import StateManager
+from manifest.core.git_manager import GitManager
 from manifest.bridge.agent_bridge import AgentBridge
 from manifest.audit.code.drift_auditor import DriftAuditor
 from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
@@ -41,6 +42,7 @@ from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator
 from manifest.ui.widgets import RequirementMap, ArchitectureGraph, FeatureTree, TaskTree, GateController, SprintApprovalWidget
 from manifest.audit.metadata.architecture_metadata import load_architecture_with_metadata
 from manifest.ui.settings_screen import SettingsScreen
+from manifest.ui.task_edit_screen import TaskEditScreen
 from manifest.agents.task_scoper import TaskScoper
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.agent_coordinator import AgentCoordinator
@@ -221,6 +223,8 @@ class ManifestApp(App):
         ("p", "show_project", "Show Project Info"),
         ("ctrl+comma", "open_settings", "Open Settings"),
         ("s", "change_task_status", "Change Task Status"),
+        ("e", "edit_task", "Edit Task"),
+        ("d", "delete_task", "Delete Task"),
     ]
 
     def __init__(self):
@@ -263,6 +267,9 @@ class ManifestApp(App):
         
         # Data loader for loading project data
         self.data_loader = DataLoader(self.manifest_dir)
+        
+        # Git manager for version control integration
+        self.git_manager = GitManager(Path.cwd())
         
         # Channel manager for agent output channels
         self.channel_manager: Optional[ChannelManager] = None
@@ -1203,9 +1210,13 @@ class ManifestApp(App):
             r"(?:Create|Add|New)\s+task[:\s]+(.+?)(?:\n|$)",
             r"Task[:\s]+(.+?)(?:\n|$)",
             r"^\s*[-*]\s*(.+?)(?:\n|$)",  # Bullet points
+            r"^\s*\d+\.\s*(.+?)(?:\n|$)",  # Numbered list
         ]
         
         tasks_found = []
+        existing_tasks = self.state_manager.get_task_checklist()
+        existing_names = [t.get("name", "").lower() for t in existing_tasks]
+        
         for pattern in task_patterns:
             matches = re.finditer(pattern, response, re.MULTILINE | re.IGNORECASE)
             for match in matches:
@@ -1213,8 +1224,11 @@ class ManifestApp(App):
                 # Filter out very short matches and common false positives
                 if task_name and len(task_name) > 3 and not task_name.lower().startswith(('the', 'a ', 'an ')):
                     # Remove common prefixes
-                    task_name = re.sub(r'^(?:to|for|implement|create|add|build|develop)\s+', '', task_name, flags=re.IGNORECASE).strip()
-                    if task_name and task_name not in tasks_found:
+                    task_name = re.sub(r'^(?:to|for|implement|create|add|build|develop|fix|refactor)\s+', '', task_name, flags=re.IGNORECASE).strip()
+                    # Remove trailing punctuation
+                    task_name = re.sub(r'[.:;]$', '', task_name).strip()
+                    
+                    if task_name and task_name.lower() not in existing_names and task_name not in tasks_found:
                         tasks_found.append(task_name)
         
         # Also look for JSON task definitions
@@ -1226,7 +1240,7 @@ class ManifestApp(App):
                 task_json = json.loads(match.group(0))
                 if "name" in task_json:
                     task_name = task_json["name"]
-                    if task_name and task_name not in tasks_found:
+                    if task_name and task_name.lower() not in existing_names and task_name not in tasks_found:
                         tasks_found.append(task_name)
             except:
                 pass
@@ -1468,6 +1482,68 @@ class ManifestApp(App):
         else:
             log = self.query_one("#log-main", RichLog)
             log.write(f"[bold red]Failed to update task {task_id} status.[/]")
+
+    async def action_delete_task(self) -> None:
+        """Delete the currently selected task."""
+        if not hasattr(self, '_selected_task_id') or not self._selected_task_id:
+            log = self.query_one("#log-main", RichLog)
+            log.write("[bold yellow]No task selected. Select a task first.[/]")
+            return
+        
+        task_id = self._selected_task_id
+        
+        # Delete task
+        success = self.state_manager.delete_task(task_id)
+        if success:
+            # Save state
+            await self.state_manager.save_state()
+            
+            # Update UI
+            await self.update_task_tree()
+            
+            log = self.query_one("#log-main", RichLog)
+            log.write(f"[bold red]Task {task_id} deleted.[/]")
+            
+            # Clear selection
+            self._selected_task_id = None
+            self._selected_task_status = None
+        else:
+            log = self.query_one("#log-main", RichLog)
+            log.write(f"[bold red]Failed to delete task {task_id}.[/]")
+
+    async def action_edit_task(self) -> None:
+        """Edit the currently selected task."""
+        if not hasattr(self, '_selected_task_id') or not self._selected_task_id:
+            log = self.query_one("#log-main", RichLog)
+            log.write("[bold yellow]No task selected. Select a task first.[/]")
+            return
+        
+        task_id = self._selected_task_id
+        task = self.state_manager.get_task(task_id)
+        
+        if not task:
+            log = self.query_one("#log-main", RichLog)
+            log.write(f"[bold red]Task {task_id} not found.[/]")
+            return
+            
+        async def handle_edit_result(result: Optional[Dict[str, str]]):
+            if result:
+                # Update task
+                success = self.state_manager.update_task(
+                    task_id, 
+                    name=result.get("name"), 
+                    description=result.get("description")
+                )
+                if success:
+                    await self.state_manager.save_state()
+                    await self.update_task_tree()
+                    log = self.query_one("#log-main", RichLog)
+                    log.write(f"[bold green]Task {task_id} updated.[/]")
+                else:
+                    log = self.query_one("#log-main", RichLog)
+                    log.write(f"[bold red]Failed to update task {task_id}.[/]")
+        
+        self.push_screen(TaskEditScreen(task), handle_edit_result)
     
     async def create_squad_channel(self, task_id: str, agent_type: str) -> Optional[str]:
         """Create a squad channel for agent output."""

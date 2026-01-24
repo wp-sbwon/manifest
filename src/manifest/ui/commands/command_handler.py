@@ -64,8 +64,16 @@ class CommandHandler:
             "start_sprint": self._handle_start_sprint,
             "apply_blueprint_updates": self._handle_apply_blueprint_updates,
             "apply_blueprint_update": self._handle_apply_blueprint_update,
+            "apply_code_changes": self._handle_apply_code_changes,
+            "apply_code_change": self._handle_apply_code_change,
             "shadow_status": self._handle_shadow_status,
             "shadow_stop": self._handle_shadow_stop,
+            "git_commit": self._handle_git_commit,
+            "git_push": self._handle_git_push,
+            "git_pull": self._handle_git_pull,
+            "git_rollback": self._handle_git_rollback,
+            "git_status": self._handle_git_status,
+            "git_log": self._handle_git_log,
         }
     
     async def handle(self, user_input: str, log: RichLog) -> bool:
@@ -344,7 +352,48 @@ class CommandHandler:
                 log.write(f"[bold yellow]Invalid index. Available: 0-{len(self.app._pending_blueprint_suggestions)-1}[/]")
         except ValueError:
             log.write("[bold yellow]Usage: /apply_blueprint_update <index>[/]")
-    
+
+    async def _handle_apply_code_changes(self, args: List[str], log: RichLog):
+        """Handle /apply_code_changes command."""
+        if not self.app._pending_code_suggestions:
+            log.write("[bold yellow]No pending code change suggestions.[/]")
+            return
+            
+        log.write(f"[bold green]Applying {len(self.app._pending_code_suggestions)} code changes...[/]")
+        applied = 0
+        for suggestion in self.app._pending_code_suggestions:
+            if self.app.structure_manager.apply_code_change(suggestion):
+                applied += 1
+                
+        if applied > 0:
+            log.write(f"[bold green]Applied {applied} code changes successfully.[/]")
+            self.app._pending_code_suggestions = []
+            await self.app._load_structure_data()
+        else:
+            log.write("[bold red]Failed to apply code changes.[/]")
+
+    async def _handle_apply_code_change(self, args: List[str], log: RichLog):
+        """Handle /apply_code_change command."""
+        if len(args) < 1:
+            log.write("[bold yellow]Usage: /apply_code_change <index>[/]")
+            return
+            
+        try:
+            index = int(args[0])
+            if 0 <= index < len(self.app._pending_code_suggestions):
+                suggestion = self.app._pending_code_suggestions[index]
+                log.write(f"[bold green]Applying code change: {suggestion.suggestion_type}...[/]")
+                if self.app.structure_manager.apply_code_change(suggestion):
+                    log.write(f"[bold green]Change applied successfully.[/]")
+                    self.app._pending_code_suggestions.pop(index)
+                    await self.app._load_structure_data()
+                else:
+                    log.write(f"[bold red]Failed to apply change.[/]")
+            else:
+                log.write(f"[bold yellow]Invalid index. Available: 0-{len(self.app._pending_code_suggestions)-1}[/]")
+        except ValueError:
+            log.write("[bold yellow]Usage: /apply_code_change <index>[/]")
+
     async def _handle_shadow_status(self, args: List[str], log: RichLog):
         """Handle /shadow_status command."""
         if self.app.agent_bridge and self.app.agent_bridge.shadow_manager:
@@ -360,6 +409,117 @@ class CommandHandler:
                 log.write("[bold yellow]No active shadow processes.[/]")
         else:
             log.write("[bold yellow]Shadow Manager not available.[/]")
+
+    async def _handle_git_commit(self, args: List[str], log: RichLog):
+        """Handle /git_commit command."""
+        if not self.app.git_manager.is_available():
+            log.write("[bold yellow]Git not available.[/]")
+            return
+            
+        message = " ".join(args) if args else ""
+        
+        # If no message, try to generate from selected task
+        if not message and hasattr(self.app, '_selected_task_id') and self.app._selected_task_id:
+            task = self.app.state_manager.get_task(self.app._selected_task_id)
+            if task:
+                message = self.app.git_manager.generate_commit_message(task)
+                log.write(f"[dim]Generated commit message: {message}[/]")
+        
+        if not message:
+            log.write("[bold yellow]Usage: /git_commit <message> or select a task to auto-generate message.[/]")
+            return
+            
+        # Sync blueprint before commit
+        self.app.git_manager.sync_blueprint(self.app.manifest_dir)
+        
+        commit_hash = self.app.git_manager.create_commit(message)
+        if commit_hash:
+            log.write(f"[bold green]Commit created: {commit_hash[:8]}[/]")
+            await self.app.update_history_view()
+        else:
+            log.write("[bold red]Failed to create commit. Check for uncommitted changes.[/]")
+
+    async def _handle_git_push(self, args: List[str], log: RichLog):
+        """Handle /git_push command."""
+        if not self.app.git_manager.is_available():
+            log.write("[bold yellow]Git not available.[/]")
+            return
+            
+        log.write("[bold green]Pushing changes...[/]")
+        success = self.app.git_manager.push()
+        if success:
+            log.write("[bold green]Push successful.[/]")
+        else:
+            log.write("[bold red]Push failed.[/]")
+
+    async def _handle_git_pull(self, args: List[str], log: RichLog):
+        """Handle /git_pull command."""
+        if not self.app.git_manager.is_available():
+            log.write("[bold yellow]Git not available.[/]")
+            return
+            
+        log.write("[bold green]Pulling changes...[/]")
+        success = self.app.git_manager.pull()
+        if success:
+            log.write("[bold green]Pull successful.[/]")
+            await self.app.update_history_view()
+        else:
+            log.write("[bold red]Pull failed.[/]")
+
+    async def _handle_git_rollback(self, args: List[str], log: RichLog):
+        """Handle /git_rollback command."""
+        if not self.app.git_manager.is_available():
+            log.write("[bold yellow]Git not available.[/]")
+            return
+            
+        commit_hash = args[0] if args else ""
+        
+        # If no hash, try to find for selected task
+        if not commit_hash and hasattr(self.app, '_selected_task_id') and self.app._selected_task_id:
+            task_id = self.app._selected_task_id
+            commit_hash = self.app.git_manager.get_commit_for_task(task_id)
+            if commit_hash:
+                log.write(f"[dim]Found commit for task {task_id}: {commit_hash[:8]}[/]")
+        
+        if not commit_hash:
+            log.write("[bold yellow]Usage: /git_rollback <commit_hash> or select a task to find its commit.[/]")
+            return
+            
+        log.write(f"[bold red]Rolling back to {commit_hash[:8]}...[/]")
+        success = self.app.git_manager.rollback_to_commit(commit_hash)
+        if success:
+            log.write("[bold green]Rollback successful.[/]")
+            await self.app.update_history_view()
+        else:
+            log.write("[bold red]Rollback failed.[/]")
+
+    async def _handle_git_status(self, args: List[str], log: RichLog):
+        """Handle /git_status command."""
+        if not self.app.git_manager.is_available():
+            log.write("[bold yellow]Git not available.[/]")
+            return
+            
+        diff = self.app.git_manager.get_diff()
+        if diff:
+            log.write("[bold cyan]Uncommitted Changes:[/]")
+            log.write(diff)
+        else:
+            log.write("[bold green]Working tree clean.[/]")
+
+    async def _handle_git_log(self, args: List[str], log: RichLog):
+        """Handle /git_log command."""
+        if not self.app.git_manager.is_available():
+            log.write("[bold yellow]Git not available.[/]")
+            return
+            
+        limit = int(args[0]) if args else 10
+        commits = self.app.git_manager.get_latest_commits(limit)
+        if commits:
+            log.write(f"[bold cyan]Latest {len(commits)} commits:[/]")
+            for c in commits:
+                log.write(f"  [bold blue]{c['short_hash']}[/] [dim]{c['timestamp']}[/] {c['message']}")
+        else:
+            log.write("[bold yellow]No commits found.[/]")
     
     async def _handle_shadow_stop(self, args: List[str], log: RichLog):
         """Handle /shadow_stop command."""
@@ -376,3 +536,114 @@ class CommandHandler:
                 log.write(f"[bold red]Failed to stop shadow process {process_id}.[/]")
         else:
             log.write("[bold yellow]Shadow Manager not available.[/]")
+
+    async def _handle_git_commit(self, args: List[str], log: RichLog):
+        """Handle /git_commit command."""
+        if not self.app.git_manager.is_available():
+            log.write("[bold yellow]Git not available.[/]")
+            return
+            
+        message = " ".join(args) if args else ""
+        
+        # If no message, try to generate from selected task
+        if not message and hasattr(self.app, '_selected_task_id') and self.app._selected_task_id:
+            task = self.app.state_manager.get_task(self.app._selected_task_id)
+            if task:
+                message = self.app.git_manager.generate_commit_message(task)
+                log.write(f"[dim]Generated commit message: {message}[/]")
+        
+        if not message:
+            log.write("[bold yellow]Usage: /git_commit <message> or select a task to auto-generate message.[/]")
+            return
+            
+        # Sync blueprint before commit
+        self.app.git_manager.sync_blueprint(self.app.manifest_dir)
+        
+        commit_hash = self.app.git_manager.create_commit(message)
+        if commit_hash:
+            log.write(f"[bold green]Commit created: {commit_hash[:8]}[/]")
+            await self.app.update_history_view()
+        else:
+            log.write("[bold red]Failed to create commit. Check for uncommitted changes.[/]")
+
+    async def _handle_git_push(self, args: List[str], log: RichLog):
+        """Handle /git_push command."""
+        if not self.app.git_manager.is_available():
+            log.write("[bold yellow]Git not available.[/]")
+            return
+            
+        log.write("[bold green]Pushing changes...[/]")
+        success = self.app.git_manager.push()
+        if success:
+            log.write("[bold green]Push successful.[/]")
+        else:
+            log.write("[bold red]Push failed.[/]")
+
+    async def _handle_git_pull(self, args: List[str], log: RichLog):
+        """Handle /git_pull command."""
+        if not self.app.git_manager.is_available():
+            log.write("[bold yellow]Git not available.[/]")
+            return
+            
+        log.write("[bold green]Pulling changes...[/]")
+        success = self.app.git_manager.pull()
+        if success:
+            log.write("[bold green]Pull successful.[/]")
+            await self.app.update_history_view()
+        else:
+            log.write("[bold red]Pull failed.[/]")
+
+    async def _handle_git_rollback(self, args: List[str], log: RichLog):
+        """Handle /git_rollback command."""
+        if not self.app.git_manager.is_available():
+            log.write("[bold yellow]Git not available.[/]")
+            return
+            
+        commit_hash = args[0] if args else ""
+        
+        # If no hash, try to find for selected task
+        if not commit_hash and hasattr(self.app, '_selected_task_id') and self.app._selected_task_id:
+            task_id = self.app._selected_task_id
+            commit_hash = self.app.git_manager.get_commit_for_task(task_id)
+            if commit_hash:
+                log.write(f"[dim]Found commit for task {task_id}: {commit_hash[:8]}[/]")
+        
+        if not commit_hash:
+            log.write("[bold yellow]Usage: /git_rollback <commit_hash> or select a task to find its commit.[/]")
+            return
+            
+        log.write(f"[bold red]Rolling back to {commit_hash[:8]}...[/]")
+        success = self.app.git_manager.rollback_to_commit(commit_hash)
+        if success:
+            log.write("[bold green]Rollback successful.[/]")
+            await self.app.update_history_view()
+        else:
+            log.write("[bold red]Rollback failed.[/]")
+
+    async def _handle_git_status(self, args: List[str], log: RichLog):
+        """Handle /git_status command."""
+        if not self.app.git_manager.is_available():
+            log.write("[bold yellow]Git not available.[/]")
+            return
+            
+        diff = self.app.git_manager.get_diff()
+        if diff:
+            log.write("[bold cyan]Uncommitted Changes:[/]")
+            log.write(diff)
+        else:
+            log.write("[bold green]Working tree clean.[/]")
+
+    async def _handle_git_log(self, args: List[str], log: RichLog):
+        """Handle /git_log command."""
+        if not self.app.git_manager.is_available():
+            log.write("[bold yellow]Git not available.[/]")
+            return
+            
+        limit = int(args[0]) if args else 10
+        commits = self.app.git_manager.get_latest_commits(limit)
+        if commits:
+            log.write(f"[bold cyan]Latest {len(commits)} commits:[/]")
+            for c in commits:
+                log.write(f"  [bold blue]{c['short_hash']}[/] [dim]{c['timestamp']}[/] {c['message']}")
+        else:
+            log.write("[bold yellow]No commits found.[/]")

@@ -45,7 +45,8 @@ class TaskManager:
         description: str = "",
         stage: str = "planning",
         status: str = "pending",
-        sprint_id: Optional[str] = None
+        sprint_id: Optional[str] = None,
+        dependencies: Optional[List[str]] = None
     ) -> str:
         """Create a new task and add it to the checklist.
         
@@ -62,6 +63,7 @@ class TaskManager:
                 "in_progress", "done", "blocked", "approved", "cancelled".
             sprint_id: Optional ID of the sprint this task belongs to.
                 Tasks can exist outside of sprints if None.
+            dependencies: Optional list of task IDs that this task depends on.
         
         Returns:
             String ID of the newly created task (e.g., "task-1").
@@ -76,6 +78,7 @@ class TaskManager:
             "status": status,
             "stage": stage,
             "sprint_id": sprint_id,
+            "dependencies": dependencies or [],
             "subtasks": [],
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat()
@@ -281,6 +284,31 @@ class TaskManager:
         """
         tasks = self.state_manager.get_task_checklist()
         return next((t for t in tasks if t.get("id") == task_id), None)
+
+    def is_task_blocked(self, task_id: str) -> Tuple[bool, List[str]]:
+        """Check if a task is blocked by its dependencies.
+        
+        Args:
+            task_id: ID of the task to check.
+            
+        Returns:
+            Tuple of (is_blocked, list_of_blocking_task_ids).
+        """
+        task = self.get_task(task_id)
+        if not task:
+            return False, []
+            
+        dependencies = task.get("dependencies", [])
+        if not dependencies:
+            return False, []
+            
+        blocking_tasks = []
+        for dep_id in dependencies:
+            dep_task = self.get_task(dep_id)
+            if not dep_task or dep_task.get("status") != "done":
+                blocking_tasks.append(dep_id)
+                
+        return len(blocking_tasks) > 0, blocking_tasks
     
     def save_worker_squad_stage(
         self,
