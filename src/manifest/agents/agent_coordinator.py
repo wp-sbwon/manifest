@@ -212,8 +212,34 @@ class AgentCoordinator:
             # No scope defined - warn but continue
             logger.warning(f"Task {task_id} has no defined scope")
         
-        # Get model config for agent type
-        model_config = self.config_manager.get_agent_model_config(agent_type)
+        # Validate task granularity (with context for size validation)
+        granularity_validation = self.task_scoper.validate_task_granularity(
+            task_id, context=context, model_config=model_config
+        )
+        if not granularity_validation.get("valid"):
+            errors = granularity_validation.get("errors", [])
+            for error in errors:
+                logger.error(f"Task {task_id} granularity error: {error}")
+            # Continue anyway, but log the error
+        
+        if granularity_validation.get("warnings"):
+            for warning in granularity_validation.get("warnings", []):
+                logger.warning(f"Task {task_id} granularity warning: {warning}")
+        
+        # Validate context size (from context or granularity validation)
+        context_validation = context.get("context_size_validation")
+        if not context_validation:
+            context_validation = granularity_validation.get("context_size_validation")
+        
+        if context_validation and not context_validation.get("valid"):
+            excess = context_validation.get("excess_tokens", 0)
+            logger.error(
+                f"Task {task_id} context size exceeds model limit by {excess} tokens. "
+                f"Suggestions: {', '.join(context_validation.get('suggestions', []))}"
+            )
+            # Continue anyway, but the agent may fail at runtime
+        
+        # Get model config for agent type (already retrieved above for context validation)
         
         # Determine execution mode
         should_use_container = use_container if use_container is not None else self.use_containers
