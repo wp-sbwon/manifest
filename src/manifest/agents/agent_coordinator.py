@@ -692,8 +692,29 @@ class AgentCoordinator:
                 await self.state_manager.save_state()
                 break
         
-        # TODO: Integrate with agent bridge to actually send to planner
-        # await self.agent_bridge.send_to_planner(planner_request)
+        # Send to planner via agent bridge
+        if self.agent_bridge:
+            planner_result = await self.agent_bridge.send_to_planner(planner_request, task_id)
+            if planner_result.get("success"):
+                logger.info(
+                    f"Planner review started for conflict in task {task_id}. "
+                    f"Channel: {planner_result.get('channel')}"
+                )
+                # Store planner task ID in conflict record
+                for task in tasks:
+                    if task.get("id") == task_id and "conflict" in task:
+                        task["conflict"]["planner_task_id"] = planner_result.get("planner_task_id")
+                        task["conflict"]["planner_channel"] = planner_result.get("channel")
+                        self.state_manager.set_task_checklist(tasks)
+                        await self.state_manager.save_state()
+                        break
+            else:
+                logger.error(
+                    f"Failed to send conflict to planner for task {task_id}: "
+                    f"{planner_result.get('error', 'Unknown error')}"
+                )
+        else:
+            logger.warning("Agent bridge not available, cannot send to planner")
         
         return True
     
