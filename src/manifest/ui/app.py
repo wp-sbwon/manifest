@@ -27,6 +27,7 @@ from manifest.ui.settings_screen import SettingsScreen
 from manifest.agents.task_scoper import TaskScoper
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.agent_coordinator import AgentCoordinator
+from manifest.ui.commands.command_handler import CommandHandler
 
 try:
     import git
@@ -194,6 +195,9 @@ class ManifestApp(App):
         self.agent_coordinator: Optional[AgentCoordinator] = None
         self.squad_channels: Dict[str, Dict[str, Any]] = {}  # channel_name -> channel info
         self.active_channel: str = "main"  # Currently active channel
+        
+        # Command handler
+        self.command_handler: Optional[CommandHandler] = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)

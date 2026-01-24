@@ -48,9 +48,9 @@ class DriftAuditor:
     
     def _load_blueprint(self):
         """Load blueprint.json with metadata."""
-        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
-        self.blueprint = load_blueprint_with_metadata(
-            self.blueprint_file, "llm_design", False
+        from manifest.audit.blueprint_loader import BlueprintLoader
+        self.blueprint = BlueprintLoader.load_blueprint(
+            self.manifest_dir, with_metadata=True
         )
     
     def reload_blueprint(self):

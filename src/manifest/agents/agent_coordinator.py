@@ -51,7 +51,7 @@ class AgentCoordinator:
         """Start agent coordinator and container communication if enabled."""
         if self.use_containers and self.state_sync:
             await self.state_sync.start()
-            print("Container state synchronization started.")
+            logger.info("Container state synchronization started.")
     
     async def start_orchestrator(self, mission_description: str) -> bool:
         """Start orchestrator via agent bridge."""
@@ -121,7 +121,7 @@ class AgentCoordinator:
         task_scope = context.get("task_scope", {})
         if not task_scope.get("components") and not task_scope.get("allowed_files"):
             # No scope defined - warn but continue
-            print(f"Warning: Task {task_id} has no defined scope")
+            logger.warning(f"Task {task_id} has no defined scope")
         
         # Get model config for agent type
         model_config = self.config_manager.get_agent_model_config(agent_type)
@@ -172,7 +172,7 @@ class AgentCoordinator:
                 return True
             else:
                 # Fall back to direct execution if container fails
-                print(f"Failed to start container, falling back to direct execution")
+                logger.warning(f"Failed to start container, falling back to direct execution")
         
         # Start via agent bridge (direct execution)
         success = await self.agent_bridge.start_agent_mission(
@@ -358,7 +358,7 @@ class AgentCoordinator:
         
         if not validation["can_parallelize"]:
             # Log conflicts but continue (user/Orchestrator should have validated)
-            print(f"Warning: Parallel execution conflicts detected: {validation['conflicts']}")
+            logger.warning(f"Parallel execution conflicts detected: {validation['conflicts']}")
         
         # 4. Group tasks for parallel execution
         parallel_groups = validation.get("parallel_groups", [task_ids])
@@ -381,7 +381,7 @@ class AgentCoordinator:
             for task_id, result in zip(limited_group, results):
                 if isinstance(result, Exception):
                     failed_tasks.append(task_id)
-                    print(f"Failed to start task {task_id}: {result}")
+                    logger.error(f"Failed to start task {task_id}: {result}")
                 elif result:
                     started_tasks.append(task_id)
                 else:
@@ -771,13 +771,17 @@ class AgentCoordinator:
         """
         try:
             # Update Sprint test status to "writing"
-            sprint_data = self.state_manager.load_sprint(sprint_id)
+            from manifest.core.sprint_manager import SprintManager
+            sprint_manager = SprintManager(self.state_manager)
+            sprint_data = sprint_manager.load_sprint(sprint_id)
             if sprint_data:
                 if "integration_tests" in sprint_data:
                     sprint_data["integration_tests"]["status"] = "writing"
                 if "e2e_tests" in sprint_data:
                     sprint_data["e2e_tests"]["status"] = "writing"
-                self.state_manager.save_sprint(sprint_data)
+                from manifest.core.sprint_manager import SprintManager
+                sprint_manager = SprintManager(self.state_manager)
+                sprint_manager.save_sprint(sprint_data)
             
             # Get Sprint-level context
             sprint_context = self.context_provider.get_sprint_context(sprint_id)
@@ -806,13 +810,17 @@ class AgentCoordinator:
             )
             
             # Update Sprint test status to "written"
-            sprint_data = self.state_manager.load_sprint(sprint_id)
+            from manifest.core.sprint_manager import SprintManager
+            sprint_manager = SprintManager(self.state_manager)
+            sprint_data = sprint_manager.load_sprint(sprint_id)
             if sprint_data:
                 if "integration_tests" in sprint_data:
                     sprint_data["integration_tests"]["status"] = "written" if integration_success else "failed"
                 if "e2e_tests" in sprint_data:
                     sprint_data["e2e_tests"]["status"] = "written" if e2e_success else "failed"
-                self.state_manager.save_sprint(sprint_data)
+                from manifest.core.sprint_manager import SprintManager
+                sprint_manager = SprintManager(self.state_manager)
+                sprint_manager.save_sprint(sprint_data)
                 await self.state_manager.save_state()
             
             return {
@@ -821,15 +829,19 @@ class AgentCoordinator:
                 "e2e_tests": {"status": "written" if e2e_success else "failed"}
             }
         except Exception as e:
-            print(f"Error writing Sprint tests: {e}")
+            logger.error(f"Error writing Sprint tests: {e}", exc_info=True)
             # Update status to failed
-            sprint_data = self.state_manager.load_sprint(sprint_id)
+            from manifest.core.sprint_manager import SprintManager
+            sprint_manager = SprintManager(self.state_manager)
+            sprint_data = sprint_manager.load_sprint(sprint_id)
             if sprint_data:
                 if "integration_tests" in sprint_data:
                     sprint_data["integration_tests"]["status"] = "failed"
                 if "e2e_tests" in sprint_data:
                     sprint_data["e2e_tests"]["status"] = "failed"
-                self.state_manager.save_sprint(sprint_data)
+                from manifest.core.sprint_manager import SprintManager
+                sprint_manager = SprintManager(self.state_manager)
+                sprint_manager.save_sprint(sprint_data)
             return {"success": False, "error": str(e)}
     
     async def _run_sprint_tests(self, sprint_id: str, task_id: str) -> Dict[str, Any]:
@@ -880,5 +892,5 @@ class AgentCoordinator:
                 "task_id": task_id
             }
         except Exception as e:
-            print(f"Error running Sprint tests: {e}")
+            logger.error(f"Error running Sprint tests: {e}", exc_info=True)
             return {"success": False, "error": str(e), "task_id": task_id}

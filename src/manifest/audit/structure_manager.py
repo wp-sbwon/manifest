@@ -747,23 +747,13 @@ class StructureManager:
     
     def _load_blueprint(self) -> Dict[str, Any]:
         """Load current Blueprint."""
-        if self.blueprint_file.exists():
-            return load_blueprint_with_metadata(
-                self.blueprint_file,
-                "llm_design",
-                False
-            )
-        return {"version": "1.0", "components": [], "contracts": []}
+        from manifest.audit.blueprint_loader import BlueprintLoader
+        return BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=True)
     
     def _load_code_blueprint(self) -> Dict[str, Any]:
         """Load code-extracted Blueprint."""
-        if self.blueprint_code_file.exists():
-            return load_blueprint_with_metadata(
-                self.blueprint_code_file,
-                "code_extraction",
-                True
-            )
-        return {"version": "1.0", "components": [], "contracts": []}
+        from manifest.audit.blueprint_loader import BlueprintLoader
+        return BlueprintLoader.load_code_blueprint(self.manifest_dir)
     
     def _find_component_in_blueprint(
         self,

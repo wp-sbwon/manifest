@@ -251,7 +251,9 @@ class IntegrationTestAgent:
     def _generate_sprint_tdd_integration_test_prompt(self, sprint_id: str, context: Dict[str, Any]) -> str:
         """Generate Sprint-level TDD integration test prompt."""
         # Get Sprint information
-        sprint_data = self.state_manager.load_sprint(sprint_id)
+        from manifest.core.sprint_manager import SprintManager
+        sprint_manager = SprintManager(self.state_manager)
+        sprint_data = sprint_manager.load_sprint(sprint_id)
         sprint_name = sprint_data.get("name", "") if sprint_data else ""
         sprint_description = sprint_data.get("description", "") if sprint_data else ""
         
@@ -305,7 +307,9 @@ PRD:
     def _generate_integration_test_execution_prompt(self, sprint_id: str, task_id: str, context: Dict[str, Any]) -> str:
         """Generate integration test execution prompt."""
         # Get Sprint information
-        sprint_data = self.state_manager.load_sprint(sprint_id)
+        from manifest.core.sprint_manager import SprintManager
+        sprint_manager = SprintManager(self.state_manager)
+        sprint_data = sprint_manager.load_sprint(sprint_id)
         sprint_name = sprint_data.get("name", "") if sprint_data else ""
         
         # Get Task information
@@ -436,10 +440,14 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
         }
         
         # Update Sprint data
-        sprint_data = self.state_manager.load_sprint(sprint_id)
+        from manifest.core.sprint_manager import SprintManager
+        sprint_manager = SprintManager(self.state_manager)
+        sprint_data = sprint_manager.load_sprint(sprint_id)
         if sprint_data:
             sprint_data["integration_tests"] = test_results
-            self.state_manager.save_sprint(sprint_data)
+            from manifest.core.sprint_manager import SprintManager
+            sprint_manager = SprintManager(self.state_manager)
+            sprint_manager.save_sprint(sprint_data)
             await self.state_manager.save_state()
     
     async def _save_integration_test_execution_results(self, sprint_id: str, task_id: str, content: str):
@@ -490,7 +498,9 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
             test_results["status"] = "failed"
         
         # Update Sprint data - append to execution_results
-        sprint_data = self.state_manager.load_sprint(sprint_id)
+        from manifest.core.sprint_manager import SprintManager
+        sprint_manager = SprintManager(self.state_manager)
+        sprint_data = sprint_manager.load_sprint(sprint_id)
         if sprint_data:
             if "integration_tests" not in sprint_data:
                 sprint_data["integration_tests"] = {}
@@ -502,7 +512,9 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
             sprint_data["integration_tests"]["execution_results"].append(test_results)
             sprint_data["integration_tests"]["status"] = "executed"
             
-            self.state_manager.save_sprint(sprint_data)
+            from manifest.core.sprint_manager import SprintManager
+            sprint_manager = SprintManager(self.state_manager)
+            sprint_manager.save_sprint(sprint_data)
             await self.state_manager.save_state()
     
     def _extract_test_plan(self, content: str) -> str:

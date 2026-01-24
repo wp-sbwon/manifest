@@ -20,10 +20,10 @@ class TaskScoper:
     
     def _load_data(self):
         """Load blueprint and intent data."""
-        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
+        from manifest.audit.blueprint_loader import BlueprintLoader
         # Load blueprint with metadata
-        self._blueprint_data = load_blueprint_with_metadata(
-            self.blueprint_file, "llm_design", False
+        self._blueprint_data = BlueprintLoader.load_blueprint(
+            self.manifest_dir, with_metadata=True
         )
         
         # Load intent

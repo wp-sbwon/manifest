@@ -410,7 +410,9 @@ PRD:
         sprint_data = self.state_manager.load_sprint(sprint_id)
         if sprint_data:
             sprint_data["e2e_tests"] = test_results
-            self.state_manager.save_sprint(sprint_data)
+            from manifest.core.sprint_manager import SprintManager
+            sprint_manager = SprintManager(self.state_manager)
+            sprint_manager.save_sprint(sprint_data)
             await self.state_manager.save_state()
     
     def _extract_e2e_test_plan(self, content: str) -> str:
@@ -576,7 +578,9 @@ Task Description: {task_description}
             sprint_data["e2e_tests"]["execution_results"].append(test_results)
             sprint_data["e2e_tests"]["status"] = "executed"
             
-            self.state_manager.save_sprint(sprint_data)
+            from manifest.core.sprint_manager import SprintManager
+            sprint_manager = SprintManager(self.state_manager)
+            sprint_manager.save_sprint(sprint_data)
             await self.state_manager.save_state()
     
     async def _save_test_results(self, task_id: str, content: str):
