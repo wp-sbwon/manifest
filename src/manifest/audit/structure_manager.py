@@ -12,6 +12,9 @@ from manifest.audit.code_extractor import CodeExtractor, Component, Contract
 from manifest.audit.blueprint_metadata import load_blueprint_with_metadata, save_blueprint_with_metadata
 from manifest.audit.blueprint_comparator import BlueprintComparator
 from manifest.audit.file_watcher import FileWatcher
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -139,7 +142,7 @@ class StructureManager:
                     ))
             except Exception as e:
                 # Skip files that can't be parsed
-                print(f"Error extracting structure from {file_path}: {e}")
+                logger.debug(f"Error extracting structure from {file_path}: {e}")
                 continue
         
         return changes
@@ -614,7 +617,7 @@ class StructureManager:
         if not auto_apply:
             # In real implementation, this would require user confirmation
             # For now, we'll just log it
-            print(f"Would apply Blueprint update: {suggestion.suggestion_type}")
+            logger.info(f"Would apply Blueprint update: {suggestion.suggestion_type}")
             return False
         
         # Save backup before applying

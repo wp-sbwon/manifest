@@ -9,6 +9,9 @@ from typing import Optional, Dict, Any
 from cryptography.fernet import Fernet
 import asyncio
 import httpx
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ConfigManager:
@@ -64,7 +67,7 @@ class ConfigManager:
             os.chmod(self.keys_file, 0o600)
             return True
         except Exception as e:
-            print(f"Error saving keys: {e}")
+            logger.error(f"Error saving keys: {e}", exc_info=True)
             return False
     
     def has_all_keys(self) -> bool:
@@ -248,7 +251,7 @@ class ConfigManager:
             os.chmod(agent_config_file, 0o600)
             return True
         except Exception as e:
-            print(f"Error saving agent config: {e}")
+            logger.error(f"Error saving agent config: {e}", exc_info=True)
             return False
     
     def get_default_model_for_agent(self, agent_type: str) -> Dict[str, str]:
