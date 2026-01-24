@@ -102,7 +102,7 @@ class FileWatcher:
                 changed_files = filtered
             
         except Exception as e:
-            print(f"Error getting changed files: {e}")
+            logger.error(f"Error getting changed files: {e}", exc_info=True)
             return []
         
         return changed_files

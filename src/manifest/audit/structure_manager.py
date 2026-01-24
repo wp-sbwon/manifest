@@ -836,5 +836,5 @@ class StructureManager:
             
             return True
         except Exception as e:
-            print(f"Warning: Failed to create Blueprint backup: {e}")
+            logger.warning(f"Failed to create Blueprint backup: {e}", exc_info=True)
             return False
