@@ -9,8 +9,13 @@ from manifest.bridge.agent_bridge import AgentBridge
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.task_scoper import TaskScoper
 from manifest.agents.container_manager import ContainerManager
+from manifest.agents.worker_squad_executor import WorkerSquadExecutor
+from manifest.agents.sprint_executor import SprintExecutor
 from manifest.core.config import ConfigManager
 from manifest.core.state_manager import StateManager
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class AgentCoordinator:
@@ -46,6 +51,12 @@ class AgentCoordinator:
             self.state_sync = ContainerStateSync(state_manager, self.container_manager.message_bus)
         else:
             self.state_sync = None
+        
+        # Worker Squad Executor
+        self.worker_squad_executor = WorkerSquadExecutor(self)
+        
+        # Sprint Executor
+        self.sprint_executor = SprintExecutor(self)
     
     async def start(self):
         """Start agent coordinator and container communication if enabled."""
@@ -319,80 +330,9 @@ class AgentCoordinator:
     async def start_sprint(self, sprint_id: str, max_parallel: int = 10) -> Dict[str, Any]:
         """
         Start a Sprint by executing all tasks in parallel.
-        
-        **NON-BLOCKING**: Sprint test writing runs in background.
-        Tasks start immediately without waiting for test writing.
-        
-        Args:
-            sprint_id: Sprint ID
-            max_parallel: Maximum number of tasks to run in parallel
-            
-        Returns:
-            Dict with execution results:
-            {
-                "success": bool,
-                "started_tasks": List[str],
-                "failed_tasks": List[str],
-                "parallel_groups": List[List[str]]
-            }
+        Delegates to SprintExecutor.
         """
-        # 1. Start Sprint test writing in background (NON-BLOCKING)
-        asyncio.create_task(self._write_sprint_tests(sprint_id))
-        
-        # 2. Get Sprint tasks
-        tasks = self.state_manager.get_task_checklist()
-        sprint_tasks = [t for t in tasks if t.get("sprint_id") == sprint_id]
-        
-        if not sprint_tasks:
-            return {
-                "success": False,
-                "error": f"No tasks found for sprint {sprint_id}",
-                "started_tasks": [],
-                "failed_tasks": [],
-                "parallel_groups": []
-            }
-        
-        # 3. Validate parallel execution
-        task_ids = [t.get("id") for t in sprint_tasks]
-        validation = self.task_scoper.validate_parallel_execution(task_ids)
-        
-        if not validation["can_parallelize"]:
-            # Log conflicts but continue (user/Orchestrator should have validated)
-            logger.warning(f"Parallel execution conflicts detected: {validation['conflicts']}")
-        
-        # 4. Group tasks for parallel execution
-        parallel_groups = validation.get("parallel_groups", [task_ids])
-        
-        # 5. Start tasks in parallel immediately (respecting max_parallel limit)
-        # Note: Tasks start without waiting for test writing to complete
-        started_tasks = []
-        failed_tasks = []
-        
-        for group in parallel_groups:
-            # Limit parallel execution
-            limited_group = group[:max_parallel]
-            
-            # Start all tasks in this group in parallel
-            results = await asyncio.gather(
-                *[self._start_task_worker_squad(task_id) for task_id in limited_group],
-                return_exceptions=True
-            )
-            
-            for task_id, result in zip(limited_group, results):
-                if isinstance(result, Exception):
-                    failed_tasks.append(task_id)
-                    logger.error(f"Failed to start task {task_id}: {result}")
-                elif result:
-                    started_tasks.append(task_id)
-                else:
-                    failed_tasks.append(task_id)
-        
-        return {
-            "success": len(failed_tasks) == 0,
-            "started_tasks": started_tasks,
-            "failed_tasks": failed_tasks,
-            "parallel_groups": parallel_groups
-        }
+        return await self.sprint_executor.start_sprint(sprint_id, max_parallel)
     
     async def _start_task_worker_squad(self, task_id: str) -> bool:
         """
@@ -400,176 +340,15 @@ class AgentCoordinator:
         Executes the full Worker Squad workflow in background.
         """
         # Execute full Worker Squad workflow in background (non-blocking)
-        asyncio.create_task(self.execute_worker_squad(task_id))
+        asyncio.create_task(self.worker_squad_executor.execute(task_id))
         return True
     
     async def execute_worker_squad(self, task_id: str) -> Dict[str, Any]:
         """
         Execute Worker Squad workflow for a task.
-        
-        Worker Squad flow (TDD):
-        1. Planner: Create plan
-        2. Test (TDD): Write test skeleton/plan first
-        3. Coder: Implement code to pass tests
-        4. Test: Run tests
-        5. Debug: Fix bugs if tests fail (iterative)
-        6. Self Review: Verify plan compliance
-        7. Approver: Final approval
-        
-        Args:
-            task_id: Task ID
-            
-        Returns:
-            Dict with execution results:
-            {
-                "success": bool,
-                "stages": {
-                    "planner": {...},
-                    "tdd_test": {...},
-                    "coder": {...},
-                    "test": {...},
-                    "debug": {...},
-                    "self_review": {...},
-                    "approver": {...}
-                }
-            }
+        Delegates to WorkerSquadExecutor.
         """
-        stages = {}
-        previous_stages = {}
-        
-        # 1. Planner
-        planner_success = await self._execute_planner_stage(task_id, previous_stages)
-        planner_result = {
-            "status": "completed" if planner_success else "failed",
-            "output": "",
-            "plan": ""
-        }
-        stages["planner"] = planner_result
-        previous_stages["planner"] = planner_result
-        # Save stage result
-        await self.state_manager.save_worker_squad_stage_async(task_id, "planner", planner_result)
-        if not planner_success:
-            return {"success": False, "stages": stages}
-        
-        # 2. Test (TDD - test first)
-        tdd_test_result = await self._execute_tdd_test_stage(task_id, planner_result, previous_stages)
-        stages["tdd_test"] = tdd_test_result
-        previous_stages["tdd_test"] = tdd_test_result
-        # Save stage result
-        await self.state_manager.save_worker_squad_stage_async(task_id, "tdd_test", tdd_test_result)
-        if tdd_test_result.get("status") != "completed":
-            return {"success": False, "stages": stages, "error": "TDD test stage failed"}
-        
-        # 3. Coder (implement to pass tests)
-        coder_success = await self._execute_coder_stage(task_id, test_plan=tdd_test_result, previous_stages=previous_stages)
-        coder_result = {
-            "status": "completed" if coder_success else "failed",
-            "output": "",
-            "files_modified": []
-        }
-        stages["coder"] = coder_result
-        previous_stages["coder"] = coder_result
-        # Save stage result
-        await self.state_manager.save_worker_squad_stage_async(task_id, "coder", coder_result)
-        if not coder_success:
-            return {"success": False, "stages": stages}
-        
-        # 4. Test (run tests)
-        test_result = await self._execute_test_stage(task_id, previous_stages)
-        stages["test"] = test_result
-        previous_stages["test"] = test_result
-        # Save stage result
-        await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
-        
-        # 5. Debug (iterative if tests fail)
-        debug_iterations = 0
-        max_debug_iterations = 5
-        while test_result.get("status") == "failed" and debug_iterations < max_debug_iterations:
-            debug_result = await self._execute_debug_stage(task_id, test_result, previous_stages)
-            debug_result["iteration"] = debug_iterations + 1
-            stages["debug"] = debug_result
-            previous_stages["debug"] = debug_result
-            # Save stage result
-            await self.state_manager.save_worker_squad_stage_async(task_id, "debug", debug_result)
-            debug_iterations += 1
-            
-            if debug_result.get("status") == "completed":
-                # Re-run tests after debug
-                test_result = await self._execute_test_stage(task_id, previous_stages)
-                stages["test"] = test_result
-                previous_stages["test"] = test_result
-                # Save updated test result
-                await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
-            else:
-                break
-        
-        if test_result.get("status") == "failed":
-            return {"success": False, "stages": stages, "error": "Tests failed after max debug iterations"}
-        
-        # 6. Self Review
-        self_review_result = await self._execute_self_review_stage(task_id, previous_stages)
-        stages["self_review"] = self_review_result
-        previous_stages["self_review"] = self_review_result
-        # Save stage result
-        await self.state_manager.save_worker_squad_stage_async(task_id, "self_review", self_review_result)
-        
-        # 7. Approver
-        approver_result = await self._execute_approver_stage(task_id, self_review_result, previous_stages)
-        stages["approver"] = approver_result
-        previous_stages["approver"] = approver_result
-        # Save stage result
-        await self.state_manager.save_worker_squad_stage_async(task_id, "approver", approver_result)
-        
-        # If approver rejects, go back to coder
-        max_approver_iterations = 3
-        approver_iterations = 0
-        while approver_result.get("decision") == "rejected" and approver_iterations < max_approver_iterations:
-            # Go back to coder
-            coder_success = await self._execute_coder_stage(
-                task_id, approver_result.get("feedback", ""), previous_stages=previous_stages
-            )
-            coder_result = {
-                "status": "completed" if coder_success else "failed",
-                "output": "",
-                "iteration": approver_iterations + 1
-            }
-            stages["coder"] = coder_result
-            previous_stages["coder"] = coder_result
-            # Save stage result
-            await self.state_manager.save_worker_squad_stage_async(task_id, "coder", coder_result)
-            
-            if not coder_success:
-                return {"success": False, "stages": stages, "error": "Coder failed after approver rejection"}
-            
-            # Re-run self review and approver
-            self_review_result = await self._execute_self_review_stage(task_id, previous_stages)
-            stages["self_review"] = self_review_result
-            previous_stages["self_review"] = self_review_result
-            # Save stage result
-            await self.state_manager.save_worker_squad_stage_async(task_id, "self_review", self_review_result)
-            
-            approver_result = await self._execute_approver_stage(task_id, self_review_result, previous_stages)
-            stages["approver"] = approver_result
-            previous_stages["approver"] = approver_result
-            # Save stage result
-            await self.state_manager.save_worker_squad_stage_async(task_id, "approver", approver_result)
-            approver_iterations += 1
-        
-        if approver_result.get("decision") != "approved":
-            return {"success": False, "stages": stages, "error": "Approver did not approve after max iterations"}
-        
-        # 8. Run Sprint tests in background (NON-BLOCKING)
-        # Get sprint_id from task
-        tasks = self.state_manager.get_task_checklist()
-        task = next((t for t in tasks if t.get("id") == task_id), None)
-        sprint_id = task.get("sprint_id") if task else None
-        if sprint_id:
-            asyncio.create_task(self._run_sprint_tests(sprint_id, task_id))
-        
-        return {
-            "success": True,
-            "stages": stages
-        }
+        return await self.worker_squad_executor.execute(task_id)
     
     async def _execute_planner_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> bool:
         """Execute Planner stage."""
@@ -757,140 +536,3 @@ class AgentCoordinator:
             **results
         }
     
-    async def _write_sprint_tests(self, sprint_id: str) -> Dict[str, Any]:
-        """
-        Write Integration/E2E tests for Sprint scope (TDD) - Background task.
-        
-        **NON-BLOCKING**: This method runs in background and does not block Sprint start.
-        
-        Args:
-            sprint_id: Sprint ID
-            
-        Returns:
-            Dict with test writing results
-        """
-        try:
-            # Update Sprint test status to "writing"
-            from manifest.core.sprint_manager import SprintManager
-            sprint_manager = SprintManager(self.state_manager)
-            sprint_data = sprint_manager.load_sprint(sprint_id)
-            if sprint_data:
-                if "integration_tests" in sprint_data:
-                    sprint_data["integration_tests"]["status"] = "writing"
-                if "e2e_tests" in sprint_data:
-                    sprint_data["e2e_tests"]["status"] = "writing"
-                from manifest.core.sprint_manager import SprintManager
-                sprint_manager = SprintManager(self.state_manager)
-                sprint_manager.save_sprint(sprint_data)
-            
-            # Get Sprint-level context
-            sprint_context = self.context_provider.get_sprint_context(sprint_id)
-            
-            # Get model config
-            model_config = self.config_manager.get_model_config("integration_test")
-            
-            # 1. Write Integration Tests (TDD)
-            integration_test_agent_id = f"sprint-{sprint_id}-integration_test"
-            integration_success = await self.agent_bridge.start_agent_mission(
-                task_id=integration_test_agent_id,
-                agent_type="integration_test",
-                context={**sprint_context, "sprint_id": sprint_id},
-                model_config=model_config,
-                stage="sprint_tdd_test"
-            )
-            
-            # 2. Write E2E Tests (TDD)
-            e2e_test_agent_id = f"sprint-{sprint_id}-e2e_test"
-            e2e_success = await self.agent_bridge.start_agent_mission(
-                task_id=e2e_test_agent_id,
-                agent_type="e2e_test",
-                context={**sprint_context, "sprint_id": sprint_id},
-                model_config=model_config,
-                stage="sprint_tdd_test"
-            )
-            
-            # Update Sprint test status to "written"
-            from manifest.core.sprint_manager import SprintManager
-            sprint_manager = SprintManager(self.state_manager)
-            sprint_data = sprint_manager.load_sprint(sprint_id)
-            if sprint_data:
-                if "integration_tests" in sprint_data:
-                    sprint_data["integration_tests"]["status"] = "written" if integration_success else "failed"
-                if "e2e_tests" in sprint_data:
-                    sprint_data["e2e_tests"]["status"] = "written" if e2e_success else "failed"
-                from manifest.core.sprint_manager import SprintManager
-                sprint_manager = SprintManager(self.state_manager)
-                sprint_manager.save_sprint(sprint_data)
-                await self.state_manager.save_state()
-            
-            return {
-                "success": integration_success and e2e_success,
-                "integration_tests": {"status": "written" if integration_success else "failed"},
-                "e2e_tests": {"status": "written" if e2e_success else "failed"}
-            }
-        except Exception as e:
-            logger.error(f"Error writing Sprint tests: {e}", exc_info=True)
-            # Update status to failed
-            from manifest.core.sprint_manager import SprintManager
-            sprint_manager = SprintManager(self.state_manager)
-            sprint_data = sprint_manager.load_sprint(sprint_id)
-            if sprint_data:
-                if "integration_tests" in sprint_data:
-                    sprint_data["integration_tests"]["status"] = "failed"
-                if "e2e_tests" in sprint_data:
-                    sprint_data["e2e_tests"]["status"] = "failed"
-                from manifest.core.sprint_manager import SprintManager
-                sprint_manager = SprintManager(self.state_manager)
-                sprint_manager.save_sprint(sprint_data)
-            return {"success": False, "error": str(e)}
-    
-    async def _run_sprint_tests(self, sprint_id: str, task_id: str) -> Dict[str, Any]:
-        """
-        Run Sprint-level Integration/E2E tests after Task completion - Background task.
-        
-        **NON-BLOCKING**: This method runs in background and does not block Worker Squad completion.
-        
-        Args:
-            sprint_id: Sprint ID
-            task_id: Task ID that completed
-            
-        Returns:
-            Dict with test execution results
-        """
-        try:
-            # Get Sprint-level context
-            sprint_context = self.context_provider.get_sprint_context(sprint_id)
-            
-            # Get model config
-            integration_model_config = self.config_manager.get_model_config("integration_test")
-            e2e_model_config = self.config_manager.get_model_config("e2e_test")
-            
-            # 1. Run Integration Tests
-            integration_test_agent_id = f"sprint-{sprint_id}-integration_test-{task_id}"
-            integration_success = await self.agent_bridge.start_agent_mission(
-                task_id=integration_test_agent_id,
-                agent_type="integration_test",
-                context={**sprint_context, "sprint_id": sprint_id, "task_id": task_id},
-                model_config=integration_model_config,
-                stage="sprint_test_execution"
-            )
-            
-            # 2. Run E2E Tests
-            e2e_test_agent_id = f"sprint-{sprint_id}-e2e_test-{task_id}"
-            e2e_success = await self.agent_bridge.start_agent_mission(
-                task_id=e2e_test_agent_id,
-                agent_type="e2e_test",
-                context={**sprint_context, "sprint_id": sprint_id, "task_id": task_id},
-                model_config=e2e_model_config,
-                stage="sprint_test_execution"
-            )
-            
-            return {
-                "success": integration_success and e2e_success,
-                "integration_tests": {"status": "executed" if integration_success else "failed"},
-                "e2e_tests": {"status": "executed" if e2e_success else "failed"},
-                "task_id": task_id
-            }
-        except Exception as e:
-            logger.error(f"Error running Sprint tests: {e}", exc_info=True)
-            return {"success": False, "error": str(e), "task_id": task_id}
