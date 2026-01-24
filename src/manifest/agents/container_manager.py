@@ -1,6 +1,12 @@
 """
-Container Manager - Manages Docker containers for Agent Squad.
-Each agent runs in its own Docker container for isolation and resource management.
+Docker container management for agent execution.
+
+This module provides the ContainerManager class which manages Docker containers
+for running agents. Each agent can run in its own isolated container, providing
+resource management, isolation, and monitoring capabilities.
+
+The container manager handles container lifecycle (start, stop, status), resource
+monitoring, and inter-container communication via a message bus.
 """
 import asyncio
 import docker
@@ -14,17 +20,34 @@ logger = get_logger(__name__)
 
 
 class ContainerManager:
-    """
-    Manages Docker containers for agent execution.
-    Provides container lifecycle management, monitoring, and logging.
+    """Manages Docker containers for isolated agent execution.
+    
+    Handles the complete lifecycle of Docker containers used for running
+    agents. Each agent runs in its own container, providing isolation,
+    resource limits, and monitoring capabilities.
+    
+    The manager maintains a message bus for inter-container communication
+    and tracks container metadata for status monitoring.
+    
+    Attributes:
+        client: Docker client instance (None if Docker unavailable).
+        docker_available: Boolean indicating if Docker is available.
+        active_containers: Dictionary mapping task IDs to container objects.
+        container_metadata: Dictionary mapping task IDs to container metadata.
+        message_bus: ContainerMessageBus for inter-container communication.
+        _message_bus_connected: Whether the message bus is connected.
     """
     
     def __init__(self, docker_client: Optional[docker.DockerClient] = None):
-        """
-        Initialize container manager.
+        """Initialize the container manager.
+        
+        Attempts to connect to Docker and verify it's available. If Docker
+        is not available, the manager will operate in a degraded mode where
+        container operations return None.
         
         Args:
-            docker_client: Optional Docker client (creates new one if not provided)
+            docker_client: Optional pre-configured Docker client. If not
+                provided, creates a new client from environment.
         """
         try:
             self.client = docker_client or docker.from_env()
@@ -43,7 +66,11 @@ class ContainerManager:
         self._message_bus_connected = False
     
     def is_docker_available(self) -> bool:
-        """Check if Docker is available."""
+        """Check if Docker is available and ready to use.
+        
+        Returns:
+            True if Docker daemon is accessible and working, False otherwise.
+        """
         return self.docker_available
     
     async def start_agent_container(
@@ -54,18 +81,26 @@ class ContainerManager:
         volumes: Optional[Dict[str, Dict[str, str]]] = None,
         network: str = "manifest-network"
     ) -> Optional[str]:
-        """
-        Start an agent container.
+        """Start a Docker container for an agent.
+        
+        Creates and starts a Docker container running the agent. The container
+        is configured with the appropriate environment variables, volume mounts,
+        and network settings. If a container with the same name already exists
+        and is running, returns its ID.
         
         Args:
-            task_id: Task identifier
-            agent_type: Type of agent (orchestrator, planner, coder, test, review)
-            environment: Environment variables
-            volumes: Volume mappings
-            network: Docker network name
-            
+            task_id: ID of the task the agent will work on.
+            agent_type: Type of agent (e.g., "coder", "planner", "test").
+            environment: Optional dictionary of environment variables to set
+                in the container.
+            volumes: Optional dictionary of volume mappings (host path to
+                container path).
+            network: Docker network name to connect the container to.
+                Defaults to "manifest-network".
+        
         Returns:
-            Container ID if successful, None otherwise
+            Container ID string if successful, None if Docker is unavailable
+            or container creation fails.
         """
         if not self.docker_available:
             return None
@@ -153,14 +188,17 @@ class ContainerManager:
             return None
     
     async def stop_agent_container(self, task_id: str) -> bool:
-        """
-        Stop an agent container.
+        """Stop and remove an agent container.
+        
+        Stops the running container and removes it. Also notifies other
+        containers via the message bus that this agent has stopped.
         
         Args:
-            task_id: Task identifier
-            
+            task_id: ID of the task whose container should be stopped.
+        
         Returns:
-            True if container was stopped, False otherwise
+            True if container was found and stopped, False if Docker is
+            unavailable or container doesn't exist.
         """
         if not self.docker_available:
             return False
@@ -193,14 +231,17 @@ class ContainerManager:
             return False
     
     async def get_container_status(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get container status.
+        """Get current status and resource usage of a container.
+        
+        Queries Docker for the container's current state, CPU usage, memory
+        usage, and other metadata. Useful for monitoring and resource tracking.
         
         Args:
-            task_id: Task identifier
-            
+            task_id: ID of the task whose container status to query.
+        
         Returns:
-            Container status information
+            Dictionary containing container status, resource usage, and metadata,
+            or None if Docker is unavailable or container doesn't exist.
         """
         if not self.docker_available:
             return None
@@ -228,7 +269,17 @@ class ContainerManager:
             return None
     
     def _calculate_cpu_percent(self, stats: Dict[str, Any]) -> float:
-        """Calculate CPU usage percentage from Docker stats."""
+        """Calculate CPU usage percentage from Docker container stats.
+        
+        Parses Docker stats dictionary to compute CPU usage as a percentage.
+        Returns 0.0 if calculation fails or stats are incomplete.
+        
+        Args:
+            stats: Docker container stats dictionary from container.stats().
+        
+        Returns:
+            CPU usage percentage as a float, or 0.0 if calculation fails.
+        """
         try:
             cpu_delta = stats.get("cpu_stats", {}).get("cpu_usage", {}).get("total_usage", 0)
             system_delta = stats.get("cpu_stats", {}).get("system_cpu_usage", 0)

@@ -1,8 +1,14 @@
 """
-Skills Manager - Manages agent skills following OpenCode conventions.
-Supports two levels:
-1. Agent default skills (from agent_config.json)
-2. Project-scoped skills (from AGENTS.md or .claude/rules/)
+Skills management for agents following OpenCode conventions.
+
+This module provides the SkillsManager class which manages agent skills from
+multiple sources:
+1. Agent default skills from agent_config.json
+2. Project-scoped skills from AGENTS.md
+3. Skill definitions from .claude/rules/*.md files
+
+Skills provide agents with capabilities, tools, and knowledge that guide their
+behavior. The manager filters and formats skills based on agent type and task scope.
 """
 import json
 import re
@@ -14,15 +20,32 @@ logger = get_logger(__name__)
 
 
 class SkillsManager:
-    """Manages skills for agents following OpenCode conventions."""
+    """Manages agent skills from multiple sources.
+    
+    Loads skills from agent_config.json (agent defaults), AGENTS.md
+    (project-scoped), and .claude/rules/ (skill definitions). Filters
+    and formats skills based on agent type and task scope.
+    
+    Attributes:
+        manifest_dir: Path to .manifest directory.
+        project_root: Root directory of the project.
+        agent_config_file: Path to agent_config.json.
+        agents_md_file: Path to AGENTS.md.
+        claude_rules_dir: Path to .claude/rules/ directory.
+        _agent_skills: Dictionary mapping agent types to skill ID lists.
+        _project_skills: List of project-scoped skill dictionaries.
+        _skill_definitions: Dictionary mapping skill IDs to skill definitions.
+    """
     
     def __init__(self, manifest_dir: Path = None, project_root: Path = None):
-        """
-        Initialize Skills Manager.
+        """Initialize the skills manager.
+        
+        Sets up paths to skill sources and loads all available skills.
+        Skills are loaded from agent_config.json, AGENTS.md, and .claude/rules/.
         
         Args:
-            manifest_dir: .manifest directory path
-            project_root: Project root directory (for AGENTS.md lookup)
+            manifest_dir: Path to .manifest directory. Defaults to .manifest.
+            project_root: Root directory of the project. Defaults to current directory.
         """
         self.manifest_dir = manifest_dir or Path(".manifest")
         self.project_root = project_root or Path.cwd()
@@ -36,8 +59,12 @@ class SkillsManager:
         
         self._load_skills()
     
-    def _load_skills(self):
-        """Load skills from all sources."""
+    def _load_skills(self) -> None:
+        """Load skills from all available sources.
+        
+        Loads skills in order: agent defaults, project skills, and skill
+        definitions. This is called during initialization.
+        """
         # Load agent default skills from agent_config.json
         self._load_agent_default_skills()
         
@@ -47,8 +74,13 @@ class SkillsManager:
         # Load skill definitions from .claude/rules/
         self._load_skill_definitions()
     
-    def _load_agent_default_skills(self):
-        """Load agent default skills from agent_config.json."""
+    def _load_agent_default_skills(self) -> None:
+        """Load agent default skills from agent_config.json.
+        
+        Reads the agent_skills section from agent_config.json which maps
+        agent types to lists of skill IDs. These are the default skills
+        each agent type has.
+        """
         if not self.agent_config_file.exists():
             return
         
@@ -83,14 +115,17 @@ class SkillsManager:
             self._project_skills = []
     
     def _parse_agents_md(self, content: str) -> List[Dict[str, Any]]:
-        """
-        Parse AGENTS.md content for skills.
+        """Parse AGENTS.md content to extract skill definitions.
         
-        OpenCode convention: Skills can be defined in AGENTS.md
-        Format examples:
-        - ## Skills
-        - ### Skill: skill_name
-        - References to .claude/rules/*.md files
+        Follows OpenCode conventions for skill definitions in AGENTS.md.
+        Looks for skills sections and skill definitions, as well as references
+        to .claude/rules/*.md files.
+        
+        Args:
+            content: Full text content of AGENTS.md.
+        
+        Returns:
+            List of skill dictionaries extracted from AGENTS.md.
         """
         skills = []
         
@@ -135,8 +170,13 @@ class SkillsManager:
         
         return skills
     
-    def _load_skill_definitions(self):
-        """Load skill definitions from .claude/rules/ directory."""
+    def _load_skill_definitions(self) -> None:
+        """Load skill definitions from .claude/rules/ directory.
+        
+        Scans the .claude/rules/ directory for .md files and parses them
+        as skill definitions. Each file becomes a skill with metadata
+        extracted from the markdown content.
+        """
         if not self.claude_rules_dir.exists():
             return
         
@@ -159,7 +199,21 @@ class SkillsManager:
                 logger.warning(f"Failed to load skill {skill_id}: {e}", exc_info=True)
     
     def _parse_skill_markdown(self, content: str, skill_id: str, file_path: Path) -> Dict[str, Any]:
-        """Parse markdown file to extract skill definition."""
+        """Parse a markdown file to extract skill definition metadata.
+        
+        Extracts title, description, trigger keywords, and applicable agents
+        from the markdown content. These are used to match skills to agents
+        and tasks.
+        
+        Args:
+            content: Full markdown content of the skill file.
+            skill_id: ID of the skill (derived from filename).
+            file_path: Path to the skill markdown file.
+        
+        Returns:
+            Dictionary containing skill definition with id, name, description,
+            file path, source, type, and optional triggers/agents.
+        """
         skill_def = {
             "id": skill_id,
             "name": skill_id,
@@ -218,19 +272,19 @@ class SkillsManager:
         agent_type: str,
         task_scope: Optional[Dict[str, Any]] = None
     ) -> List[Dict[str, Any]]:
-        """
-        Get applicable skills for an agent.
+        """Get applicable skills for a specific agent type.
         
-        Priority:
-        1. Project-scoped skills (from AGENTS.md)
-        2. Agent default skills (from agent_config.json)
+        Combines project-scoped skills and agent default skills, filtering
+        by agent applicability. Project skills take priority over defaults.
         
         Args:
-            agent_type: Type of agent (orchestrator, planner, coder, etc.)
-            task_scope: Optional task scope (for future directory-based skills)
-            
+            agent_type: Type of agent (e.g., "orchestrator", "coder", "planner").
+            task_scope: Optional task scope dictionary. Currently not used but
+                reserved for future directory-based skill filtering.
+        
         Returns:
-            List of skill definitions
+            List of skill definition dictionaries applicable to this agent type.
+            Skills are ordered with project skills first, then agent defaults.
         """
         skills = []
         

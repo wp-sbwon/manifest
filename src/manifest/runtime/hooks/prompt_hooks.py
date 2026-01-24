@@ -1,6 +1,13 @@
 """
-Prompt Hooks - Intercept and modify agent prompts.
-Allows injection of Visual Reality and other context modifications.
+Prompt hooks for intercepting and modifying agent prompts.
+
+This module provides a hook system that allows intercepting prompts before
+they're sent to LLMs. Hooks can inject additional context, modify prompts,
+or add constraints. This enables features like Visual Reality (injecting
+current project state) and other dynamic prompt modifications.
+
+Hooks are executed in priority order (lower priority number = executed first),
+allowing multiple hooks to modify prompts in sequence.
 """
 from typing import Dict, Any, Optional, List, Callable, Awaitable
 from abc import ABC, abstractmethod
@@ -10,9 +17,14 @@ logger = get_logger(__name__)
 
 
 class PromptHook(ABC):
-    """
-    Base class for prompt hooks.
-    Hooks can intercept and modify prompts before they are sent to LLMs.
+    """Base class for prompt hooks that intercept and modify prompts.
+    
+    Hooks allow modifying prompts before they're sent to LLMs. This enables
+    dynamic injection of context, constraints, or other modifications based
+    on current project state or agent type.
+    
+    Hooks are executed in priority order, with lower priority numbers
+    executing first. This allows multiple hooks to modify prompts in sequence.
     """
     
     @abstractmethod
@@ -24,50 +36,60 @@ class PromptHook(ABC):
         context: Optional[Dict[str, Any]] = None,
         message_history: Optional[List[Dict[str, str]]] = None
     ) -> str:
-        """
-        Intercept and modify a prompt before execution.
+        """Intercept and modify a prompt before it's sent to the LLM.
+        
+        This method is called for every agent execution, allowing the hook
+        to inspect and modify the prompt. The modified prompt is then used
+        for the LLM call.
         
         Args:
-            agent_id: Agent identifier
-            agent_type: Type of agent (orchestrator, planner, coder, etc.)
-            prompt: Original prompt
-            context: Agent context
-            message_history: Previous message history
-            
+            agent_id: Unique identifier of the agent making the call.
+            agent_type: Type of agent (e.g., "orchestrator", "coder", "planner").
+            prompt: The original prompt that would be sent to the LLM.
+            context: Optional tiered context dictionary for the agent.
+            message_history: Optional previous conversation messages.
+        
         Returns:
-            Modified prompt
+            The modified prompt string. Can be the same as the original
+            if no modifications are needed.
         """
         pass
     
     @abstractmethod
     def get_priority(self) -> int:
-        """
-        Get hook priority (lower = executed first).
+        """Get the execution priority of this hook.
+        
+        Hooks with lower priority numbers are executed first. This allows
+        multiple hooks to modify prompts in a specific order.
         
         Returns:
-            Priority value (0-100, lower is higher priority)
+            Priority value between 0-100. Lower numbers mean higher priority
+            (executed first).
         """
         pass
 
 
 class VisualRealityHook(PromptHook):
-    """
-    Visual Reality Hook - Injects current project state into prompts.
+    """Visual Reality hook that injects current project state into prompts.
     
-    Visual Reality includes:
-    - Current Blueprint state
-    - Architecture status
-    - Implementation progress
-    - Drift information
+    Visual Reality provides agents with awareness of the current project
+    state, including blueprint status, architecture state, implementation
+    progress, and any drift issues. This helps agents make decisions based
+    on what actually exists, not just what's planned.
+    
+    Attributes:
+        state_manager: StateManager for accessing current project state.
+        blueprint_synchronizer: Optional BlueprintSynchronizer for drift
+            information.
     """
     
     def __init__(self, state_manager, blueprint_synchronizer=None):
-        """
-        Initialize Visual Reality Hook.
+        """Initialize the Visual Reality hook.
         
         Args:
-            state_manager: StateManager instance
-            blueprint_synchronizer: BlueprintSynchronizer instance (optional)
+            state_manager: StateManager instance for accessing project state.
+            blueprint_synchronizer: Optional BlueprintSynchronizer for drift
+                detection and conflict information.
         """
         self.state_manager = state_manager
         self.blueprint_synchronizer = blueprint_synchronizer
@@ -80,8 +102,21 @@ class VisualRealityHook(PromptHook):
         context: Optional[Dict[str, Any]] = None,
         message_history: Optional[List[Dict[str, str]]] = None
     ) -> str:
-        """
-        Inject Visual Reality into prompt.
+        """Inject Visual Reality section into the prompt.
+        
+        Generates a Visual Reality section containing current project state
+        and inserts it into the prompt before the task/mission description.
+        This gives agents awareness of the actual codebase state.
+        
+        Args:
+            agent_id: ID of the agent making the call.
+            agent_type: Type of agent.
+            prompt: Original prompt to modify.
+            context: Optional tiered context.
+            message_history: Optional conversation history.
+        
+        Returns:
+            Modified prompt with Visual Reality section inserted.
         """
         visual_reality = await self._generate_visual_reality(agent_type, context)
         
@@ -177,35 +212,57 @@ class VisualRealityHook(PromptHook):
         return "\n".join(visual_reality_parts) if visual_reality_parts else ""
     
     def get_priority(self) -> int:
-        """Visual Reality should be injected early (high priority)."""
+        """Get the execution priority for this hook.
+        
+        Visual Reality should be injected early so other hooks can see
+        the current state. Lower numbers mean higher priority.
+        
+        Returns:
+            Priority value of 10 (high priority, executed early).
+        """
         return 10
 
 
 class HookManager:
-    """
-    Manages prompt hooks and executes them in priority order.
+    """Manages prompt hooks and executes them in priority order.
+    
+    Maintains a registry of prompt hooks and applies them to prompts before
+    they're sent to LLMs. Hooks are executed in priority order (lower priority
+    number = executed first), allowing multiple hooks to modify prompts sequentially.
+    
+    Attributes:
+        hooks: List of registered PromptHook instances, sorted by priority.
     """
     
     def __init__(self):
+        """Initialize the hook manager.
+        
+        Creates an empty hook registry. Hooks can be registered later using
+        register_hook().
+        """
         self.hooks: List[PromptHook] = []
     
-    def register_hook(self, hook: PromptHook):
-        """
-        Register a prompt hook.
+    def register_hook(self, hook: PromptHook) -> None:
+        """Register a prompt hook.
+        
+        Adds the hook to the registry and re-sorts hooks by priority.
+        Hooks with lower priority numbers will be executed first.
         
         Args:
-            hook: PromptHook instance
+            hook: PromptHook instance to register.
         """
         self.hooks.append(hook)
-        # Sort by priority (lower = higher priority)
+        # Sort by priority (lower = higher priority, executed first)
         self.hooks.sort(key=lambda h: h.get_priority())
     
-    def unregister_hook(self, hook: PromptHook):
-        """
-        Unregister a prompt hook.
+    def unregister_hook(self, hook: PromptHook) -> None:
+        """Unregister a prompt hook.
+        
+        Removes the hook from the registry. The hook will no longer be
+        applied to prompts.
         
         Args:
-            hook: PromptHook instance
+            hook: PromptHook instance to unregister.
         """
         if hook in self.hooks:
             self.hooks.remove(hook)
@@ -218,18 +275,22 @@ class HookManager:
         context: Optional[Dict[str, Any]] = None,
         message_history: Optional[List[Dict[str, str]]] = None
     ) -> str:
-        """
-        Apply all registered hooks to a prompt.
+        """Apply all registered hooks to a prompt.
+        
+        Executes each registered hook in priority order. Each hook
+        receives the prompt as modified by previous hooks, allowing
+        hooks to build on each other's modifications.
         
         Args:
-            agent_id: Agent identifier
-            agent_type: Type of agent
-            prompt: Original prompt
-            context: Agent context
-            message_history: Previous message history
-            
+            agent_id: ID of the agent making the call.
+            agent_type: Type of agent (e.g., "orchestrator", "coder").
+            prompt: Original prompt before any hook modifications.
+            context: Optional tiered context dictionary.
+            message_history: Optional previous conversation messages.
+        
         Returns:
-            Modified prompt after all hooks
+            Prompt string after all hooks have been applied. If no hooks
+            are registered, returns the original prompt unchanged.
         """
         modified_prompt = prompt
         

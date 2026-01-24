@@ -1,6 +1,13 @@
 """
-OpenCode Adapter - Integration layer for OpenCode terminal functionality.
-Provides optional OpenCode integration with fallback to internal implementation.
+OpenCode adapter for optional OpenCode terminal integration.
+
+This module provides the OpenCodeAdapter class which integrates with OpenCode
+(if available) for enhanced terminal command execution. If OpenCode is not
+available or initialization fails, it falls back to internal subprocess-based
+execution.
+
+The adapter provides a unified interface that abstracts away whether OpenCode
+or internal execution is being used, making it transparent to callers.
 """
 import asyncio
 import subprocess
@@ -19,9 +26,20 @@ except ImportError:
 
 
 class OpenCodeAdapter:
-    """
-    Adapter for OpenCode terminal functionality.
-    Falls back to internal implementation if OpenCode is not available.
+    """Adapter for OpenCode terminal functionality with fallback.
+    
+    Provides a unified interface for terminal command execution that can use
+    either OpenCode (if available) or internal subprocess execution. The
+    adapter automatically detects OpenCode availability and falls back gracefully
+    if OpenCode is not installed or initialization fails.
+    
+    Attributes:
+        working_dir: Directory where commands are executed.
+        active_commands: Dictionary tracking active command processes (shared
+            with TerminalRouter for unified tracking).
+        watchdog: Optional watchdog instance for monitoring command execution.
+        use_opencode: Whether OpenCode is being used (True) or internal (False).
+        opencode_router: OpenCode router instance if OpenCode is available.
     """
     
     def __init__(
@@ -31,15 +49,19 @@ class OpenCodeAdapter:
         active_commands: Optional[Dict[str, subprocess.Popen]] = None,
         watchdog=None
     ):
-        """
-        Initialize OpenCode adapter.
+        """Initialize the OpenCode adapter.
+        
+        Attempts to initialize OpenCode if available and requested. If
+        OpenCode is not available or initialization fails, falls back to
+        internal execution.
         
         Args:
-            working_dir: Working directory for command execution
-            use_opencode: Force use of OpenCode (True) or internal (False).
-                         If None, auto-detect based on availability.
-            active_commands: Dictionary to track active processes (shared with TerminalRouter)
-            watchdog: Optional watchdog instance for monitoring
+            working_dir: Directory for command execution. Defaults to current directory.
+            use_opencode: Force OpenCode usage. True forces OpenCode, False forces
+                internal, None auto-detects based on availability.
+            active_commands: Dictionary to share with TerminalRouter for unified
+                command tracking.
+            watchdog: Optional watchdog for monitoring command execution.
         """
         self.working_dir = working_dir or Path.cwd()
         self.active_commands = active_commands or {}
@@ -110,9 +132,21 @@ class OpenCodeAdapter:
         timeout: Optional[float],
         stream: bool
     ) -> Dict[str, Any]:
-        """
-        Execute command using OpenCode.
-        This method should be adapted to actual OpenCode API.
+        """Execute a command using OpenCode router.
+        
+        This is a placeholder method that should be adapted to the actual
+        OpenCode API when it becomes available. Currently falls back to
+        internal execution.
+        
+        Args:
+            command: Command name to execute.
+            args: Optional command arguments.
+            timeout: Optional timeout in seconds.
+            stream: Whether to stream output.
+        
+        Returns:
+            Dictionary with command execution results. Currently falls back
+            to internal execution.
         """
         # Placeholder: Adapt to actual OpenCode API
         # Example structure (to be updated):
@@ -171,7 +205,19 @@ class OpenCodeAdapter:
         command_id: str,
         timeout: Optional[float]
     ) -> Dict[str, Any]:
-        """Execute command with buffered output (internal implementation)."""
+        """Execute a command and collect all output before returning.
+        
+        Internal implementation for buffered execution. Runs the command
+        and waits for completion, collecting all stdout and stderr.
+        
+        Args:
+            command: List containing command and arguments.
+            command_id: Unique identifier for this command.
+            timeout: Optional timeout in seconds.
+        
+        Returns:
+            Dictionary with stdout, stderr, returncode, command_id, and backend.
+        """
         process = await asyncio.create_subprocess_exec(
             *command,
             stdout=asyncio.subprocess.PIPE,
@@ -210,7 +256,21 @@ class OpenCodeAdapter:
         command_id: str,
         timeout: Optional[float]
     ) -> Dict[str, Any]:
-        """Execute command with streaming output (internal implementation)."""
+        """Execute a command and stream output in real-time.
+        
+        Internal implementation for streaming execution. Reads stdout and
+        stderr as they're produced, but still collects them for the final
+        result.
+        
+        Args:
+            command: List containing command and arguments.
+            command_id: Unique identifier for this command.
+            timeout: Optional timeout in seconds.
+        
+        Returns:
+            Dictionary with stdout, stderr, returncode, command_id, backend,
+            and streamed=True flag.
+        """
         process = await asyncio.create_subprocess_exec(
             *command,
             stdout=asyncio.subprocess.PIPE,
