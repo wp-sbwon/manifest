@@ -122,14 +122,8 @@ class ContextProvider:
     
     def _load_tier_2_scoped(self, task_context: Dict[str, Any]) -> Dict[str, Any]:
         """Load Tier 2: The Blueprint (scoped to task)."""
-        if not self.blueprint_file.exists():
-            return {"version": "1.0", "zones": {}, "components": [], "contracts": []}
-        
-        try:
-            with open(self.blueprint_file, "r") as f:
-                blueprint_data = json.load(f)
-        except Exception:
-            return {"version": "1.0", "zones": {}, "components": [], "contracts": []}
+        from manifest.audit.blueprint_loader import BlueprintLoader
+        blueprint_data = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
         
         # Filter to scoped components
         scoped_components = task_context.get("components", [])

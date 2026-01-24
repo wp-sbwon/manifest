@@ -8,10 +8,13 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Callable, Awaitable
 from manifest.core.state_manager import StateManager
 from manifest.core.config import ConfigManager
+from manifest.core.logger import get_logger
 from manifest.runtime.router.terminal_router import TerminalRouter
 from manifest.runtime.agent.orchestrator import Orchestrator
 from manifest.runtime.agent.manager import AgentManager
 from manifest.runtime.agent.executor import AgentExecutor
+
+logger = get_logger(__name__)
 
 
 class AgentBridge:
@@ -99,7 +102,7 @@ class AgentBridge:
             self.is_connected = True
             return True
         except Exception as e:
-            print(f"Error initializing agent system: {e}")
+            logger.error(f"Error initializing agent system: {e}", exc_info=True)
             self.is_connected = False
             return False
     

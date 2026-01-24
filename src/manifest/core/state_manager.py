@@ -8,6 +8,9 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class StateManager:
@@ -114,7 +117,7 @@ class StateManager:
                 await f.write(json.dumps(self._state, indent=2))
             return True
         except Exception as e:
-            print(f"Error saving state: {e}")
+            logger.error(f"Error saving state: {e}", exc_info=True)
             return False
     
     def save_state_sync(self) -> bool:
@@ -126,7 +129,7 @@ class StateManager:
                 json.dump(self._state, f, indent=2)
             return True
         except Exception as e:
-            print(f"Error saving state: {e}")
+            logger.error(f"Error saving state: {e}", exc_info=True)
             return False
     
     def get_next_action_prompt(self) -> Optional[str]:
@@ -158,7 +161,7 @@ class StateManager:
                 json.dump(prd_data, f, indent=2, ensure_ascii=False)
             return True
         except Exception as e:
-            print(f"Error saving PRD: {e}")
+            logger.error(f"Error saving PRD: {e}", exc_info=True)
             return False
     
     async def save_prd_async(self, prd_data: Dict[str, Any]) -> bool:
@@ -170,7 +173,7 @@ class StateManager:
                 await f.write(json.dumps(prd_data, indent=2, ensure_ascii=False))
             return True
         except Exception as e:
-            print(f"Error saving PRD: {e}")
+            logger.error(f"Error saving PRD: {e}", exc_info=True)
             return False
     
     def load_prd(self) -> Optional[Dict[str, Any]]:
@@ -183,7 +186,7 @@ class StateManager:
             with open(prd_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception as e:
-            print(f"Error loading PRD: {e}")
+            logger.error(f"Error loading PRD: {e}", exc_info=True)
             return None
     
     async def load_prd_async(self) -> Optional[Dict[str, Any]]:
@@ -197,7 +200,7 @@ class StateManager:
                 content = await f.read()
                 return json.loads(content)
         except Exception as e:
-            print(f"Error loading PRD: {e}")
+            logger.error(f"Error loading PRD: {e}", exc_info=True)
             return None
     
     # Sprint Management
@@ -219,7 +222,7 @@ class StateManager:
                 json.dump(sprint_data, f, indent=2, ensure_ascii=False)
             return True
         except Exception as e:
-            print(f"Error saving Sprint: {e}")
+            logger.error(f"Error saving Sprint: {e}", exc_info=True)
             return False
     
     async def save_sprint_async(self, sprint_data: Dict[str, Any]) -> bool:
@@ -236,7 +239,7 @@ class StateManager:
                 await f.write(json.dumps(sprint_data, indent=2, ensure_ascii=False))
             return True
         except Exception as e:
-            print(f"Error saving Sprint: {e}")
+            logger.error(f"Error saving Sprint: {e}", exc_info=True)
             return False
     
     def load_sprint(self, sprint_id: str) -> Optional[Dict[str, Any]]:
@@ -252,7 +255,7 @@ class StateManager:
                 # Ensure test data structure exists (for backward compatibility)
                 return self._ensure_sprint_test_structure(sprint_data)
         except Exception as e:
-            print(f"Error loading Sprint: {e}")
+            logger.error(f"Error loading Sprint: {e}", exc_info=True)
             return None
     
     def _ensure_sprint_test_structure(self, sprint_data: Dict[str, Any]) -> Dict[str, Any]:
