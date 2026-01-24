@@ -350,7 +350,8 @@ class AgentBridge:
                 "context": context,
                 "model_config": model_config,
                 "stage": stage,
-                "shadow": False
+                "shadow": False,
+                "completed": False  # Track completion status
             }
             
             await self.state_manager.save_state()
@@ -504,11 +505,20 @@ class AgentBridge:
                                 )
                                 await self.state_manager.save_state()
             # Other agent types can be added here as needed
+            
+            # Mark agent as completed after execution finishes
+            if task_id in self._active_agents:
+                self._active_agents[task_id]["completed"] = True
+                self._active_agents[task_id]["status"] = "completed"
         except Exception as e:
             channel = f"squad-{task_id}-{agent_type}"
             self.state_manager.add_chat_message(
                 channel, "system", f"Error executing agent: {str(e)}"
             )
+            # Mark agent as failed
+            if task_id in self._active_agents:
+                self._active_agents[task_id]["completed"] = True
+                self._active_agents[task_id]["status"] = "failed"
             await self.state_manager.save_state()
     
     async def get_agent_status(self, task_id: str) -> Dict[str, Any]:

@@ -70,18 +70,14 @@ class WorkerSquadExecutor:
         previous_stages = {}
         
         # 1. Planner
-        planner_success = await self._execute_planner_stage(task_id, previous_stages)
-        planner_result = {
-            "status": "completed" if planner_success else "failed",
-            "output": "",
-            "plan": ""
-        }
+        planner_result = await self._execute_planner_stage(task_id, previous_stages)
+        planner_result["status"] = "completed" if planner_result.get("success") else "failed"
         stages["planner"] = planner_result
         previous_stages["planner"] = planner_result
         # Save stage result
         await self.state_manager.save_worker_squad_stage_async(task_id, "planner", planner_result)
-        if not planner_success:
-            return {"success": False, "stages": stages}
+        if not planner_result.get("success"):
+            return {"success": False, "stages": stages, "error": planner_result.get("error", "Planner stage failed")}
         
         # 2. Test (TDD - test first)
         tdd_test_result = await self._execute_tdd_test_stage(task_id, planner_result, previous_stages)
@@ -93,21 +89,18 @@ class WorkerSquadExecutor:
             return {"success": False, "stages": stages, "error": "TDD test stage failed"}
         
         # 3. Coder (implement to pass tests)
-        coder_success = await self._execute_coder_stage(task_id, test_plan=tdd_test_result, previous_stages=previous_stages)
-        coder_result = {
-            "status": "completed" if coder_success else "failed",
-            "output": "",
-            "files_modified": []
-        }
+        coder_result = await self._execute_coder_stage(task_id, test_plan=tdd_test_result, previous_stages=previous_stages)
+        coder_result["status"] = "completed" if coder_result.get("success") else "failed"
         stages["coder"] = coder_result
         previous_stages["coder"] = coder_result
         # Save stage result
         await self.state_manager.save_worker_squad_stage_async(task_id, "coder", coder_result)
-        if not coder_success:
-            return {"success": False, "stages": stages}
+        if not coder_result.get("success"):
+            return {"success": False, "stages": stages, "error": coder_result.get("error", "Coder stage failed")}
         
         # 4. Test (run tests)
         test_result = await self._execute_test_stage(task_id, previous_stages)
+        test_result["status"] = "completed" if test_result.get("success") else "failed"
         stages["test"] = test_result
         previous_stages["test"] = test_result
         # Save stage result
@@ -116,7 +109,7 @@ class WorkerSquadExecutor:
         # 5. Debug (iterative if tests fail)
         debug_iterations = 0
         max_debug_iterations = 5
-        while test_result.get("status") == "failed" and debug_iterations < max_debug_iterations:
+        while not test_result.get("success") and debug_iterations < max_debug_iterations:
             debug_result = await self._execute_debug_stage(task_id, test_result, previous_stages)
             debug_result["iteration"] = debug_iterations + 1
             stages["debug"] = debug_result
@@ -125,7 +118,7 @@ class WorkerSquadExecutor:
             await self.state_manager.save_worker_squad_stage_async(task_id, "debug", debug_result)
             debug_iterations += 1
             
-            if debug_result.get("status") == "completed":
+            if debug_result.get("success"):
                 # Re-run tests after debug
                 test_result = await self._execute_test_stage(task_id, previous_stages)
                 stages["test"] = test_result
@@ -135,7 +128,7 @@ class WorkerSquadExecutor:
             else:
                 break
         
-        if test_result.get("status") == "failed":
+        if not test_result.get("success"):
             return {"success": False, "stages": stages, "error": "Tests failed after max debug iterations"}
         
         # 6. Self Review
@@ -157,20 +150,17 @@ class WorkerSquadExecutor:
         approver_iterations = 0
         while approver_result.get("decision") == "rejected" and approver_iterations < max_approver_iterations:
             # Go back to coder
-            coder_success = await self._execute_coder_stage(
+            coder_result = await self._execute_coder_stage(
                 task_id, approver_result.get("feedback", ""), previous_stages=previous_stages
             )
-            coder_result = {
-                "status": "completed" if coder_success else "failed",
-                "output": "",
-                "iteration": approver_iterations + 1
-            }
+            coder_result["iteration"] = approver_iterations + 1
+            coder_result["status"] = "completed" if coder_result.get("success") else "failed"
             stages["coder"] = coder_result
             previous_stages["coder"] = coder_result
             # Save stage result
             await self.state_manager.save_worker_squad_stage_async(task_id, "coder", coder_result)
             
-            if not coder_success:
+            if not coder_result.get("success"):
                 return {"success": False, "stages": stages, "error": "Coder failed after approver rejection"}
             
             # Re-run self review and approver
@@ -203,9 +193,35 @@ class WorkerSquadExecutor:
             "stages": stages
         }
     
-    async def _execute_planner_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> bool:
-        """Execute Planner stage."""
-        return await self.coordinator.start_worker_agent(task_id, "planner", stage="planner", previous_stages=previous_stages or {})
+    async def _execute_planner_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Execute Planner stage and wait for completion.
+        
+        Args:
+            task_id: ID of the task to plan for.
+            previous_stages: Results from previous stages (empty for planner).
+        
+        Returns:
+            Dictionary with stage results including success, output, and parsed data.
+        """
+        result = await self.coordinator.start_worker_agent_and_wait(
+            task_id, "planner", stage="planner", previous_stages=previous_stages or {}, timeout=600.0
+        )
+        
+        # Extract plan from parsed data
+        plan = result.get("parsed_data", {}).get("plan", {})
+        if not plan:
+            # Try to extract plan from output
+            output = result.get("output", "")
+            if output:
+                plan = {"description": output[:500]}  # Use first 500 chars as plan description
+        
+        return {
+            "success": result.get("success", False),
+            "output": result.get("output", ""),
+            "plan": plan,
+            "parsed_data": result.get("parsed_data", {}),
+            "error": result.get("error")
+        }
     
     async def _execute_coder_stage(
         self,
@@ -213,8 +229,18 @@ class WorkerSquadExecutor:
         feedback: str = "",
         test_plan: Dict[str, Any] = None,
         previous_stages: Dict[str, Any] = None
-    ) -> bool:
-        """Execute Coder stage."""
+    ) -> Dict[str, Any]:
+        """Execute Coder stage and wait for completion.
+        
+        Args:
+            task_id: ID of the task to code for.
+            feedback: Optional feedback from approver if this is a rework.
+            test_plan: Optional test plan from TDD stage to guide implementation.
+            previous_stages: Results from previous stages in the workflow.
+        
+        Returns:
+            Dictionary with stage results including success, output, and parsed data.
+        """
         # If feedback provided, add it to context
         if feedback:
             # Update task with feedback
@@ -238,9 +264,20 @@ class WorkerSquadExecutor:
                 task["worker_squad"]["stages"]["tdd_test"] = test_plan
                 self.state_manager.set_task_checklist(tasks)
         
-        return await self.coordinator.start_worker_agent(
-            task_id, "coder", stage="coder", previous_stages=previous_stages or {}
+        result = await self.coordinator.start_worker_agent_and_wait(
+            task_id, "coder", stage="coder", previous_stages=previous_stages or {}, timeout=1200.0
         )
+        
+        # Extract files modified from parsed data
+        files_modified = result.get("parsed_data", {}).get("files_modified", [])
+        
+        return {
+            "success": result.get("success", False),
+            "output": result.get("output", ""),
+            "files_modified": files_modified,
+            "parsed_data": result.get("parsed_data", {}),
+            "error": result.get("error")
+        }
     
     async def _execute_tdd_test_stage(
         self,
@@ -248,26 +285,58 @@ class WorkerSquadExecutor:
         planner_result: Dict[str, Any],
         previous_stages: Dict[str, Any] = None
     ) -> Dict[str, Any]:
-        """Execute TDD Test stage (test-first approach)."""
-        # Start test agent with TDD context
-        success = await self.coordinator.start_worker_agent(
-            task_id, "test", stage="tdd_test", previous_stages=previous_stages or {}
+        """Execute TDD Test stage (test-first approach) and wait for completion.
+        
+        Args:
+            task_id: ID of the task to write tests for.
+            planner_result: Results from the planner stage containing the plan.
+            previous_stages: Results from all previous stages.
+        
+        Returns:
+            Dictionary with stage results including status, test skeleton, test plan, and TDD mode flag.
+        """
+        result = await self.coordinator.start_worker_agent_and_wait(
+            task_id, "test", stage="tdd_test", previous_stages=previous_stages or {}, timeout=600.0
         )
+        
+        # Extract test skeleton and plan from parsed data
+        parsed_data = result.get("parsed_data", {})
+        test_skeleton = parsed_data.get("test_skeleton", "")
+        test_plan = parsed_data.get("test_plan", "")
+        
         return {
-            "status": "completed" if success else "failed",
-            "test_skeleton": "",
-            "test_plan": "",
-            "tdd_mode": True
+            "success": result.get("success", False),
+            "status": "completed" if result.get("success") else "failed",
+            "test_skeleton": test_skeleton,
+            "test_plan": test_plan,
+            "tdd_mode": True,
+            "output": result.get("output", ""),
+            "error": result.get("error")
         }
     
     async def _execute_test_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Execute Test stage (run tests after implementation)."""
-        success = await self.coordinator.start_worker_agent(
-            task_id, "test", stage="test", previous_stages=previous_stages or {}
+        """Execute Test stage (run tests after implementation) and wait for completion.
+        
+        Args:
+            task_id: ID of the task to test.
+            previous_stages: Results from previous stages including coder output.
+        
+        Returns:
+            Dictionary with test execution results including success, status, and test results.
+        """
+        result = await self.coordinator.start_worker_agent_and_wait(
+            task_id, "test", stage="test", previous_stages=previous_stages or {}, timeout=600.0
         )
+        
+        # Extract test results from parsed data
+        test_results = result.get("parsed_data", {})
+        
         return {
-            "status": "completed" if success else "failed",
-            "test_results": {}
+            "success": result.get("success", False),
+            "status": "completed" if result.get("success") else "failed",
+            "test_results": test_results,
+            "output": result.get("output", ""),
+            "error": result.get("error")
         }
     
     async def _execute_debug_stage(
@@ -276,25 +345,59 @@ class WorkerSquadExecutor:
         test_result: Dict[str, Any],
         previous_stages: Dict[str, Any] = None
     ) -> Dict[str, Any]:
-        """Execute Debug stage."""
-        success = await self.coordinator.start_worker_agent(
-            task_id, "debug", stage="debug", previous_stages=previous_stages or {}
+        """Execute Debug stage and wait for completion.
+        
+        Args:
+            task_id: ID of the task to debug.
+            test_result: Results from the test stage showing what failed.
+            previous_stages: Results from all previous stages.
+        
+        Returns:
+            Dictionary with debug results including status and list of issues that were fixed.
+        """
+        result = await self.coordinator.start_worker_agent_and_wait(
+            task_id, "debug", stage="debug", previous_stages=previous_stages or {}, timeout=600.0
         )
+        
+        # Extract issues fixed from parsed data
+        issues_fixed = result.get("parsed_data", {}).get("issues_fixed", [])
+        
         return {
-            "status": "completed" if success else "failed",
-            "issues_fixed": []
+            "success": result.get("success", False),
+            "status": "completed" if result.get("success") else "failed",
+            "issues_fixed": issues_fixed,
+            "output": result.get("output", ""),
+            "error": result.get("error")
         }
     
     async def _execute_self_review_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Execute Self Review stage (Coder self-review)."""
-        # Self review is done by Coder agent
-        success = await self.coordinator.start_worker_agent(
-            task_id, "coder", stage="self_review", previous_stages=previous_stages or {}
+        """Execute Self Review stage (Coder self-review) and wait for completion.
+        
+        Args:
+            task_id: ID of the task to review.
+            previous_stages: Results from all previous stages.
+        
+        Returns:
+            Dictionary with review results including status, plan compliance flag, and any findings.
+        """
+        result = await self.coordinator.start_worker_agent_and_wait(
+            task_id, "coder", stage="self_review", previous_stages=previous_stages or {}, timeout=600.0
         )
+        
+        # Parse findings from output (could be enhanced with structured parsing)
+        findings = []
+        output = result.get("output", "")
+        if "issue" in output.lower() or "problem" in output.lower():
+            # Simple extraction - could be improved
+            findings.append("Issues found during self-review")
+        
         return {
-            "status": "completed" if success else "failed",
-            "plan_compliance": True,
-            "findings": []
+            "success": result.get("success", False),
+            "status": "completed" if result.get("success") else "failed",
+            "plan_compliance": result.get("success", False),  # Assume compliance if successful
+            "findings": findings,
+            "output": output,
+            "error": result.get("error")
         }
     
     async def _execute_approver_stage(
@@ -303,12 +406,40 @@ class WorkerSquadExecutor:
         self_review_result: Dict[str, Any],
         previous_stages: Dict[str, Any] = None
     ) -> Dict[str, Any]:
-        """Execute Approver stage."""
-        success = await self.coordinator.start_worker_agent(
-            task_id, "approver", stage="approver", previous_stages=previous_stages or {}
+        """Execute Approver stage and wait for completion.
+        
+        Args:
+            task_id: ID of the task to approve.
+            self_review_result: Results from the self review stage.
+            previous_stages: Results from all previous stages.
+        
+        Returns:
+            Dictionary with approval results including status, decision ("approved" or "rejected"), and optional feedback.
+        """
+        result = await self.coordinator.start_worker_agent_and_wait(
+            task_id, "approver", stage="approver", previous_stages=previous_stages or {}, timeout=600.0
         )
+        
+        # Extract decision and feedback from parsed data
+        parsed_data = result.get("parsed_data", {})
+        decision = parsed_data.get("decision", "pending")
+        feedback = parsed_data.get("feedback", "")
+        
+        # If no decision in parsed data, try to infer from output
+        if decision == "pending" and result.get("success"):
+            output = result.get("output", "").lower()
+            if "approved" in output or "approve" in output:
+                decision = "approved"
+            elif "rejected" in output or "reject" in output:
+                decision = "rejected"
+            else:
+                decision = "approved"  # Default to approved if successful
+        
         return {
-            "status": "completed" if success else "failed",
-            "decision": "approved" if success else "pending",
-            "feedback": ""
+            "success": result.get("success", False),
+            "status": "completed" if result.get("success") else "failed",
+            "decision": decision,
+            "feedback": feedback,
+            "output": result.get("output", ""),
+            "error": result.get("error")
         }
