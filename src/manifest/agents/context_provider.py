@@ -12,13 +12,21 @@ with context at different levels of abstraction:
 
 Different agent types receive different context tiers. Orchestrators get
 Tier 0-1 (high-level), while worker agents get Tier 0, 2-3 (scoped to their task).
+
+The provider also includes context size validation to ensure contexts fit
+within model token limits, and file size limits to prevent context overflow.
 """
 import json
+import ast
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List, Tuple
 from manifest.agents.task_scoper import TaskScoper
 from manifest.agents.skills_manager import SkillsManager
+from manifest.agents.context_size_calculator import ContextSizeCalculator
 from manifest.core.state_manager import StateManager
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ContextProvider:
@@ -104,20 +112,29 @@ class ContextProvider:
         }
         return context
     
-    def get_worker_context(self, task_id: str, agent_type: str) -> Dict[str, Any]:
+    def get_worker_context(
+        self, 
+        task_id: str, 
+        agent_type: str,
+        model_config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """Get context for worker agents scoped to a specific task.
         
         Worker agents receive Tier 0 (policies), Tier 2 (scoped blueprint),
         and Tier 3 (scoped code files). This ensures they only see context
         relevant to their task, preventing them from modifying unrelated code.
         
+        The context is validated against model token limits, and warnings are
+        logged if the context is too large.
+        
         Args:
             task_id: ID of the task the agent is working on.
             agent_type: Type of worker agent (e.g., "coder", "planner").
+            model_config: Optional model configuration for size validation.
         
         Returns:
             Dictionary containing tier_0, tier_2, tier_3, task_scope, skills,
-            and version.
+            version, and context_size_validation.
         """
         # Get task scope
         task_context = self.task_scoper.get_task_context(task_id)
@@ -141,6 +158,25 @@ class ContextProvider:
             "skills": self.get_skills_context(agent_type, task_scope),
             "version": "1.0"
         }
+        
+        # Validate context size if model config provided
+        if model_config:
+            model = model_config.get("model", "")
+            provider = model_config.get("provider", "")
+            validation = ContextSizeCalculator.validate_context_size(context, model, provider)
+            context["context_size_validation"] = validation
+            
+            if not validation.get("valid"):
+                logger.warning(
+                    f"Context for task {task_id} exceeds model limit: "
+                    f"{validation.get('estimated_tokens')} tokens > "
+                    f"{validation.get('available_tokens')} available. "
+                    f"Suggestions: {', '.join(validation.get('suggestions', []))}"
+                )
+            elif validation.get("warnings"):
+                for warning in validation.get("warnings", []):
+                    logger.warning(f"Context size warning for task {task_id}: {warning}")
+        
         return context
     
     def _load_tier_0(self) -> Dict[str, Any]:
@@ -335,6 +371,21 @@ class ContextProvider:
             base_context["test_skeleton"] = tdd_test_output.get("test_skeleton", "")
             base_context["tdd_test"] = tdd_test_output
         
+        # Validate context size if model config provided
+        if model_config:
+            from manifest.agents.context_size_calculator import ContextSizeCalculator
+            model = model_config.get("model", "")
+            provider = model_config.get("provider", "")
+            validation = ContextSizeCalculator.validate_context_size(base_context, model, provider)
+            base_context["context_size_validation"] = validation
+            
+            if not validation.get("valid"):
+                logger.warning(
+                    f"Context for task {task_id} stage {stage} exceeds model limit: "
+                    f"{validation.get('estimated_tokens')} tokens > "
+                    f"{validation.get('available_tokens')} available"
+                )
+        
         elif stage == "test":
             # Test: Tier 0, Coder output, Test skeleton
             coder_output = previous_stages.get("coder", {})
@@ -381,6 +432,25 @@ class ContextProvider:
             
             self_review_output = previous_stages.get("self_review", {})
             base_context["self_review"] = self_review_output
+        
+        # Validate context size if model config provided
+        if model_config:
+            from manifest.agents.context_size_calculator import ContextSizeCalculator
+            model = model_config.get("model", "")
+            provider = model_config.get("provider", "")
+            validation = ContextSizeCalculator.validate_context_size(base_context, model, provider)
+            base_context["context_size_validation"] = validation
+            
+            if not validation.get("valid"):
+                logger.warning(
+                    f"Context for task {task_id} stage {stage} exceeds model limit: "
+                    f"{validation.get('estimated_tokens')} tokens > "
+                    f"{validation.get('available_tokens')} available. "
+                    f"Suggestions: {', '.join(validation.get('suggestions', []))}"
+                )
+            elif validation.get("warnings"):
+                for warning in validation.get("warnings", []):
+                    logger.warning(f"Context size warning for task {task_id} stage {stage}: {warning}")
         
         return base_context
     

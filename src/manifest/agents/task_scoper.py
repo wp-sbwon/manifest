@@ -196,9 +196,22 @@ class TaskScoper:
             "allowed_directories": context.get("allowed_modifications", [])
         }
     
-    def validate_task_granularity(self, task_id: str) -> Dict[str, Any]:
+    def validate_task_granularity(
+        self, 
+        task_id: str,
+        context: Optional[Dict[str, Any]] = None,
+        model_config: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
         """
-        Validate task granularity against rules.
+        Validate task granularity against rules and context size.
+        
+        Enhanced validation that checks both file/component counts and
+        estimated context size against model limits.
+        
+        Args:
+            task_id: ID of the task to validate.
+            context: Optional pre-computed context (to avoid recomputation).
+            model_config: Optional model configuration for size validation.
         
         Returns:
             Dict with validation result:
@@ -207,12 +220,21 @@ class TaskScoper:
                 "warnings": List[str],
                 "errors": List[str],
                 "file_count": int,
-                "component_count": int
+                "component_count": int,
+                "context_size_validation": Optional[Dict]  # If model_config provided
             }
         """
-        context = self.get_task_context(task_id)
-        files = context.get("files", [])
-        components = context.get("components", [])
+        if context is None:
+            context_data = self.get_task_context(task_id)
+        else:
+            # Extract task context info from provided context
+            context_data = {
+                "files": context.get("task_scope", {}).get("allowed_files", []),
+                "components": context.get("task_scope", {}).get("components", [])
+            }
+        
+        files = context_data.get("files", [])
+        components = context_data.get("components", [])
         
         file_count = len(files)
         component_count = len(components)
@@ -235,13 +257,36 @@ class TaskScoper:
             if component_count > 3:
                 warnings.append(f"Task spans {component_count} components. Consider splitting if components are unrelated.")
         
-        return {
+        result = {
             "valid": len(errors) == 0,
             "warnings": warnings,
             "errors": errors,
             "file_count": file_count,
             "component_count": component_count
         }
+        
+        # Add context size validation if model config provided
+        if model_config and context:
+            from manifest.agents.context_size_calculator import ContextSizeCalculator
+            model = model_config.get("model", "")
+            provider = model_config.get("provider", "")
+            size_validation = ContextSizeCalculator.validate_context_size(context, model, provider)
+            result["context_size_validation"] = size_validation
+            
+            # Add context size warnings/errors
+            if not size_validation.get("valid"):
+                excess = size_validation.get("excess_tokens", 0)
+                errors.append(
+                    f"Context size ({size_validation.get('estimated_tokens')} tokens) "
+                    f"exceeds model limit ({size_validation.get('available_tokens')} tokens) "
+                    f"by {excess} tokens. Task must be split or context reduced."
+                )
+                result["valid"] = False
+            elif size_validation.get("warnings"):
+                for warning in size_validation.get("warnings", []):
+                    warnings.append(f"Context size: {warning}")
+        
+        return result
     
     def can_execute_in_parallel(self, task_id_1: str, task_id_2: str) -> bool:
         """
