@@ -147,61 +147,34 @@ class StateManager:
         """Get state version."""
         return self._state.get("version", "1.0")
     
-    # PRD Management
+    # PRD Management - Delegated to PRDManager
     def get_prd_file(self) -> Path:
         """Get PRD file path."""
         return self.manifest_dir / "prd.json"
     
     def save_prd(self, prd_data: Dict[str, Any]) -> bool:
-        """Save PRD to file."""
-        try:
-            prd_file = self.get_prd_file()
-            prd_file.parent.mkdir(parents=True, exist_ok=True)
-            with open(prd_file, "w", encoding="utf-8") as f:
-                json.dump(prd_data, f, indent=2, ensure_ascii=False)
-            return True
-        except Exception as e:
-            logger.error(f"Error saving PRD: {e}", exc_info=True)
-            return False
+        """Save PRD to file. Delegated to PRDManager if available."""
+        from manifest.core.prd_manager import PRDManager
+        prd_manager = PRDManager(self)
+        return prd_manager.save_prd(prd_data)
     
     async def save_prd_async(self, prd_data: Dict[str, Any]) -> bool:
-        """Save PRD to file asynchronously."""
-        try:
-            prd_file = self.get_prd_file()
-            prd_file.parent.mkdir(parents=True, exist_ok=True)
-            async with aiofiles.open(prd_file, "w", encoding="utf-8") as f:
-                await f.write(json.dumps(prd_data, indent=2, ensure_ascii=False))
-            return True
-        except Exception as e:
-            logger.error(f"Error saving PRD: {e}", exc_info=True)
-            return False
+        """Save PRD to file asynchronously. Delegated to PRDManager if available."""
+        from manifest.core.prd_manager import PRDManager
+        prd_manager = PRDManager(self)
+        return await prd_manager.save_prd_async(prd_data)
     
     def load_prd(self) -> Optional[Dict[str, Any]]:
-        """Load PRD from file."""
-        prd_file = self.get_prd_file()
-        if not prd_file.exists():
-            return None
-        
-        try:
-            with open(prd_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading PRD: {e}", exc_info=True)
-            return None
+        """Load PRD from file. Delegated to PRDManager if available."""
+        from manifest.core.prd_manager import PRDManager
+        prd_manager = PRDManager(self)
+        return prd_manager.load_prd()
     
     async def load_prd_async(self) -> Optional[Dict[str, Any]]:
-        """Load PRD from file asynchronously."""
-        prd_file = self.get_prd_file()
-        if not prd_file.exists():
-            return None
-        
-        try:
-            async with aiofiles.open(prd_file, "r", encoding="utf-8") as f:
-                content = await f.read()
-                return json.loads(content)
-        except Exception as e:
-            logger.error(f"Error loading PRD: {e}", exc_info=True)
-            return None
+        """Load PRD from file asynchronously. Delegated to PRDManager if available."""
+        from manifest.core.prd_manager import PRDManager
+        prd_manager = PRDManager(self)
+        return await prd_manager.load_prd_async()
     
     # Sprint Management
     def get_sprints_dir(self) -> Path:
@@ -330,7 +303,7 @@ class StateManager:
         
         return sorted(sprint_ids)
     
-    # Task Management (Orchestrator-controlled)
+    # Task Management - Delegated to TaskManager
     def create_task(
         self,
         name: str,
@@ -339,37 +312,10 @@ class StateManager:
         status: str = "pending",
         sprint_id: Optional[str] = None
     ) -> str:
-        """
-        Create a new task (Orchestrator-controlled).
-        
-        Args:
-            name: Task name
-            description: Task description
-            stage: Task stage (planning, implementation, testing, review, pending)
-            status: Task status (pending, in_progress, done, blocked, approved, cancelled)
-            sprint_id: Optional Sprint ID this task belongs to
-            
-        Returns:
-            Task ID
-        """
-        tasks = self.get_task_checklist()
-        task_id = f"task-{len(tasks) + 1}"
-        
-        task = {
-            "id": task_id,
-            "name": name,
-            "description": description,
-            "status": status,
-            "stage": stage,
-            "sprint_id": sprint_id,
-            "subtasks": [],
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat()
-        }
-        
-        tasks.append(task)
-        self.set_task_checklist(tasks)
-        return task_id
+        """Create a new task. Delegated to TaskManager."""
+        from manifest.core.task_manager import TaskManager
+        task_manager = TaskManager(self)
+        return task_manager.create_task(name, description, stage, status, sprint_id)
     
     def update_task(
         self,
@@ -379,73 +325,28 @@ class StateManager:
         status: Optional[str] = None,
         stage: Optional[str] = None
     ) -> bool:
-        """Update task properties."""
-        tasks = self.get_task_checklist()
-        for task in tasks:
-            if task.get("id") == task_id:
-                if name is not None:
-                    task["name"] = name
-                if description is not None:
-                    task["description"] = description
-                if status is not None:
-                    task["status"] = status
-                if stage is not None:
-                    task["stage"] = stage
-                task["updated_at"] = datetime.now().isoformat()
-                self.set_task_checklist(tasks)
-                return True
-        return False
+        """Update task properties. Delegated to TaskManager."""
+        from manifest.core.task_manager import TaskManager
+        task_manager = TaskManager(self)
+        return task_manager.update_task(task_id, name, description, status, stage)
     
     def cancel_task(self, task_id: str) -> bool:
-        """Cancel a task."""
-        tasks = self.get_task_checklist()
-        for task in tasks:
-            if task.get("id") == task_id:
-                task["status"] = "cancelled"
-                task["updated_at"] = datetime.now().isoformat()
-                self.set_task_checklist(tasks)
-                return True
-        return False
+        """Cancel a task. Delegated to TaskManager."""
+        from manifest.core.task_manager import TaskManager
+        task_manager = TaskManager(self)
+        return task_manager.cancel_task(task_id)
     
     def rollback_task(self, task_id: str) -> bool:
-        """Rollback a task to previous stage and revert code changes."""
-        tasks = self.get_task_checklist()
-        for task in tasks:
-            if task.get("id") == task_id:
-                # Rollback stage
-                current_stage = task.get("stage", "planning")
-                stage_order = ["pending", "planning", "implementation", "testing", "review"]
-                try:
-                    current_index = stage_order.index(current_stage)
-                    if current_index > 0:
-                        task["stage"] = stage_order[current_index - 1]
-                        task["status"] = "pending"
-                        task["updated_at"] = datetime.now().isoformat()
-                        
-                        # Note: Git revert would be handled by AgentCoordinator
-                        # This just updates the state
-                        self.set_task_checklist(tasks)
-                        return True
-                except ValueError:
-                    pass
-        return False
+        """Rollback a task. Delegated to TaskManager."""
+        from manifest.core.task_manager import TaskManager
+        task_manager = TaskManager(self)
+        return task_manager.rollback_task(task_id)
     
     def complete_task(self, task_id: str) -> bool:
-        """Mark task as completely done (after user approval)."""
-        tasks = self.get_task_checklist()
-        for task in tasks:
-            if task.get("id") == task_id:
-                task["status"] = "completed"
-                task["stage"] = "completed"
-                task["updated_at"] = datetime.now().isoformat()
-                task["completed_at"] = datetime.now().isoformat()
-                
-                # Save Git diff when task is completed
-                self.save_task_git_diff(task_id)
-                
-                self.set_task_checklist(tasks)
-                return True
-        return False
+        """Mark task as completely done. Delegated to TaskManager."""
+        from manifest.core.task_manager import TaskManager
+        task_manager = TaskManager(self)
+        return task_manager.complete_task(task_id)
     
     def find_tasks(
         self,
@@ -454,63 +355,22 @@ class StateManager:
         sprint_id: Optional[str] = None,
         agent_type: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        """
-        Find tasks matching criteria.
-        
-        Args:
-            status: Filter by status (pending, in_progress, done, blocked, approved, cancelled)
-            stage: Filter by stage (planning, implementation, testing, review, pending)
-            sprint_id: Filter by sprint ID
-            agent_type: Filter by agent type (planner, coder, test, etc.)
-            
-        Returns:
-            List of matching tasks
-        """
-        tasks = self.get_task_checklist()
-        filtered = tasks
-        
-        if status:
-            filtered = [t for t in filtered if t.get("status") == status]
-        if stage:
-            filtered = [t for t in filtered if t.get("stage") == stage]
-        if sprint_id:
-            filtered = [t for t in filtered if t.get("sprint_id") == sprint_id]
-        if agent_type:
-            filtered = [t for t in filtered if t.get("agent", {}).get("type") == agent_type]
-        
-        return filtered
+        """Find tasks matching criteria. Delegated to TaskManager."""
+        from manifest.core.task_manager import TaskManager
+        task_manager = TaskManager(self)
+        return task_manager.find_tasks(status, stage, sprint_id, agent_type)
     
     def delete_task(self, task_id: str) -> bool:
-        """
-        Delete a task.
-        
-        Args:
-            task_id: Task ID to delete
-            
-        Returns:
-            True if task was deleted, False if not found
-        """
-        tasks = self.get_task_checklist()
-        original_count = len(tasks)
-        tasks = [t for t in tasks if t.get("id") != task_id]
-        
-        if len(tasks) < original_count:
-            self.set_task_checklist(tasks)
-            return True
-        return False
+        """Delete a task. Delegated to TaskManager."""
+        from manifest.core.task_manager import TaskManager
+        task_manager = TaskManager(self)
+        return task_manager.delete_task(task_id)
     
     def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get a specific task by ID.
-        
-        Args:
-            task_id: Task ID
-            
-        Returns:
-            Task dictionary or None if not found
-        """
-        tasks = self.get_task_checklist()
-        return next((t for t in tasks if t.get("id") == task_id), None)
+        """Get a specific task by ID. Delegated to TaskManager."""
+        from manifest.core.task_manager import TaskManager
+        task_manager = TaskManager(self)
+        return task_manager.get_task(task_id)
     
     def save_worker_squad_stage(
         self,
@@ -518,40 +378,10 @@ class StateManager:
         stage: str,
         stage_result: Dict[str, Any]
     ) -> bool:
-        """
-        Save Worker Squad stage result.
-        
-        Args:
-            task_id: Task ID
-            stage: Stage name (planner, tdd_test, coder, test, debug, self_review, approver)
-            stage_result: Stage result dictionary
-            
-        Returns:
-            True if saved successfully
-        """
-        tasks = self.get_task_checklist()
-        task = next((t for t in tasks if t.get("id") == task_id), None)
-        if not task:
-            return False
-        
-        # Initialize worker_squad_stages if not exists
-        if "worker_squad_stages" not in task:
-            task["worker_squad_stages"] = {}
-        
-        # Add timestamp to stage result
-        stage_result_with_timestamp = {
-            **stage_result,
-            "timestamp": datetime.now().isoformat()
-        }
-        
-        # Save stage result
-        task["worker_squad_stages"][stage] = stage_result_with_timestamp
-        
-        # Update task updated_at
-        task["updated_at"] = datetime.now().isoformat()
-        
-        self.set_task_checklist(tasks)
-        return True
+        """Save Worker Squad stage result. Delegated to TaskManager."""
+        from manifest.core.task_manager import TaskManager
+        task_manager = TaskManager(self)
+        return task_manager.save_worker_squad_stage(task_id, stage, stage_result)
     
     async def save_worker_squad_stage_async(
         self,
@@ -559,89 +389,19 @@ class StateManager:
         stage: str,
         stage_result: Dict[str, Any]
     ) -> bool:
-        """Save Worker Squad stage result asynchronously."""
-        result = self.save_worker_squad_stage(task_id, stage, stage_result)
-        if result:
-            await self.save_state()
-        return result
+        """Save Worker Squad stage result asynchronously. Delegated to TaskManager."""
+        from manifest.core.task_manager import TaskManager
+        task_manager = TaskManager(self)
+        return await task_manager.save_worker_squad_stage_async(task_id, stage, stage_result)
     
     def get_task_git_diff(self, task_id: str) -> Optional[str]:
-        """
-        Get Git diff for a task.
-        
-        Args:
-            task_id: Task ID
-            
-        Returns:
-            Git diff string or None if Git is not available or no changes
-        """
-        try:
-            # Check if Git is available
-            result = subprocess.run(
-                ["git", "status", "--porcelain"],
-                capture_output=True,
-                text=True,
-                cwd=self.manifest_dir.parent if self.manifest_dir.parent.exists() else Path.cwd()
-            )
-            
-            if result.returncode != 0:
-                # Git not available or not a Git repository
-                return None
-            
-            # Get diff of unstaged changes
-            diff_result = subprocess.run(
-                ["git", "diff"],
-                capture_output=True,
-                text=True,
-                cwd=self.manifest_dir.parent if self.manifest_dir.parent.exists() else Path.cwd()
-            )
-            
-            if diff_result.returncode == 0 and diff_result.stdout.strip():
-                return diff_result.stdout
-            else:
-                # Try staged changes
-                diff_staged_result = subprocess.run(
-                    ["git", "diff", "--staged"],
-                    capture_output=True,
-                    text=True,
-                    cwd=self.manifest_dir.parent if self.manifest_dir.parent.exists() else Path.cwd()
-                )
-                
-                if diff_staged_result.returncode == 0 and diff_staged_result.stdout.strip():
-                    return diff_staged_result.stdout
-            
-            return None
-        except Exception as e:
-            # Git not available or error
-            return None
+        """Get Git diff for a task. Delegated to TaskManager."""
+        from manifest.core.task_manager import TaskManager
+        task_manager = TaskManager(self)
+        return task_manager.get_task_git_diff(task_id)
     
     def save_task_git_diff(self, task_id: str) -> bool:
-        """
-        Save Git diff for a task.
-        
-        Args:
-            task_id: Task ID
-            
-        Returns:
-            True if saved successfully
-        """
-        tasks = self.get_task_checklist()
-        task = next((t for t in tasks if t.get("id") == task_id), None)
-        if not task:
-            return False
-        
-        # Get Git diff
-        git_diff = self.get_task_git_diff(task_id)
-        
-        # Initialize changes if not exists
-        if "changes" not in task:
-            task["changes"] = {}
-        
-        # Save Git diff
-        task["changes"]["git_diff"] = git_diff
-        task["changes"]["git_diff_timestamp"] = datetime.now().isoformat()
-        
-        # Update task
-        task["updated_at"] = datetime.now().isoformat()
-        self.set_task_checklist(tasks)
-        return True
+        """Save Git diff for a task. Delegated to TaskManager."""
+        from manifest.core.task_manager import TaskManager
+        task_manager = TaskManager(self)
+        return task_manager.save_task_git_diff(task_id)
