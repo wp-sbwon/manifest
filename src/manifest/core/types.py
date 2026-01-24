@@ -1,16 +1,38 @@
 """
 Type definitions for Manifest using TypedDict.
-Provides structured type hints for commonly used dictionaries.
+
+This module provides structured type hints for commonly used dictionary
+structures throughout the codebase. Using TypedDict helps with type checking
+and makes the expected structure of data dictionaries explicit and documented.
+
+All TypedDict classes here represent the structure of JSON-serializable data
+that flows through the application, making it easier to understand what
+fields are expected and their types.
 """
 from typing import TypedDict, List, Optional, Dict, Any
 from datetime import datetime
 
 
 class TaskDict(TypedDict, total=False):
-    """Task dictionary structure."""
+    """Structure of a task dictionary.
+    
+    Represents a single task in the system. All fields are optional (total=False)
+    to allow for partial task data during creation or updates.
+    
+    Attributes:
+        id: Unique identifier for the task (e.g., "task-1").
+        description: Human-readable description of what the task involves.
+        status: Current status of the task. Valid values: "pending", "wip",
+            "done", "blocked", "cancelled", "completed".
+        sprint_id: Optional ID of the sprint this task belongs to.
+        agent: Optional dictionary containing agent assignment information.
+        scope: Optional dictionary defining the task's scope and boundaries.
+        worker_squad: Optional dictionary containing Worker Squad execution data.
+        e2e_test: Optional dictionary containing E2E test results for this task.
+    """
     id: str
     description: str
-    status: str  # "pending", "wip", "done", "blocked"
+    status: str  # "pending", "wip", "done", "blocked", "cancelled", "completed"
     sprint_id: Optional[str]
     agent: Optional[Dict[str, Any]]
     scope: Optional[Dict[str, Any]]
@@ -19,14 +41,35 @@ class TaskDict(TypedDict, total=False):
 
 
 class ChatMessageDict(TypedDict):
-    """Chat message dictionary structure."""
+    """Structure of a chat message.
+    
+    Represents a single message in a chat conversation. All fields are required.
+    
+    Attributes:
+        role: Role of the message sender (e.g., "user", "assistant", "system").
+        content: Text content of the message.
+        timestamp: ISO format timestamp of when the message was created.
+    """
     role: str
     content: str
     timestamp: str
 
 
 class StateDict(TypedDict, total=False):
-    """State dictionary structure."""
+    """Structure of the main application state.
+    
+    Represents the complete state of the Manifest application, including
+    tasks, chat history, and mission structure. This is what gets saved
+    to state.json.
+    
+    Attributes:
+        version: Version string of the state format (e.g., "1.0").
+        mission_tree: Dictionary containing the hierarchical mission structure.
+        task_checklist: List of all tasks in the system.
+        chat_history: Dictionary mapping channel names to lists of messages.
+        last_action: String describing the last action performed.
+        timestamp: ISO format timestamp of when state was last updated.
+    """
     version: str
     mission_tree: Dict[str, Any]
     task_checklist: List[TaskDict]
