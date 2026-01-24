@@ -4,7 +4,7 @@ Manifest TUI - Main application with 5-view workspace.
 import asyncio
 import json
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll, Grid
 from textual.widgets import Header, Footer, Tree, Input, RichLog, TabbedContent, TabPane, Static, Label, Button
@@ -320,6 +320,9 @@ class ManifestApp(App):
             )
             # Start agent coordinator (this will start container state sync if enabled)
             await self.agent_coordinator.start()
+        
+        # Initialize command handler
+        self.command_handler = CommandHandler(self)
         
         # Load state
         state = self.state_manager.get_state()
@@ -737,6 +740,70 @@ class ManifestApp(App):
             drift_pane.styles.display = "block"
             self.inspector_mode = "drift"
 
+    async def sync_blueprints(self):
+        """Synchronize blueprints using blueprint_synchronizer."""
+        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
+        
+        blueprint_file = self.manifest_dir / "blueprint.json"
+        blueprint_code_file = self.manifest_dir / "blueprint_code.json"
+        
+        top_down_blueprint = load_blueprint_with_metadata(blueprint_file, "llm_design", False)
+        bottom_up_blueprint = load_blueprint_with_metadata(blueprint_code_file, "code_extraction", True)
+        
+        # Use workflow mode by default
+        result = self.blueprint_synchronizer.sync_blueprints(
+            top_down_blueprint,
+            bottom_up_blueprint,
+            mode="workflow"
+        )
+        
+        return result
+    
+    async def resolve_conflict(self, conflict_id: str, action: str):
+        """
+        Resolve a blueprint conflict.
+        
+        Args:
+            conflict_id: Conflict identifier
+            action: Resolution action ("approved" or "rejected")
+        """
+        # Load conflict report if it exists
+        conflict_file = self.manifest_dir / "conflicts" / f"{conflict_id}.json"
+        if conflict_file.exists():
+            report = self.blueprint_synchronizer.load_conflict_report(conflict_file)
+            if report:
+                # Update conflict status
+                report.status = "resolved" if action == "approved" else "rejected"
+                report.user_decision = action
+                
+                # Save updated report
+                self.blueprint_synchronizer.save_conflict_report(report, conflict_file)
+                
+                # If approved and agent coordinator available, handle the resolution
+                if action == "approved" and self.agent_coordinator:
+                    # Get task_id from report
+                    task_id = report.task_id
+                    if task_id:
+                        # Handle blueprint conflict through agent coordinator
+                        await self.agent_coordinator.handle_blueprint_conflict(
+                            report.to_dict(),
+                            task_id
+                        )
+    
+    async def handle_blueprint_conflict(self, mismatch_report: ConflictReport):
+        """
+        Handle blueprint conflict by delegating to agent coordinator.
+        
+        Args:
+            mismatch_report: ConflictReport from blueprint synchronizer
+        """
+        if self.agent_coordinator:
+            task_id = mismatch_report.task_id
+            await self.agent_coordinator.handle_blueprint_conflict(
+                mismatch_report.to_dict(),
+                task_id
+            )
+
     @on(TabbedContent.TabActivated, "#design-tabs")
     async def on_tab_switched(self, event: TabbedContent.TabActivated) -> None:
         """Handle design tab switching."""
@@ -889,282 +956,15 @@ class ManifestApp(App):
         try:
             await asyncio.sleep(0.1)  # Small delay for UI responsiveness
             
-            # Simple command routing
-            if user_input.startswith("/"):
-                command = user_input[1:].split()[0] if user_input[1:] else ""
-                
-                if command == "audit":
-                    log.write("[bold green]Running drift audit...[/]")
-                    await self.audit_drift()
-                    log.write("[bold green]Drift audit complete.[/]")
-                elif command == "reload":
-                    await self.load_intent_data()
-                    await self.load_blueprint_data()
-                    await self.load_project_data()
-                    await self.update_architect_view()
-                    await self.update_blueprint_view()
-                    await self.update_project_view()
-                    log.write("[bold green]Data reloaded.[/]")
-                elif command == "status":
-                    if self.agent_bridge and self.agent_bridge.is_connected:
-                        status = await self.agent_bridge.get_status()
-                        log.write(f"[bold green]Status: {status}[/]")
-                    else:
-                        log.write("[bold yellow]Agent bridge not connected.[/]")
-                elif command == "start_agent" or command.startswith("start_agent"):
-                    # Format: /start_agent <task_id> <agent_type>
-                    parts = user_input.split()
-                    if len(parts) >= 3:
-                        task_id = parts[2]
-                        agent_type = parts[3] if len(parts) > 3 else "coder"
-                        if self.agent_coordinator:
-                            log.write(f"[bold green]Starting {agent_type} agent for task {task_id}...[/]")
-                            success = await self.agent_coordinator.start_worker_agent(task_id, agent_type)
-                            if success:
-                                log.write(f"[bold green]Agent started. Channel: squad-{task_id}-{agent_type}[/]")
-                                await self.update_squad_channels()
-                            else:
-                                log.write(f"[bold red]Failed to start agent.[/]")
-                        else:
-                            log.write("[bold yellow]Agent coordinator not available.[/]")
-                    else:
-                        log.write("[bold yellow]Usage: /start_agent <task_id> <agent_type>[/]")
-                elif command == "stop_agent" or command.startswith("stop_agent"):
-                    parts = user_input.split()
-                    if len(parts) >= 3:
-                        task_id = parts[2]
-                        if self.agent_coordinator:
-                            success = await self.agent_coordinator.stop_agent(task_id)
-                            if success:
-                                log.write(f"[bold green]Agent stopped for task {task_id}.[/]")
-                                await self.update_squad_channels()
-                            else:
-                                log.write(f"[bold red]Failed to stop agent.[/]")
-                        else:
-                            log.write("[bold yellow]Agent coordinator not available.[/]")
-                    else:
-                        log.write("[bold yellow]Usage: /stop_agent <task_id>[/]")
-                elif command.startswith("sync_blueprints"):
-                    log.write("[bold green]Synchronizing blueprints...[/]")
-                    await self.sync_blueprints()
-                    log.write("[bold green]Blueprint sync complete.[/]")
-                elif command.startswith("resolve_conflict"):
-                    # Format: /resolve_conflict <conflict_id> <action>
-                    parts = user_input.split()
-                    if len(parts) >= 3:
-                        conflict_id = parts[2]
-                        action = parts[3] if len(parts) > 3 else "approved"
-                        await self.resolve_conflict(conflict_id, action)
-                        log.write(f"[bold green]Conflict {conflict_id} {action}.[/]")
-                    else:
-                        log.write("[bold red]Usage: /resolve_conflict <conflict_id> <approved|rejected>[/]")
-                elif command == "config" or command.startswith("config"):
-                    # Format: /config [tab_name]
-                    parts = user_input.split()
-                    initial_tab = parts[2] if len(parts) > 2 else "api_keys"
-                    # Map tab names
-                    tab_map = {
-                        "api_keys": "api_keys",
-                        "keys": "api_keys",
-                        "models": "models",
-                        "skills": "skills",
-                        "policy": "policy"
-                    }
-                    tab = tab_map.get(initial_tab, "api_keys")
-                    self.action_open_settings(tab)
-                elif command == "sprint_history" or command.startswith("sprint_history"):
-                    await self.show_sprint_history()
-                elif command == "orchestrator" or command.startswith("orchestrator"):
-                    await self.show_orchestrator_chat()
-                elif command == "create_task" or command.startswith("create_task"):
-                    # Format: /create_task <name> [description] [stage] [status] [sprint_id]
-                    parts = user_input.split(maxsplit=5)
-                    if len(parts) >= 2:
-                        name = parts[2] if len(parts) > 2 else "New Task"
-                        description = parts[3] if len(parts) > 3 else ""
-                        stage = parts[4] if len(parts) > 4 else "planning"
-                        status = parts[5] if len(parts) > 5 else "pending"
-                        sprint_id = parts[6] if len(parts) > 6 else None
-                        
-                        task_id = self.state_manager.create_task(
-                            name=name,
-                            description=description,
-                            stage=stage,
-                            status=status,
-                            sprint_id=sprint_id
-                        )
-                        await self.state_manager.save_state()
-                        await self._load_project_data()
-                        log.write(f"[bold green]Task created: {task_id} - {name}[/]")
-                    else:
-                        log.write("[bold yellow]Usage: /create_task <name> [description] [stage] [status] [sprint_id][/]")
-                elif command == "update_task" or command.startswith("update_task"):
-                    # Format: /update_task <task_id> [name=value] [description=value] [status=value] [stage=value]
-                    parts = user_input.split(maxsplit=2)
-                    if len(parts) >= 3:
-                        task_id = parts[2]
-                        updates = {}
-                        # Parse key=value pairs
-                        update_str = parts[3] if len(parts) > 3 else ""
-                        for pair in update_str.split():
-                            if "=" in pair:
-                                key, value = pair.split("=", 1)
-                                if key in ["name", "description", "status", "stage"]:
-                                    updates[key] = value
-                        
-                        if updates:
-                            success = self.state_manager.update_task(task_id, **updates)
-                            if success:
-                                await self.state_manager.save_state()
-                                await self._load_project_data()
-                                log.write(f"[bold green]Task {task_id} updated.[/]")
-                            else:
-                                log.write(f"[bold red]Task {task_id} not found.[/]")
-                        else:
-                            log.write("[bold yellow]No updates specified. Usage: /update_task <task_id> [name=value] [status=value] ...[/]")
-                    else:
-                        log.write("[bold yellow]Usage: /update_task <task_id> [name=value] [description=value] [status=value] [stage=value][/]")
-                elif command == "delete_task" or command.startswith("delete_task"):
-                    # Format: /delete_task <task_id>
-                    parts = user_input.split()
-                    if len(parts) >= 3:
-                        task_id = parts[2]
-                        success = self.state_manager.delete_task(task_id)
-                        if success:
-                            await self.state_manager.save_state()
-                            await self._load_project_data()
-                            log.write(f"[bold green]Task {task_id} deleted.[/]")
-                        else:
-                            log.write(f"[bold red]Task {task_id} not found.[/]")
-                    else:
-                        log.write("[bold yellow]Usage: /delete_task <task_id>[/]")
-                elif command == "list_tasks" or command.startswith("list_tasks"):
-                    # Format: /list_tasks [status] [stage] [sprint_id]
-                    parts = user_input.split()
-                    status = None
-                    stage = None
-                    sprint_id = None
-                    
-                    # Parse optional filters
-                    for i in range(2, len(parts)):
-                        part = parts[i]
-                        if part.startswith("status="):
-                            status = part.split("=", 1)[1]
-                        elif part.startswith("stage="):
-                            stage = part.split("=", 1)[1]
-                        elif part.startswith("sprint="):
-                            sprint_id = part.split("=", 1)[1]
-                    
-                    tasks = self.state_manager.find_tasks(status=status, stage=stage, sprint_id=sprint_id)
-                    if tasks:
-                        log.write(f"[bold green]Found {len(tasks)} task(s):[/]")
-                        for task in tasks:
-                            task_id = task.get("id", "unknown")
-                            name = task.get("name", "Unnamed")
-                            task_status = task.get("status", "pending")
-                            task_stage = task.get("stage", "planning")
-                            log.write(f"  • {task_id}: {name} [{task_status}] [{task_stage}]")
-                    else:
-                        log.write("[bold yellow]No tasks found.[/]")
-                elif command == "approve_sprint" or command.startswith("approve_sprint"):
-                    parts = user_input.split()
-                    if len(parts) >= 3:
-                        sprint_id = parts[2]
-                        await self.show_sprint_approval_ui(sprint_id)
-                    else:
-                        log.write("[bold yellow]Usage: /approve_sprint <sprint_id>[/]")
-                elif command == "start_sprint" or command.startswith("start_sprint"):
-                    parts = user_input.split()
-                    if len(parts) >= 3:
-                        sprint_id = parts[2]
-                        if self.agent_coordinator:
-                            log.write(f"[bold green]Starting Sprint {sprint_id}...[/]")
-                            result = await self.agent_coordinator.start_sprint(sprint_id)
-                            if result.get("success"):
-                                log.write(f"[bold green]Sprint started. {len(result.get('started_tasks', []))} tasks started.[/]")
-                            else:
-                                log.write(f"[bold red]Failed to start Sprint: {result.get('error', 'Unknown error')}[/]")
-                        else:
-                            log.write("[bold yellow]Agent coordinator not available.[/]")
-                    else:
-                        log.write("[bold yellow]Usage: /start_sprint <sprint_id>[/]")
-                elif command == "apply_blueprint_updates" or command.startswith("apply_blueprint_updates"):
-                    # Apply all pending Blueprint update suggestions
-                    if not self._pending_blueprint_suggestions:
-                        log.write("[bold yellow]No pending Blueprint update suggestions.[/]")
-                    else:
-                        log.write(f"[bold green]Applying {len(self._pending_blueprint_suggestions)} Blueprint updates...[/]")
-                        results = self.structure_manager.apply_blueprint_updates_batch(
-                            self._pending_blueprint_suggestions,
-                            auto_apply=True
-                        )
-                        if results["applied"] > 0:
-                            log.write(f"[bold green]Applied {results['applied']} updates successfully.[/]")
-                            self._pending_blueprint_suggestions = []
-                            # Reload blueprint data
-                            await self.load_blueprint_data()
-                            await self._load_structure_data()
-                        if results["failed"] > 0:
-                            log.write(f"[bold red]Failed to apply {results['failed']} updates.[/]")
-                            for error in results["errors"][:5]:
-                                log.write(f"  • {error}")
-                elif command == "apply_blueprint_update" or command.startswith("apply_blueprint_update"):
-                    # Apply specific Blueprint update by index
-                    parts = user_input.split()
-                    if len(parts) >= 3:
-                        try:
-                            index = int(parts[2])
-                            if 0 <= index < len(self._pending_blueprint_suggestions):
-                                suggestion = self._pending_blueprint_suggestions[index]
-                                log.write(f"[bold green]Applying Blueprint update: {suggestion.suggestion_type}...[/]")
-                                success = self.structure_manager.apply_blueprint_update(suggestion, auto_apply=True)
-                                if success:
-                                    log.write(f"[bold green]Update applied successfully.[/]")
-                                    self._pending_blueprint_suggestions.pop(index)
-                                    await self.load_blueprint_data()
-                                    await self._load_structure_data()
-                                else:
-                                    log.write(f"[bold red]Failed to apply update.[/]")
-                            else:
-                                log.write(f"[bold yellow]Invalid index. Available: 0-{len(self._pending_blueprint_suggestions)-1}[/]")
-                        except ValueError:
-                            log.write("[bold yellow]Usage: /apply_blueprint_update <index>[/]")
-                    else:
-                        log.write("[bold yellow]Usage: /apply_blueprint_update <index>[/]")
-                elif command == "shadow_status" or command.startswith("shadow_status"):
-                    # Show shadow process status
-                    if self.agent_bridge and self.agent_bridge.shadow_manager:
-                        processes = self.agent_bridge.shadow_manager.list_active_processes()
-                        if processes:
-                            log.write(f"[bold cyan]Active Shadow Processes: {len(processes)}[/]")
-                            for proc in processes[:10]:  # Show first 10
-                                status_icon = "✅" if proc["status"] == "completed" else "⚡" if proc["status"] == "running" else "❌"
-                                log.write(f"  {status_icon} {proc['process_id']}: {proc['agent_type']} [{proc['status']}]")
-                                if proc.get("end_time"):
-                                    log.write(f"    Completed: {proc['end_time']}")
-                        else:
-                            log.write("[bold yellow]No active shadow processes.[/]")
-                    else:
-                        log.write("[bold yellow]Shadow Manager not available.[/]")
-                elif command == "shadow_stop" or command.startswith("shadow_stop"):
-                    # Stop a shadow process
-                    parts = user_input.split()
-                    if len(parts) >= 3:
-                        process_id = parts[2]
-                        if self.agent_bridge and self.agent_bridge.shadow_manager:
-                            success = await self.agent_bridge.shadow_manager.stop_shadow_process(process_id)
-                            if success:
-                                log.write(f"[bold green]Shadow process {process_id} stopped.[/]")
-                            else:
-                                log.write(f"[bold red]Failed to stop shadow process {process_id}.[/]")
-                        else:
-                            log.write("[bold yellow]Shadow Manager not available.[/]")
-                    else:
-                        log.write("[bold yellow]Usage: /shadow_stop <process_id>[/]")
-                else:
-                    log.write(f"[bold yellow]Unknown command: {command}[/]")
-            else:
-                # Regular AI interaction - send to Orchestrator
+            # Use command handler if available
+            if user_input.startswith("/") and self.command_handler:
+                handled = await self.command_handler.handle(user_input, log)
+                if handled:
+                    return
+                # If not handled, fall through to orchestrator
+            
+            # Regular AI interaction - send to Orchestrator
+            if not user_input.startswith("/"):
                 if self.agent_bridge and self.agent_bridge.is_connected and self.agent_coordinator:
                     # Get orchestrator context
                     context = self.context_provider.get_orchestrator_context()
