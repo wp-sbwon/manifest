@@ -112,7 +112,7 @@ def test_state_persistence_workflow(setup_manifest_dir):
 
 def test_drift_audit_integration(setup_manifest_dir, temp_dir):
     """Test drift audit integration."""
-    from manifest.audit.drift_auditor import DriftAuditor
+    from manifest.audit.code.drift_auditor import DriftAuditor
     
     # Create a test Python file
     test_file = temp_dir / "test_component.py"

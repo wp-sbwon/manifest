@@ -739,7 +739,7 @@ class CodeExtractor:
     
     def save_blueprint(self, blueprint: Dict[str, Any], output_path: Path) -> bool:
         """Save blueprint to file with metadata."""
-        from manifest.audit.blueprint_metadata import save_blueprint_with_metadata
+        from manifest.audit.blueprint.blueprint_metadata import save_blueprint_with_metadata
         return save_blueprint_with_metadata(
             blueprint, output_path, "code_extraction", True, "ast_parsing"
         )

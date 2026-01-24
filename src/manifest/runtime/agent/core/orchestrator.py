@@ -11,7 +11,7 @@ overall workflow.
 """
 from typing import Dict, Any, Optional, List
 from manifest.core.state_manager import StateManager
-from manifest.runtime.agent.orchestrator_prompt import get_orchestrator_prompt, ORCHESTRATOR_SYSTEM_PROMPT
+from manifest.runtime.agent.prompts.orchestrator_prompt import get_orchestrator_prompt, ORCHESTRATOR_SYSTEM_PROMPT
 
 
 class Orchestrator:

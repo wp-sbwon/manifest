@@ -8,10 +8,10 @@ from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 from dataclasses import dataclass, field
 
-from manifest.audit.code_extractor import CodeExtractor, Component, Contract
-from manifest.audit.blueprint_metadata import load_blueprint_with_metadata, save_blueprint_with_metadata
-from manifest.audit.blueprint_comparator import BlueprintComparator
-from manifest.audit.file_watcher import FileWatcher
+from manifest.audit.code.code_extractor import CodeExtractor, Component, Contract
+from manifest.audit.blueprint.blueprint_metadata import load_blueprint_with_metadata, save_blueprint_with_metadata
+from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator
+from manifest.audit.monitoring.file_watcher import FileWatcher
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -750,12 +750,12 @@ class StructureManager:
     
     def _load_blueprint(self) -> Dict[str, Any]:
         """Load current Blueprint."""
-        from manifest.audit.blueprint_loader import BlueprintLoader
+        from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         return BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=True)
     
     def _load_code_blueprint(self) -> Dict[str, Any]:
         """Load code-extracted Blueprint."""
-        from manifest.audit.blueprint_loader import BlueprintLoader
+        from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         return BlueprintLoader.load_code_blueprint(self.manifest_dir)
     
     def _find_component_in_blueprint(

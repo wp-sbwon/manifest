@@ -31,11 +31,11 @@ from textual.binding import Binding
 from manifest.core.config import get_config_manager
 from manifest.core.state_manager import StateManager
 from manifest.bridge.agent_bridge import AgentBridge
-from manifest.audit.drift_auditor import DriftAuditor
-from manifest.audit.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
-from manifest.audit.blueprint_comparator import BlueprintComparator
+from manifest.audit.code.drift_auditor import DriftAuditor
+from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
+from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator
 from manifest.ui.widgets import RequirementMap, ArchitectureGraph, FeatureTree, TaskTree, GateController
-from manifest.audit.architecture_metadata import load_architecture_with_metadata
+from manifest.audit.metadata.architecture_metadata import load_architecture_with_metadata
 from manifest.ui.bootstrap_ui import run_bootstrap
 from manifest.ui.settings_screen import SettingsScreen
 from manifest.agents.task_scoper import TaskScoper
@@ -222,7 +222,7 @@ class ManifestApp(App):
         self.blueprint_comparator = BlueprintComparator()
         
         # Structure Manager for Spec-First Management
-        from manifest.audit.structure_manager import StructureManager
+        from manifest.audit.monitoring.structure_manager import StructureManager
         self.structure_manager = StructureManager(self.manifest_dir, Path.cwd())
         self.manifest_dir = Path(".manifest")
         self.intent_data = {}
@@ -716,7 +716,7 @@ class ManifestApp(App):
         bottom_up_blueprint = self.drift_auditor.generate_bottom_up_blueprint(Path("src"))
         
         # Load top-down blueprint
-        from manifest.audit.blueprint_loader import BlueprintLoader
+        from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         top_down_blueprint = BlueprintLoader.load_blueprint(
             self.manifest_dir,
             with_metadata=True,
@@ -733,7 +733,7 @@ class ManifestApp(App):
         drift_conflicts = self.drift_auditor.audit_project()
         
         # Combine conflicts for display
-        from manifest.audit.drift_auditor import DriftConflict as DriftConflictClass
+        from manifest.audit.code.drift_auditor import DriftConflict as DriftConflictClass
         all_conflicts = drift_conflicts + [
             # Convert BlueprintConflict to DriftConflict for display
             DriftConflictClass(
@@ -835,7 +835,7 @@ class ManifestApp(App):
 
     async def sync_blueprints(self):
         """Synchronize blueprints using blueprint_synchronizer."""
-        from manifest.audit.blueprint_loader import BlueprintLoader
+        from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         
         top_down_blueprint = BlueprintLoader.load_blueprint(
             self.manifest_dir,
@@ -939,7 +939,7 @@ class ManifestApp(App):
         self.architecture_data = load_architecture_with_metadata(architecture_file)
         
         # Calculate status using BlueprintSynchronizer
-        from manifest.audit.blueprint_loader import BlueprintLoader
+        from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         
         top_down_blueprint = BlueprintLoader.load_blueprint(
             self.manifest_dir,

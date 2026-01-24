@@ -11,8 +11,8 @@ planning based on PRD, architecture, and blueprint data.
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List, AsyncIterator
-from manifest.runtime.agent.executor import AgentExecutor
-from manifest.runtime.agent.orchestrator_prompt import get_orchestrator_prompt
+from manifest.runtime.agent.core.executor import AgentExecutor
+from manifest.runtime.agent.prompts.orchestrator_prompt import get_orchestrator_prompt
 from manifest.core.state_manager import StateManager
 
 
@@ -139,7 +139,7 @@ class OrchestratorAgent:
             Content contains the orchestrator's response, questions, or
             PRD suggestions.
         """
-        from manifest.runtime.agent.orchestrator_prompt import get_ideation_prompt
+        from manifest.runtime.agent.prompts.orchestrator_prompt import get_ideation_prompt
         
         # Generate ideation prompt
         prompt = get_ideation_prompt(user_input, context, ideation_history)
@@ -193,7 +193,7 @@ class OrchestratorAgent:
             Content contains the sprint plan with task list and parallel
             execution groups.
         """
-        from manifest.runtime.agent.orchestrator_prompt import get_orchestrator_prompt
+        from manifest.runtime.agent.prompts.orchestrator_prompt import get_orchestrator_prompt
         
         # Load task granularity rules
         granularity_rules = ""

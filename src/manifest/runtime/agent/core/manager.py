@@ -11,9 +11,9 @@ configures them with the correct prompts and context.
 """
 from typing import Dict, Any, Optional, List
 from manifest.core.state_manager import StateManager
-from manifest.runtime.agent.coder_prompt import get_coder_prompt, CODER_IDENTITY
-from manifest.runtime.agent.planner_prompt import get_planner_prompt, PLANNER_IDENTITY
-from manifest.runtime.agent.orchestrator_prompt import get_orchestrator_prompt, ORCHESTRATOR_IDENTITY
+from manifest.runtime.agent.prompts.coder_prompt import get_coder_prompt, CODER_IDENTITY
+from manifest.runtime.agent.prompts.planner_prompt import get_planner_prompt, PLANNER_IDENTITY
+from manifest.runtime.agent.prompts.orchestrator_prompt import get_orchestrator_prompt, ORCHESTRATOR_IDENTITY
 
 
 class AgentManager:
@@ -95,31 +95,31 @@ class AgentManager:
         # Create actual agent instance based on type
         agent_instance = None
         if agent_type == "orchestrator" and self.executor:
-            from manifest.runtime.agent.orchestrator_agent import OrchestratorAgent
+            from manifest.runtime.agent.agents.orchestrator_agent import OrchestratorAgent
             agent_instance = OrchestratorAgent(agent_id, self.executor, self.state_manager)
         elif agent_type == "planner" and self.executor:
-            from manifest.runtime.agent.planner_agent import PlannerAgent
+            from manifest.runtime.agent.agents.planner_agent import PlannerAgent
             agent_instance = PlannerAgent(agent_id, self.executor, self.state_manager)
         elif agent_type == "coder" and self.executor:
-            from manifest.runtime.agent.coder_agent import CoderAgent
+            from manifest.runtime.agent.agents.coder_agent import CoderAgent
             agent_instance = CoderAgent(agent_id, self.executor, self.state_manager)
         elif agent_type == "test" and self.executor:
-            from manifest.runtime.agent.test_agent import TestAgent
+            from manifest.runtime.agent.agents.test_agent import TestAgent
             agent_instance = TestAgent(agent_id, self.executor, self.state_manager)
         elif agent_type == "debug" and self.executor:
-            from manifest.runtime.agent.debug_agent import DebugAgent
+            from manifest.runtime.agent.agents.debug_agent import DebugAgent
             agent_instance = DebugAgent(agent_id, self.executor, self.state_manager)
         elif agent_type == "approver" and self.executor:
-            from manifest.runtime.agent.approver_agent import ApproverAgent
+            from manifest.runtime.agent.agents.approver_agent import ApproverAgent
             agent_instance = ApproverAgent(agent_id, self.executor, self.state_manager)
         elif agent_type == "project_review" and self.executor:
-            from manifest.runtime.agent.project_review_agent import ProjectReviewAgent
+            from manifest.runtime.agent.agents.project_review_agent import ProjectReviewAgent
             agent_instance = ProjectReviewAgent(agent_id, self.executor, self.state_manager)
         elif agent_type == "e2e_test" and self.executor:
-            from manifest.runtime.agent.e2e_test_agent import E2ETestAgent
+            from manifest.runtime.agent.agents.e2e_test_agent import E2ETestAgent
             agent_instance = E2ETestAgent(agent_id, self.executor, self.state_manager)
         elif agent_type == "integration_test" and self.executor:
-            from manifest.runtime.agent.integration_test_agent import IntegrationTestAgent
+            from manifest.runtime.agent.agents.integration_test_agent import IntegrationTestAgent
             agent_instance = IntegrationTestAgent(agent_id, self.executor, self.state_manager)
         
         # Create agent object

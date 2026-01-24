@@ -60,7 +60,7 @@ class BlueprintLoader:
         
         try:
             if with_metadata:
-                from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
+                from manifest.audit.blueprint.blueprint_metadata import load_blueprint_with_metadata
                 return load_blueprint_with_metadata(
                     blueprint_file,
                     default_source,
@@ -105,7 +105,7 @@ class BlueprintLoader:
             }
         
         try:
-            from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
+            from manifest.audit.blueprint.blueprint_metadata import load_blueprint_with_metadata
             return load_blueprint_with_metadata(
                 code_blueprint_file,
                 "code_extraction",

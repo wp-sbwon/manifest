@@ -9,8 +9,8 @@ The coder can also perform self-review to verify its implementation complies
 with the original plan.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
-from manifest.runtime.agent.executor import AgentExecutor
-from manifest.runtime.agent.coder_prompt import get_coder_prompt
+from manifest.runtime.agent.core.executor import AgentExecutor
+from manifest.runtime.agent.prompts.coder_prompt import get_coder_prompt
 from manifest.core.state_manager import StateManager
 
 

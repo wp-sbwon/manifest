@@ -191,14 +191,14 @@ class ContextProvider:
             tier_1["intent"] = {"version": "1.0", "sprint": "", "features": []}
         
         # Load architecture.json with metadata
-        from manifest.audit.architecture_metadata import load_architecture_with_metadata
+        from manifest.audit.metadata.architecture_metadata import load_architecture_with_metadata
         tier_1["architecture"] = load_architecture_with_metadata(self.architecture_file)
         
         return tier_1
     
     def _load_tier_2_scoped(self, task_context: Dict[str, Any]) -> Dict[str, Any]:
         """Load Tier 2: The Blueprint (scoped to task)."""
-        from manifest.audit.blueprint_loader import BlueprintLoader
+        from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         blueprint_data = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
         
         # Filter to scoped components

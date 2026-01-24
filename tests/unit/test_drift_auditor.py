@@ -6,7 +6,7 @@ import json
 import tempfile
 import shutil
 from pathlib import Path
-from manifest.audit.drift_auditor import DriftAuditor, DriftConflict, Severity
+from manifest.audit.code.drift_auditor import DriftAuditor, DriftConflict, Severity
 
 
 @pytest.fixture

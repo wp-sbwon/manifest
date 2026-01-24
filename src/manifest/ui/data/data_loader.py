@@ -10,7 +10,7 @@ All loading methods are async to support non-blocking I/O operations.
 import json
 from pathlib import Path
 from typing import Dict, Any
-from manifest.audit.blueprint_loader import BlueprintLoader
+from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)

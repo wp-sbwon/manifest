@@ -15,8 +15,8 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
 
-from manifest.audit.blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
-from manifest.audit.drift_auditor import Severity
+from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
+from manifest.audit.code.drift_auditor import Severity
 
 
 @dataclass
@@ -366,7 +366,7 @@ class BlueprintSynchronizer:
         Returns:
             Dict with component statuses and feature completion percentages
         """
-        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
+        from manifest.audit.blueprint.blueprint_metadata import load_blueprint_with_metadata
         
         # Build component lookup
         td_components_by_id: Dict[str, Dict[str, Any]] = {}

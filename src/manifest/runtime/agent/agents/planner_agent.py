@@ -13,8 +13,8 @@ import json
 import re
 from pathlib import Path
 from typing import Dict, Any, Optional, List, AsyncIterator
-from manifest.runtime.agent.executor import AgentExecutor
-from manifest.runtime.agent.planner_prompt import get_planner_prompt
+from manifest.runtime.agent.core.executor import AgentExecutor
+from manifest.runtime.agent.prompts.planner_prompt import get_planner_prompt
 from manifest.core.state_manager import StateManager
 
 
@@ -208,7 +208,7 @@ class PlannerAgent:
             methodology_info: Dictionary containing algorithm, design_pattern,
                 and/or complexity information extracted from planner output.
         """
-        from manifest.audit.blueprint_metadata import load_blueprint_with_metadata, save_blueprint_with_metadata
+        from manifest.audit.blueprint.blueprint_metadata import load_blueprint_with_metadata, save_blueprint_with_metadata
         
         manifest_dir = Path(".manifest")
         blueprint_file = manifest_dir / "blueprint.json"

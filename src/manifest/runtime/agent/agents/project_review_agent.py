@@ -10,7 +10,7 @@ This is a higher-level review than the approver agent, which reviews
 individual tasks. The project review agent looks at the big picture.
 """
 from typing import Dict, Any, Optional, List, AsyncIterator
-from manifest.runtime.agent.executor import AgentExecutor
+from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.state_manager import StateManager
 
 

@@ -5,7 +5,7 @@ Tests LLM API integration using mocks (no real API keys needed).
 import pytest
 from unittest.mock import Mock, AsyncMock, MagicMock, patch
 from typing import AsyncIterator
-from manifest.runtime.agent.executor import AgentExecutor
+from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.config import ConfigManager
 from manifest.core.state_manager import StateManager
 

@@ -262,10 +262,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 
 from manifest.core.state_manager import StateManager
 from manifest.core.config import ConfigManager
-from manifest.runtime.agent.manager import AgentManager
-from manifest.runtime.agent.executor import AgentExecutor
+from manifest.runtime.agent.core.manager import AgentManager
+from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.runtime.hooks.prompt_hooks import HookManager, VisualRealityHook
-from manifest.audit.blueprint_synchronizer import BlueprintSynchronizer
+from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
 
 async def main():
     """Run agent in shadow process."""
