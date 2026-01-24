@@ -1,6 +1,12 @@
 """
-Logging System - Centralized logging configuration.
-Replaces all print() statements with proper logging.
+Centralized logging configuration for Manifest.
+
+This module provides a unified logging interface that replaces print()
+statements throughout the codebase. Loggers can be configured with both
+console and file handlers, with appropriate formatting and log levels.
+
+The logging system uses Python's standard logging module and provides
+convenience functions for setting up loggers with sensible defaults.
 """
 import logging
 import sys
@@ -57,15 +63,24 @@ def setup_logger(
 
 
 def get_logger(name: str, manifest_dir: Optional[Path] = None) -> logging.Logger:
-    """
-    Get or create a logger instance.
+    """Get or create a logger instance with automatic file logging.
+    
+    This is the main function to use for getting loggers throughout the
+    codebase. It automatically sets up file logging if a manifest directory
+    is provided, creating log files in the logs subdirectory.
+    
+    If the logger has already been configured (has handlers), returns the
+    existing logger to avoid duplicate handlers.
     
     Args:
-        name: Logger name (typically __name__)
-        manifest_dir: Optional .manifest directory for log files
-        
+        name: Logger name, typically the module name (e.g., __name__).
+        manifest_dir: Optional path to the .manifest directory. If provided,
+            log files will be created in manifest_dir/logs/ with a filename
+            based on the logger name.
+    
     Returns:
-        Logger instance
+        Logger instance ready to use. If manifest_dir is provided, the logger
+        will write to both console and file.
     """
     logger = logging.getLogger(name)
     

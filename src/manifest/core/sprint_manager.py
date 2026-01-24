@@ -1,6 +1,12 @@
 """
-Sprint Manager - Manages Sprint data with business logic.
-Eliminates code duplication across multiple agent files.
+Sprint management for Manifest.
+
+This module handles Sprint data operations including loading, saving, and
+updating test information. Sprints are collections of tasks that are
+executed together, and they include integration and E2E test data.
+
+The SprintManager centralizes sprint-related business logic that was
+previously duplicated across multiple agent files, improving maintainability.
 """
 from typing import Dict, Any, Optional, List
 from manifest.core.state_manager import StateManager
@@ -10,26 +16,37 @@ logger = get_logger(__name__)
 
 
 class SprintManager:
-    """Manages Sprint data with business logic."""
+    """Manages Sprint data and operations.
+    
+    Handles loading, saving, and updating sprint information including
+    test data. Sprints organize tasks into logical groups and track
+    integration and E2E test status and results.
+    
+    Attributes:
+        state_manager: Reference to StateManager for persistence operations.
+    """
     
     def __init__(self, state_manager: StateManager):
-        """
-        Initialize Sprint Manager.
+        """Initialize the sprint manager.
         
         Args:
-            state_manager: StateManager instance
+            state_manager: StateManager instance used for loading and saving
+                sprint data.
         """
         self.state_manager = state_manager
     
     def load_sprint(self, sprint_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Load sprint with validation.
+        """Load sprint data by ID.
+        
+        Delegates to StateManager but adds validation and logging. Logs
+        a warning if the sprint is not found.
         
         Args:
-            sprint_id: Sprint ID
-            
+            sprint_id: Unique identifier of the sprint to load.
+        
         Returns:
-            Sprint data or None if not found
+            Dictionary containing sprint data if found, None otherwise.
+            A warning is logged if the sprint doesn't exist.
         """
         sprint_data = self.state_manager.load_sprint(sprint_id)
         if not sprint_data:
@@ -37,14 +54,17 @@ class SprintManager:
         return sprint_data
     
     def save_sprint(self, sprint_data: Dict[str, Any]) -> bool:
-        """
-        Save sprint data.
+        """Save sprint data to disk.
+        
+        Delegates to StateManager for the actual persistence. The StateManager
+        ensures the sprint data structure is normalized before saving.
         
         Args:
-            sprint_data: Sprint data to save
-            
+            sprint_data: Dictionary containing sprint data to save. Must
+                include an "id" field.
+        
         Returns:
-            True if successful, False otherwise
+            True if save was successful, False otherwise.
         """
         return self.state_manager.save_sprint(sprint_data)
     
@@ -97,15 +117,15 @@ class SprintManager:
         return success
     
     def get_sprint_tests(self, sprint_id: str, test_type: str) -> Optional[Dict[str, Any]]:
-        """
-        Get sprint test data.
+        """Get test data for a specific test type in a sprint.
         
         Args:
-            sprint_id: Sprint ID
-            test_type: Type of test ("integration" or "e2e")
-            
+            sprint_id: ID of the sprint to query.
+            test_type: Type of test to retrieve. Must be "integration" or "e2e".
+        
         Returns:
-            Test data or None if not found
+            Dictionary containing test data if sprint exists and has test
+            data, None otherwise.
         """
         sprint_data = self.load_sprint(sprint_id)
         if not sprint_data:
@@ -120,16 +140,20 @@ class SprintManager:
         task_id: str,
         content: str
     ) -> bool:
-        """
-        Update Sprint E2E test execution results.
+        """Append E2E test execution results to a sprint.
+        
+        Adds a new execution result entry to the sprint's E2E test execution
+        history. This is called when a task completes and triggers E2E test
+        execution.
         
         Args:
-            sprint_id: Sprint ID
-            task_id: Task ID that triggered the test
-            content: Test execution content/results
-            
+            sprint_id: ID of the sprint to update.
+            task_id: ID of the task that triggered the test execution.
+            content: Test execution output or results as a string.
+        
         Returns:
-            True if successful, False otherwise
+            True if the sprint was found and updated successfully, False
+            otherwise. Errors are logged.
         """
         sprint_data = self.load_sprint(sprint_id)
         if not sprint_data:
