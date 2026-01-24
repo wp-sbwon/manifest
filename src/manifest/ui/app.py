@@ -17,6 +17,9 @@ DataLoader, and channel management to ChannelManager for better organization.
 """
 import asyncio
 import json
+import os
+import threading
+import uvicorn
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from textual.app import App, ComposeResult
@@ -26,6 +29,7 @@ from manifest.ui.widgets.structure_hierarchy_view import StructureHierarchyView
 from manifest.ui.widgets.structure_graph_view import StructureGraphView
 from manifest.ui.widgets.project_view import TaskTreeView, SprintStatusView, HistoryView, TaskSelected
 from textual import on, work
+from manifest.agents.container_api import create_container_api
 from textual.binding import Binding
 
 from manifest.core.config import get_config_manager
@@ -343,6 +347,26 @@ class ManifestApp(App):
 
         yield Footer()
 
+    async def _start_container_api(self):
+        """Start the Container API server in a background thread."""
+        def run_server():
+            api_app = create_container_api(self.state_manager)
+            # Use a fixed port for the container API
+            uvicorn.run(api_app, host="0.0.0.0", port=8000, log_level="error")
+
+        self._api_thread = threading.Thread(target=run_server, daemon=True)
+        self._api_thread.start()
+        
+        # Give the server a moment to start
+        await asyncio.sleep(1.0)
+        self.query_one("#log-main", RichLog).write("[bold green]Container API server started on port 8000.[/]")
+
+    async def _stop_container_api(self):
+        """Stop the Container API server."""
+        # Since it's a daemon thread, it will stop when the main process exits.
+        # For a more graceful shutdown, we would need to handle uvicorn's server instance.
+        pass
+
     async def on_mount(self) -> None:
         """Initialize the application after UI is mounted.
         
@@ -357,6 +381,9 @@ class ManifestApp(App):
         
         If API keys are missing, the app continues in demo mode with warnings.
         """
+        # Start Container API server for inter-container communication
+        await self._start_container_api()
+        
         # Check API keys
         if not self.config.has_all_keys():
             log = self.query_one("#log-main", RichLog)
@@ -1384,6 +1411,7 @@ class ManifestApp(App):
 
     async def on_unmount(self) -> None:
         """Cleanup on app exit."""
+        await self._stop_container_api()
         if self.agent_bridge:
             await self.agent_bridge.stop()
         await self.state_manager.save_state()

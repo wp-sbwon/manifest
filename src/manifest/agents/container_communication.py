@@ -20,21 +20,25 @@ class ContainerMessageBus:
     Supports HTTP-based messaging and state synchronization.
     """
     
-    def __init__(self, base_url: str = "http://manifest-app:8000"):
+    def __init__(self, base_url: str = "http://manifest-app:8000", agent_id: Optional[str] = None):
         """
         Initialize message bus.
         
         Args:
             base_url: Base URL for the main app container
+            agent_id: Optional agent ID for direct messaging
         """
         self.base_url = base_url
+        self.agent_id = agent_id
         self.client: Optional[httpx.AsyncClient] = None
         self.message_queue: List[Dict[str, Any]] = []
         self.subscribers: Dict[str, List[callable]] = {}  # topic -> callbacks
+        self.last_received_timestamp: Optional[str] = None
     
     async def connect(self):
         """Connect to message bus."""
-        self.client = httpx.AsyncClient(timeout=30.0)
+        if not self.client:
+            self.client = httpx.AsyncClient(timeout=30.0)
     
     async def disconnect(self):
         """Disconnect from message bus."""
@@ -77,7 +81,7 @@ class ContainerMessageBus:
             )
             return response.status_code == 200
         except Exception as e:
-            logger.error(f"Error sending message: {e}", exc_info=True)
+            logger.error(f"Error sending message: {e}")
             # Fallback: store locally
             self.message_queue.append(payload)
             return False
@@ -106,11 +110,19 @@ class ContainerMessageBus:
         """Poll for messages and dispatch to subscribers."""
         while True:
             try:
-                # Poll for all subscribed topics
-                for topic in self.subscribers.keys():
-                    messages = await self.receive_messages(topic=topic, timeout=1.0)
-                    for message in messages:
-                        # Dispatch to all subscribers for this topic
+                # Poll for all messages since last received
+                messages = await self.receive_messages(since=self.last_received_timestamp)
+                
+                for message in messages:
+                    topic = message.get("topic")
+                    timestamp = message.get("timestamp")
+                    
+                    # Update last received timestamp
+                    if not self.last_received_timestamp or timestamp > self.last_received_timestamp:
+                        self.last_received_timestamp = timestamp
+                    
+                    # Dispatch to subscribers for this topic
+                    if topic in self.subscribers:
                         for callback in self.subscribers.get(topic, []):
                             try:
                                 if asyncio.iscoroutinefunction(callback):
@@ -118,18 +130,19 @@ class ContainerMessageBus:
                                 else:
                                     callback(message)
                             except Exception as e:
-                                logger.error(f"Error in subscriber callback for topic {topic}: {e}", exc_info=True)
+                                logger.error(f"Error in subscriber callback for topic {topic}: {e}")
                 
                 await asyncio.sleep(1.0)  # Poll interval
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                logger.error(f"Error in message polling: {e}", exc_info=True)
+                logger.error(f"Error in message polling: {e}")
                 await asyncio.sleep(5.0)  # Wait before retrying
     
     async def receive_messages(
         self,
         topic: Optional[str] = None,
+        since: Optional[str] = None,
         timeout: float = 5.0
     ) -> List[Dict[str, Any]]:
         """
@@ -137,6 +150,7 @@ class ContainerMessageBus:
         
         Args:
             topic: Optional topic filter
+            since: Optional timestamp filter
             timeout: Timeout in seconds
             
         Returns:
@@ -149,6 +163,10 @@ class ContainerMessageBus:
             params = {}
             if topic:
                 params["topic"] = topic
+            if since:
+                params["since"] = since
+            if self.agent_id:
+                params["target_agent"] = self.agent_id
             
             response = await self.client.get(
                 f"{self.base_url}/api/messages",
@@ -159,7 +177,7 @@ class ContainerMessageBus:
             if response.status_code == 200:
                 return response.json().get("messages", [])
         except Exception as e:
-            logger.error(f"Error receiving messages: {e}", exc_info=True)
+            logger.error(f"Error receiving messages: {e}")
         
         return []
     
@@ -283,27 +301,52 @@ class ContainerStateSync:
         """Handle incoming state update."""
         payload = message.get("payload", {})
         agent_id = payload.get("agent_id")
-        state = payload.get("state", {})
+        remote_state = payload.get("state", {})
+        remote_timestamp = remote_state.get("timestamp")
         
-        # Merge state updates (conflict resolution needed in production)
+        if agent_id == "local":
+            return  # Ignore our own broadcasts
+            
+        # Merge state updates (conflict resolution using timestamps)
         current_state = self.state_manager.get_state()
+        local_timestamp = current_state.get("last_updated")
         
+        # Only update if remote state is newer
+        if remote_timestamp and local_timestamp and remote_timestamp <= local_timestamp:
+            logger.debug(f"Ignoring older state update from {agent_id}")
+            return
+            
         # Update mission tree if provided
-        if "mission_tree" in state:
+        if "mission_tree" in remote_state:
             current_mission = current_state.get("mission_tree", {})
-            # Merge logic (simple merge for now)
-            current_state["mission_tree"] = {**current_mission, **state["mission_tree"]}
-            self.state_manager.set_mission_tree(current_state["mission_tree"])
+            # Merge logic: remote mission tree is considered ground truth for its parts
+            merged_mission = {**current_mission, **remote_state["mission_tree"]}
+            self.state_manager.set_mission_tree(merged_mission)
         
         # Update task checklist if provided
-        if "task_checklist" in state:
+        if "task_checklist" in remote_state:
             current_tasks = current_state.get("task_checklist", [])
-            # Merge task updates
             task_map = {t.get("id"): t for t in current_tasks}
-            for task in state["task_checklist"]:
-                task_id = task.get("id")
-                if task_id:
-                    task_map[task_id] = {**task_map.get(task_id, {}), **task}
+            
+            for remote_task in remote_state["task_checklist"]:
+                task_id = remote_task.get("id")
+                if not task_id:
+                    continue
+                    
+                local_task = task_map.get(task_id)
+                if not local_task:
+                    # New task from remote
+                    task_map[task_id] = remote_task
+                else:
+                    # Update existing task if remote is newer
+                    remote_task_updated = remote_task.get("updated_at")
+                    local_task_updated = local_task.get("updated_at")
+                    
+                    if not local_task_updated or (remote_task_updated and remote_task_updated > local_task_updated):
+                        task_map[task_id] = {**local_task, **remote_task}
+            
             self.state_manager.set_task_checklist(list(task_map.values()))
         
+        # Save merged state
         await self.state_manager.save_state()
+        logger.info(f"Merged state update from {agent_id}")
