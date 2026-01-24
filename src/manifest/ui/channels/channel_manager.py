@@ -103,12 +103,30 @@ class ChannelManager:
             return None
     
     def _setup_channel_button(self, button_id: str, channel_name: str):
-        """Set up click handler for channel button."""
+        """Set up click handler for channel button.
+        
+        Creates a closure-based click handler that properly captures the
+        channel name when the button is clicked. This ensures the correct
+        channel is switched to when the button is pressed.
+        
+        Args:
+            button_id: ID of the button widget to set up.
+            channel_name: Name of the channel to switch to when clicked.
+        """
         try:
             button = self.app.query_one(f"#{button_id}", Button)
             # Use a closure to properly capture channel_name
             def make_handler(ch_name):
+                """Create a click handler closure for a specific channel.
+                
+                Args:
+                    ch_name: Channel name to capture in closure.
+                
+                Returns:
+                    Handler function that switches to the channel.
+                """
                 def handler():
+                    """Handle button click to switch channel."""
                     self.switch_channel(ch_name)
                 return handler
             button.on_click = make_handler(channel_name)

@@ -12,6 +12,18 @@ import uuid
 
 # Message models
 class Message(BaseModel):
+    """Message model for inter-container communication.
+    
+    Represents a message sent between containers or agents. Messages
+    are routed by topic and can target specific agents.
+    
+    Attributes:
+        id: Unique message identifier.
+        topic: Message topic/category for routing.
+        timestamp: ISO timestamp when message was created.
+        payload: Message data dictionary.
+        target_agent: Optional target agent ID for direct messaging.
+    """
     id: str
     topic: str
     timestamp: str
@@ -20,6 +32,15 @@ class Message(BaseModel):
 
 
 class MessageResponse(BaseModel):
+    """Response model for message posting operations.
+    
+    Indicates whether a message was successfully posted to the
+    message bus and provides the message ID for tracking.
+    
+    Attributes:
+        success: Whether the message was posted successfully.
+        message_id: ID of the posted message.
+    """
     success: bool
     message_id: str
 

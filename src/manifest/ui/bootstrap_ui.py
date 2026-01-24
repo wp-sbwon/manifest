@@ -44,6 +44,15 @@ class BootstrapApp(App):
         self.validation_results = {}
     
     def compose(self) -> ComposeResult:
+        """Compose the bootstrap UI layout.
+        
+        Creates the initial UI structure with API key input fields for
+        Anthropic, OpenAI, and Google providers, along with validation
+        and save buttons.
+        
+        Returns:
+            ComposeResult containing all UI widgets to be mounted.
+        """
         yield Header()
         with Container(classes="bootstrap-container"):
             yield Label("🔐 Manifest API Key Configuration", classes="status-header")
@@ -86,6 +95,12 @@ class BootstrapApp(App):
         yield Footer()
     
     def on_mount(self) -> None:
+        """Handle app mount event.
+        
+        Sets focus to the Anthropic API key input field when the app
+        is mounted, providing a better user experience by starting
+        at the first input.
+        """
         self.query_one("#anthropic-key").focus()
     
     @on(Button.Pressed, "#save-btn")
