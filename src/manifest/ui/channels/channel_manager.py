@@ -71,8 +71,15 @@ class ChannelManager:
             
             # Create button for this channel
             button_id = f"btn-channel-{channel_name}"
+            # Get message count for label
+            history = self.state_manager.get_chat_history(channel_name)
+            message_count = len(history)
+            label = f"{agent_type.title()}({task_id[:8]})"
+            if message_count > 0:
+                label += f" [{message_count}]"
+            
             channel_button = Button(
-                f"{agent_type.title()} ({task_id[:8]})",
+                label,
                 id=button_id,
                 variant="default"
             )
@@ -85,7 +92,8 @@ class ChannelManager:
                 "tab_id": tab_id,
                 "button_id": button_id,
                 "task_id": task_id,
-                "agent_type": agent_type
+                "agent_type": agent_type,
+                "message_count": message_count
             }
             
             # Set up button click handler
@@ -173,6 +181,9 @@ class ChannelManager:
         """
         Refresh log display for current channel.
         
+        Improved version that formats output based on channel type and
+        provides better visual distinction between different agent types.
+        
         Args:
             channel_name: Name of channel to refresh
         """
@@ -181,14 +192,54 @@ class ChannelManager:
         
         # Load chat history for this channel
         history = self.state_manager.get_chat_history(channel_name)
-        for msg in history:
-            role = msg.get("role", "assistant")
-            content = msg.get("content", "")
-            
-            if role == "user":
-                log.write(f"[bold blue]User:[/] {content}")
+        
+        if not history:
+            log.write(f"[dim]No messages in channel: {channel_name}[/]")
+            return
+        
+        # Format based on channel type
+        if channel_name == "main" or channel_name == "main-orchestrator":
+            # Main channel - simple format
+            for msg in history:
+                role = msg.get("role", "assistant")
+                content = msg.get("content", "")
+                
+                if role == "user":
+                    log.write(f"[bold blue]User:[/] {content}")
+                else:
+                    log.write(f"[bold green]Assistant:[/] {content}")
+        else:
+            # Squad or shadow channel - format with channel label
+            parts = channel_name.split("-")
+            if len(parts) >= 3:
+                task_id_short = parts[1][:8] if len(parts[1]) > 8 else parts[1]
+                agent_type = parts[2] if len(parts) > 2 else "agent"
+                
+                channel_label = f"{agent_type.title()}[{task_id_short}]"
+                if channel_name.startswith("shadow-"):
+                    channel_label = f"Shadow:{agent_type.title()}[{task_id_short}]"
+                
+                for msg in history:
+                    role = msg.get("role", "assistant")
+                    content = msg.get("content", "")
+                    
+                    if role == "user":
+                        log.write(f"[bold blue][{channel_label}] User:[/] {content}")
+                    else:
+                        if channel_name.startswith("shadow-"):
+                            log.write(f"[bold yellow][{channel_label}] {agent_type.title()}:[/] {content}")
+                        else:
+                            log.write(f"[bold cyan][{channel_label}] {agent_type.title()}:[/] {content}")
             else:
-                log.write(f"[bold green]Assistant:[/] {content}")
+                # Fallback for unknown channel format
+                for msg in history:
+                    role = msg.get("role", "assistant")
+                    content = msg.get("content", "")
+                    
+                    if role == "user":
+                        log.write(f"[bold blue][{channel_name}] User:[/] {content}")
+                    else:
+                        log.write(f"[bold green][{channel_name}] Assistant:[/] {content}")
     
     async def update_squad_channels(self, agent_coordinator: Any):
         """
@@ -229,14 +280,26 @@ class ChannelManager:
         """
         Handle agent output and display in appropriate channel.
         
+        Improved version with better real-time streaming and channel filtering.
+        Always updates state, but only displays in UI if channel is active or
+        if "show all" mode is enabled.
+        
         Args:
             channel: Channel name (e.g., "main", "squad-task-1-planner")
             content: Message content
             role: Message role ("user" or "assistant")
         """
-        # Update state
+        # Always update state (for persistence)
         self.state_manager.add_chat_message(channel, role, content)
         await self.state_manager.save_state()
+        
+        # Update channel message count
+        if channel in self.squad_channels:
+            if "message_count" not in self.squad_channels[channel]:
+                self.squad_channels[channel]["message_count"] = 0
+            self.squad_channels[channel]["message_count"] += 1
+            # Update button label with count
+            await self._update_channel_button_label(channel)
         
         # Display in UI only if this is the active channel
         try:
@@ -291,3 +354,49 @@ class ChannelManager:
                         await self.create_squad_channel(task_id, agent_type)
         except Exception as e:
             logger.error(f"Error displaying agent output: {e}", exc_info=True)
+    
+    async def _update_channel_button_label(self, channel_name: str):
+        """Update channel button label with message count.
+        
+        Args:
+            channel_name: Name of the channel to update.
+        """
+        if channel_name not in self.squad_channels:
+            return
+        
+        try:
+            channel_info = self.squad_channels[channel_name]
+            button_id = channel_info.get("button_id")
+            if not button_id:
+                return
+            
+            button = self.app.query_one(f"#{button_id}", Button)
+            agent_type = channel_info.get("agent_type", "agent")
+            task_id = channel_info.get("task_id", "")
+            task_id_short = task_id[:8] if len(task_id) > 8 else task_id
+            message_count = channel_info.get("message_count", 0)
+            
+            # Update button label with count
+            label = f"{agent_type.title()}({task_id_short})"
+            if message_count > 0:
+                label += f" [{message_count}]"
+            button.label = label
+        except Exception as e:
+            logger.debug(f"Could not update channel button label: {e}")
+    
+    def get_channel_summary(self) -> Dict[str, Any]:
+        """Get summary of all channels with message counts.
+        
+        Returns:
+            Dictionary mapping channel names to their info including message counts.
+        """
+        summary = {}
+        for channel_name, channel_info in self.squad_channels.items():
+            history = self.state_manager.get_chat_history(channel_name)
+            summary[channel_name] = {
+                "task_id": channel_info.get("task_id"),
+                "agent_type": channel_info.get("agent_type"),
+                "message_count": len(history),
+                "is_active": channel_name == self.active_channel
+            }
+        return summary
