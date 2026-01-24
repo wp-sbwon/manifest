@@ -58,12 +58,17 @@
 
 ## Medium Priority 항목 현황
 
-### ⏳ 5. AgentCoordinator 클래스 분리
-**상태**: 미완료  
-**현재 상태**:
-- `agent_coordinator.py`: 895줄 (원래 883줄)
-- Worker Squad Executor 분리 필요
-- Sprint Manager 분리 필요
+### ✅ 5. AgentCoordinator 클래스 분리
+**상태**: 완료  
+**작업 내용**:
+- **Worker Squad Executor 분리**: ✅ 완료
+  - `WorkerSquadExecutor` 클래스 생성 (`agents/worker_squad_executor.py`)
+  - `execute_worker_squad` 및 모든 stage 실행 메서드 분리
+- **Sprint Executor 분리**: ✅ 완료
+  - `SprintExecutor` 클래스 생성 (`agents/sprint_executor.py`)
+  - `start_sprint`, `write_sprint_tests`, `run_sprint_tests` 메서드 분리
+- **결과**:
+  - `agent_coordinator.py`: 895줄 → 537줄 (약 40% 감소, 358줄 감소)
 
 ### ⏳ 6. 타입 힌트 강화
 **상태**: 미완료  
@@ -99,20 +104,22 @@
 ## 통계
 
 ### 파일 크기 변화
-- `app.py`: 1,584줄 → 1,202줄 (24% 감소)
-- `agent_coordinator.py`: 883줄 → 895줄 (거의 동일)
+- `app.py`: 1,584줄 → 1,202줄 (24% 감소, 382줄 감소)
+- `agent_coordinator.py`: 895줄 → 537줄 (40% 감소, 358줄 감소)
 
 ### 새로 생성된 파일
 1. `ui/commands/command_handler.py` (~354줄)
 2. `ui/commands/command_parser.py` (~73줄)
 3. `ui/data/data_loader.py` (~115줄)
 4. `ui/channels/channel_manager.py` (~254줄)
+5. `agents/worker_squad_executor.py` (~254줄)
+6. `agents/sprint_executor.py` (~200줄)
 
 ### 코드 변경 통계
-- 총 커밋: 7개
-- 변경된 파일: 25개 이상
-- 제거된 코드: 약 500줄 이상
-- 추가된 구조: 4개의 새로운 클래스
+- 총 커밋: 10개
+- 변경된 파일: 30개 이상
+- 제거된 코드: 약 900줄 이상
+- 추가된 구조: 6개의 새로운 클래스
 
 ## 완료 요약
 
@@ -124,6 +131,13 @@
 - ✅ process_command 메서드 리팩토링 (100% 완료)
 
 **High Priority 완료율**: 100% ✅
+
+### Medium Priority 항목
+- ✅ AgentCoordinator 클래스 분리 (100% 완료)
+  - Worker Squad Executor 분리 완료
+  - Sprint Executor 분리 완료
+
+**Medium Priority 완료율**: 25% (1/4 완료)
 
 ## 다음 단계 권장사항
 
