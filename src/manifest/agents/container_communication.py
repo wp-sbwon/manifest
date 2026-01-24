@@ -9,6 +9,9 @@ from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime
 import uuid
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ContainerMessageBus:
@@ -74,7 +77,7 @@ class ContainerMessageBus:
             )
             return response.status_code == 200
         except Exception as e:
-            print(f"Error sending message: {e}")
+            logger.error(f"Error sending message: {e}", exc_info=True)
             # Fallback: store locally
             self.message_queue.append(payload)
             return False
@@ -115,13 +118,13 @@ class ContainerMessageBus:
                                 else:
                                     callback(message)
                             except Exception as e:
-                                print(f"Error in subscriber callback for topic {topic}: {e}")
+                                logger.error(f"Error in subscriber callback for topic {topic}: {e}", exc_info=True)
                 
                 await asyncio.sleep(1.0)  # Poll interval
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"Error in message polling: {e}")
+                logger.error(f"Error in message polling: {e}", exc_info=True)
                 await asyncio.sleep(5.0)  # Wait before retrying
     
     async def receive_messages(
@@ -156,7 +159,7 @@ class ContainerMessageBus:
             if response.status_code == 200:
                 return response.json().get("messages", [])
         except Exception as e:
-            print(f"Error receiving messages: {e}")
+            logger.error(f"Error receiving messages: {e}", exc_info=True)
         
         return []
     
@@ -208,7 +211,7 @@ class ContainerMessageBus:
             if response.status_code == 200:
                 return response.json()
         except Exception as e:
-            print(f"Error requesting agent status: {e}")
+            logger.error(f"Error requesting agent status: {e}", exc_info=True)
         
         return None
 
@@ -259,7 +262,7 @@ class ContainerStateSync:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"Error in sync loop: {e}")
+                logger.error(f"Error in sync loop: {e}", exc_info=True)
     
     async def _sync_state(self):
         """Synchronize state with other containers."""
