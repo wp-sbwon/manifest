@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Dict, Any, Optional, AsyncIterator, Callable, Awaitable
 from datetime import datetime
 from dataclasses import dataclass, field
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -264,7 +267,7 @@ async def main():
     )
     
     if not agent or not agent.get("instance"):
-        print(f"[error] Failed to create agent: {agent_type}", file=sys.stderr)
+        logger.error(f"Failed to create agent: {agent_type}")
         sys.exit(1)
     
     agent_instance = agent["instance"]
@@ -315,7 +318,7 @@ async def main():
                 elif chunk.get("type") == "complete":
                     print(chunk.get("content", ""), flush=True)
     except Exception as e:
-        print(f"[error] Agent execution failed: {{str(e)}}", file=sys.stderr)
+        logger.error(f"Agent execution failed: {str(e)}", exc_info=True)
         import traceback
         traceback.print_exc(file=sys.stderr)
         sys.exit(1)
@@ -365,7 +368,7 @@ if __name__ == "__main__":
                 shadow_process.end_time = datetime.utcnow().isoformat()
                 return True
         except Exception as e:
-            print(f"Error stopping shadow process {process_id}: {e}")
+            logger.error(f"Error stopping shadow process {process_id}: {e}", exc_info=True)
             return False
     
     def get_process_status(self, process_id: str) -> Optional[Dict[str, Any]]:

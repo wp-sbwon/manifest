@@ -6,6 +6,9 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional, Set, Callable
 from datetime import datetime
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class FileWatcher:
@@ -176,7 +179,7 @@ class FileWatcher:
                     try:
                         callback(code_files)
                     except Exception as e:
-                        print(f"Error in change callback: {e}")
+                        logger.error(f"Error in change callback: {e}", exc_info=True)
             
             self._last_check = datetime.now()
         
