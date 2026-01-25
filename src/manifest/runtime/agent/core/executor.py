@@ -50,10 +50,11 @@ class AgentExecutor:
         self,
         agent_id: str,
         agent_type: str,
-        prompt: str,
+        prompt: Optional[str],
         model_config: Dict[str, Any],
         context: Optional[Dict[str, Any]] = None,
-        message_history: Optional[List[Dict[str, str]]] = None
+        message_history: Optional[List[Dict[str, Any]]] = None,
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Execute an agent by making LLM API calls.
@@ -61,13 +62,14 @@ class AgentExecutor:
         Args:
             agent_id: Agent identifier
             agent_type: Type of agent (orchestrator, planner, coder, etc.)
-            prompt: Agent prompt (system + user prompt)
+            prompt: Agent prompt (system + user prompt). Can be None for continuing conversation.
             model_config: Model configuration (provider, model, api_key)
             context: Additional context
-            message_history: Previous message history
+            message_history: Previous message history (can contain tool_result content blocks)
+            tools: Optional tool definitions. If None, uses default tools.
             
         Yields:
-            Dict with 'type' (chunk/complete/error) and 'content'
+            Dict with 'type' (chunk/complete/error/tool_use/tool_result) and 'content'
         """
         provider = model_config.get("provider", "anthropic")
         model = model_config.get("model", "claude-3-5-sonnet-20241022")
@@ -77,16 +79,19 @@ class AgentExecutor:
             yield {"type": "error", "content": "API key not provided"}
             return
         
-        # Apply prompt hooks (intercept and modify prompt)
-        modified_prompt = await self.hook_manager.apply_hooks(
-            agent_id=agent_id,
-            agent_type=agent_type,
-            prompt=prompt,
-            context=context,
-            message_history=message_history
-        )
+        # Apply prompt hooks (intercept and modify prompt) - only if prompt is provided
+        if prompt:
+            modified_prompt = await self.hook_manager.apply_hooks(
+                agent_id=agent_id,
+                agent_type=agent_type,
+                prompt=prompt,
+                context=context,
+                message_history=message_history
+            )
+        else:
+            modified_prompt = None
         
-        # Prepare messages
+        # Prepare messages (prompt can be None for continuing conversation)
         messages = self._prepare_messages(modified_prompt, message_history or [])
         
         # Create session
@@ -117,18 +122,22 @@ class AgentExecutor:
     
     def _prepare_messages(
         self,
-        prompt: str,
-        history: List[Dict[str, str]]
-    ) -> List[Dict[str, str]]:
+        prompt: Optional[str],
+        history: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
         """Prepare message list for LLM API from prompt and history.
         
         Extracts system message from the prompt if present (separated by "##"),
         then adds conversation history, and finally adds the current user message.
         The format matches what LLM APIs expect (list of role/content dictionaries).
         
+        Supports Anthropic's tool_result content blocks in message history.
+        
         Args:
             prompt: Complete prompt string that may contain system and user parts.
+                If None, only history is used (for continuing conversation).
             history: Previous conversation messages as list of role/content dicts.
+                Can contain Anthropic-style content blocks for tool_result.
         
         Returns:
             List of message dictionaries with "role" and "content" keys,
@@ -137,22 +146,23 @@ class AgentExecutor:
         messages = []
         
         # Add system message (extract from prompt if needed)
-        system_parts = prompt.split("\n\n##", 1)
-        if len(system_parts) > 1:
-            system_message = system_parts[0].strip()
-            user_message = "##" + system_parts[1]
-        else:
-            system_message = ""
-            user_message = prompt
+        if prompt:
+            system_parts = prompt.split("\n\n##", 1)
+            if len(system_parts) > 1:
+                system_message = system_parts[0].strip()
+                user_message = "##" + system_parts[1]
+            else:
+                system_message = ""
+                user_message = prompt
+            
+            if system_message:
+                messages.append({"role": "system", "content": system_message})
+            
+            # Add current user message
+            messages.append({"role": "user", "content": user_message})
         
-        if system_message:
-            messages.append({"role": "system", "content": system_message})
-        
-        # Add history
+        # Add history (may contain tool_result content blocks for Anthropic)
         messages.extend(history)
-        
-        # Add current user message
-        messages.append({"role": "user", "content": user_message})
         
         return messages
     
@@ -184,10 +194,25 @@ class AgentExecutor:
         for msg in messages:
             if msg["role"] == "system":
                 system_message = msg["content"]
-            else:
+            elif msg["role"] == "user":
+                # Handle Anthropic content blocks (for tool_result)
+                content = msg.get("content")
+                if isinstance(content, list):
+                    # Content is already in Anthropic format (list of content blocks)
+                    api_messages.append({
+                        "role": "user",
+                        "content": content
+                    })
+                else:
+                    # Regular string content
+                    api_messages.append({
+                        "role": "user",
+                        "content": content
+                    })
+            elif msg["role"] == "assistant":
                 api_messages.append({
-                    "role": msg["role"],
-                    "content": msg["content"]
+                    "role": "assistant",
+                    "content": msg.get("content", "")
                 })
         
         url = "https://api.anthropic.com/v1/messages"
@@ -226,6 +251,10 @@ class AgentExecutor:
                     return
                 
                 full_content = ""
+                tool_use_blocks = []
+                current_tool_use = None
+                current_tool_input = ""
+                
                 async for line in response.aiter_lines():
                     if not line.strip():
                         continue
@@ -237,23 +266,92 @@ class AgentExecutor:
                         
                         try:
                             data = json.loads(data_str)
-                            if data.get("type") == "content_block_delta":
+                            event_type = data.get("type")
+                            
+                            # Handle content_block_start (tool_use or text)
+                            if event_type == "content_block_start":
+                                content_block = data.get("content_block", {})
+                                block_type = content_block.get("type")
+                                
+                                if block_type == "tool_use":
+                                    # Start of a tool_use block
+                                    current_tool_use = {
+                                        "id": content_block.get("id"),
+                                        "name": content_block.get("name"),
+                                        "input": {}
+                                    }
+                                    current_tool_input = ""
+                                    yield {
+                                        "type": "tool_use_start",
+                                        "tool_call": {
+                                            "id": current_tool_use["id"],
+                                            "name": current_tool_use["name"]
+                                        }
+                                    }
+                            
+                            # Handle content_block_delta (text or tool input)
+                            elif event_type == "content_block_delta":
                                 delta = data.get("delta", {})
-                                text = delta.get("text", "")
-                                if text:
-                                    full_content += text
-                                    yield {"type": "chunk", "content": text}
+                                
+                                if "text" in delta:
+                                    # Text content
+                                    text = delta.get("text", "")
+                                    if text:
+                                        full_content += text
+                                        yield {"type": "chunk", "content": text}
+                                
+                                elif "partial_json" in delta and current_tool_use:
+                                    # Tool input is being streamed as partial JSON
+                                    current_tool_input += delta.get("partial_json", "")
+                            
+                            # Handle content_block_stop (tool_use complete)
+                            elif event_type == "content_block_stop" and current_tool_use:
+                                # Try to parse the complete tool input
+                                try:
+                                    if current_tool_input:
+                                        current_tool_use["input"] = json.loads(current_tool_input)
+                                    else:
+                                        # If no input was streamed, check if it was in the start block
+                                        pass
+                                except json.JSONDecodeError:
+                                    # Partial JSON might be incomplete, try to fix it
+                                    try:
+                                        # Try to complete the JSON
+                                        if not current_tool_input.strip().endswith("}"):
+                                            current_tool_input += "}"
+                                        current_tool_use["input"] = json.loads(current_tool_input)
+                                    except json.JSONDecodeError:
+                                        logger.warning(f"Failed to parse tool input JSON: {current_tool_input}")
+                                        current_tool_use["input"] = {}
+                                
+                                # Tool use block is complete
+                                tool_use_blocks.append(current_tool_use)
+                                yield {
+                                    "type": "tool_use",
+                                    "tool_call": current_tool_use
+                                }
+                                current_tool_use = None
+                                current_tool_input = ""
+                            
+                            # Handle message_stop (entire message complete)
+                            elif event_type == "message_stop":
+                                # Message is complete
+                                pass
+                                
                         except json.JSONDecodeError:
                             continue
                 
                 if full_content:
                     yield {"type": "complete", "content": full_content}
+                
+                if tool_use_blocks:
+                    yield {"type": "tool_use_complete", "tool_calls": tool_use_blocks}
     
     async def _call_openai(
         self,
         api_key: str,
         model: str,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         tools: Optional[List[Dict[str, Any]]] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """Call OpenAI API."""
