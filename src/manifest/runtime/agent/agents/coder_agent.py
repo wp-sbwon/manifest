@@ -16,6 +16,8 @@ from manifest.core.state_manager import StateManager
 from manifest.runtime.tools.tool_executor import ToolExecutor
 from manifest.runtime.tools.tool_definitions import get_tool_definitions
 
+# Note: terminal_router is kept for backward compatibility but is not directly used.
+# All command execution goes through tool_executor which uses terminal_router internally.
 if TYPE_CHECKING:
     from manifest.runtime.router.terminal_router import TerminalRouter
 
@@ -50,12 +52,15 @@ class CoderAgent:
             agent_id: Unique identifier for this agent.
             executor: Executor instance for LLM API calls.
             state_manager: State manager for saving agent output to channels.
-            terminal_router: Optional terminal router for command execution.
+            terminal_router: Optional terminal router (kept for backward compatibility,
+                but command execution should use tool_executor instead).
             tool_executor: Optional tool executor for executing tool calls.
+                This is the primary way to execute commands and file operations.
         """
         self.agent_id = agent_id
         self.executor = executor
         self.state_manager = state_manager
+        # terminal_router kept for backward compatibility, but tool_executor is preferred
         self.terminal_router = terminal_router
         self.tool_executor = tool_executor
         self.message_history: List[Dict[str, str]] = []

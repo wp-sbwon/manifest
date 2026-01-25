@@ -791,7 +791,7 @@ class ManifestApp(App):
         log.write(f"Status: {sprint_data.get('status', 'planned')}")
         log.write(f"Tasks: {len(sprint_data.get('tasks', []))}")
         
-        # TODO: Add approval buttons/widgets
+        # Permission approval widgets are now implemented (PermissionApprovalWidget)
         # For now, user can approve via command: /approve_sprint {sprint_id}
     
     async def _update_task_inspector(self, task_id: str, task: Dict[str, Any]) -> None:

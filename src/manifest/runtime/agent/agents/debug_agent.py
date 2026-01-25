@@ -69,12 +69,15 @@ class DebugAgent:
             agent_id: Unique identifier for this agent.
             executor: Executor instance for LLM API calls.
             state_manager: State manager for saving debug analysis.
-            terminal_router: Optional terminal router for command execution.
+            terminal_router: Optional terminal router (kept for backward compatibility,
+                but command execution should use tool_executor instead).
             tool_executor: Optional tool executor for executing tool calls.
+                This is the primary way to execute commands and file operations.
         """
         self.agent_id = agent_id
         self.executor = executor
         self.state_manager = state_manager
+        # terminal_router kept for backward compatibility, but tool_executor is preferred
         self.terminal_router = terminal_router
         self.tool_executor = tool_executor
         self.message_history: List[Dict[str, str]] = []
