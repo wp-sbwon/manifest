@@ -78,9 +78,17 @@ async def run_agent(task_id: str, agent_type: str):
     )
     
     # Initialize ToolExecutor
+    # Create ToolExecutionAuditor for logging
+    from manifest.runtime.tools.tool_execution_auditor import ToolExecutionAuditor
+    auditor = ToolExecutionAuditor(manifest_dir=state_manager.manifest_dir)
+    
     tool_executor = ToolExecutor(
         terminal_router=terminal_router,
-        file_manager=file_manager
+        file_manager=file_manager,
+        auditor=auditor,
+        agent_type=agent_type,
+        task_id=task_id,
+        agent_id=task_id
     )
     
     try:
