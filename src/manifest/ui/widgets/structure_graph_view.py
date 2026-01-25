@@ -2,10 +2,21 @@
 Structure Graph View - Graph-based visualization of Features and Components.
 Shows Features as boxes/clusters with Components as nodes inside, and Contracts as edges.
 """
-from textual.widgets import Static
+from textual.widgets import Static, Button
+from textual.containers import Vertical, VerticalScroll
 from textual import on
+from textual.message import Message
 from typing import Dict, Any, List, Optional, Set
 from pathlib import Path
+
+
+class ComponentSelectedFromGraph(Message):
+    """Message sent when a component is selected from the graph view."""
+    
+    def __init__(self, component_id: str, component_data: Dict[str, Any]):
+        super().__init__()
+        self.component_id = component_id
+        self.component_data = component_data
 
 
 class StructureGraphView(Static):
@@ -22,6 +33,7 @@ class StructureGraphView(Static):
             "zone": "all",  # "all", "client", "server", "data"
             "status": "all"  # "all", "implemented", "ghost", "drift"
         }
+        self.components_by_id: Dict[str, Dict[str, Any]] = {}
     
     def load_data(
         self,
@@ -42,6 +54,13 @@ class StructureGraphView(Static):
         self.status_info = status_info or {}
         self.component_statuses = status_info.get("component_statuses", {}) if status_info else {}
         self.feature_completions = status_info.get("feature_completions", {}) if status_info else {}
+        
+        # Build component lookup
+        self.components_by_id = {}
+        for comp in blueprint.get("components", []):
+            comp_id = comp.get("id", "")
+            if comp_id:
+                self.components_by_id[comp_id] = comp
         
         self.refresh()
     

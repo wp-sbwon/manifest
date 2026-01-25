@@ -19,6 +19,8 @@ class StructureHierarchyView(Tree):
         self.feature_completions: Dict[str, float] = {}
         self.tasks: List[Dict[str, Any]] = []  # Tasks for task-file association
         self.app_ref: Optional[Any] = None  # Reference to app for accessing state
+        self.highlighted_files: set = set()  # Set of file paths currently highlighted
+        self.highlighted_components: set = set()  # Set of component IDs currently highlighted
     
     def load_data(
         self,
@@ -142,9 +144,12 @@ class StructureHierarchyView(Tree):
         
         metadata_str = f" [{'] ['.join(metadata_tags)}]" if metadata_tags else ""
         
+        # Add highlight marker if component is highlighted
+        highlight_marker = " ⭐" if comp_id in self.highlighted_components else ""
+        
         # Component label with type
         comp_type_display = f"[{comp_type}]" if comp_type != "unknown" else ""
-        comp_label = f"{status_icon} {comp_name} {comp_type_display}{metadata_str}"
+        comp_label = f"{status_icon} {comp_name} {comp_type_display}{metadata_str}{highlight_marker}"
         comp_node = parent_node.add(comp_label, expand=False)
         comp_node.data = {
             "type": "component",
@@ -155,14 +160,43 @@ class StructureHierarchyView(Tree):
             "component_type": comp_type
         }
         
+        # Build component lookup for contract target names
+        components_by_id = {}
+        for c in self.blueprint_data.get("components", []):
+            cid = c.get("id", "")
+            if cid:
+                components_by_id[cid] = c
+        
         # Add file path as child node
         if comp_file:
-            file_label = f"📁 {comp_file}:{comp_line}"
+            # Find related tasks for this file
+            related_tasks = self._find_tasks_for_file(comp_file)
+            task_icons = []
+            if related_tasks:
+                for task in related_tasks[:3]:  # Show max 3 tasks
+                    task_id = task.get("id", "")
+                    task_status = task.get("status", "unknown")
+                    status_icon = {
+                        "done": "✅",
+                        "in_progress": "⚡",
+                        "pending": "⏳",
+                        "blocked": "🚫"
+                    }.get(task_status, "○")
+                    task_icons.append(f"{status_icon} {task_id[:8]}")
+            
+            task_suffix = " " + " ".join(task_icons) if task_icons else ""
+            if len(related_tasks) > 3:
+                task_suffix += f" (+{len(related_tasks) - 3})"
+            
+            # Add highlight marker if file is highlighted
+            highlight_marker = " ⭐" if comp_file in self.highlighted_files else ""
+            file_label = f"📁 {comp_file}:{comp_line}{task_suffix}{highlight_marker}"
             file_node = comp_node.add(file_label, expand=False)
             file_node.data = {
                 "type": "file",
                 "file": comp_file,
-                "line": comp_line
+                "line": comp_line,
+                "related_tasks": related_tasks
             }
         
         # Add module path if available
@@ -216,6 +250,94 @@ class StructureHierarchyView(Tree):
                     "name": attr_name,
                     "component_id": comp_id
                 }
+        
+        # Add contracts if available (expandable)
+        contracts = self.blueprint_data.get("contracts", [])
+        outgoing_contracts = [c for c in contracts if c.get("from") == comp_id]
+        incoming_contracts = [c for c in contracts if c.get("to") == comp_id]
+        
+        if outgoing_contracts or incoming_contracts:
+            contracts_count = len(outgoing_contracts) + len(incoming_contracts)
+            contracts_label = f"Contracts ({contracts_count}) [▶]"
+            contracts_node = comp_node.add(contracts_label, expand=False)
+            contracts_node.data = {
+                "type": "contracts_header",
+                "outgoing": outgoing_contracts,
+                "incoming": incoming_contracts,
+                "expanded": False
+            }
+            
+            # Add outgoing contracts
+            if outgoing_contracts:
+                outgoing_label = f"  → Outgoing ({len(outgoing_contracts)})"
+                outgoing_node = contracts_node.add(outgoing_label, expand=False)
+                outgoing_node.data = {
+                    "type": "contracts_outgoing_header",
+                    "contracts": outgoing_contracts,
+                    "expanded": False
+                }
+                
+                for contract in outgoing_contracts:
+                    to_id = contract.get("to", "")
+                    contract_type = contract.get("type", "unknown")
+                    symbols = contract.get("symbols", [])
+                    
+                    # Try to get target component name
+                    target_name = to_id.split("-")[-1] if "-" in to_id else to_id
+                    target_comp = components_by_id.get(to_id)
+                    if target_comp:
+                        target_name = target_comp.get("name", target_name)
+                    
+                    contract_label = f"    → {target_name} ({contract_type})"
+                    if symbols:
+                        symbols_str = ", ".join(symbols[:2])
+                        if len(symbols) > 2:
+                            symbols_str += f" (+{len(symbols) - 2})"
+                        contract_label += f" [{symbols_str}]"
+                    
+                    contract_node = outgoing_node.add(contract_label, expand=False)
+                    contract_node.data = {
+                        "type": "contract",
+                        "contract": contract,
+                        "direction": "outgoing",
+                        "component_id": comp_id
+                    }
+            
+            # Add incoming contracts
+            if incoming_contracts:
+                incoming_label = f"  ← Incoming ({len(incoming_contracts)})"
+                incoming_node = contracts_node.add(incoming_label, expand=False)
+                incoming_node.data = {
+                    "type": "contracts_incoming_header",
+                    "contracts": incoming_contracts,
+                    "expanded": False
+                }
+                
+                for contract in incoming_contracts:
+                    from_id = contract.get("from", "")
+                    contract_type = contract.get("type", "unknown")
+                    symbols = contract.get("symbols", [])
+                    
+                    # Try to get source component name
+                    source_name = from_id.split("-")[-1] if "-" in from_id else from_id
+                    source_comp = components_by_id.get(from_id)
+                    if source_comp:
+                        source_name = source_comp.get("name", source_name)
+                    
+                    contract_label = f"    ← {source_name} ({contract_type})"
+                    if symbols:
+                        symbols_str = ", ".join(symbols[:2])
+                        if len(symbols) > 2:
+                            symbols_str += f" (+{len(symbols) - 2})"
+                        contract_label += f" [{symbols_str}]"
+                    
+                    contract_node = incoming_node.add(contract_label, expand=False)
+                    contract_node.data = {
+                        "type": "contract",
+                        "contract": contract,
+                        "direction": "incoming",
+                        "component_id": comp_id
+                    }
     
     def _get_status_icon_color(self, status: str, completion: float) -> tuple[str, str]:
         """Get status icon and color for feature."""
@@ -337,9 +459,84 @@ class StructureHierarchyView(Tree):
                 event.node.label = f"Attributes ({len(attributes)}) [▼]"
                 node_data["expanded"] = True
         
+        elif node_type == "contracts_header":
+            outgoing = node_data.get("outgoing", [])
+            incoming = node_data.get("incoming", [])
+            is_expanded = node_data.get("expanded", False)
+            
+            # Toggle expansion
+            if is_expanded:
+                event.node.collapse()
+                total = len(outgoing) + len(incoming)
+                event.node.label = f"Contracts ({total}) [▶]"
+                node_data["expanded"] = False
+            else:
+                event.node.expand()
+                total = len(outgoing) + len(incoming)
+                event.node.label = f"Contracts ({total}) [▼]"
+                node_data["expanded"] = True
+        
+        elif node_type in ("contracts_outgoing_header", "contracts_incoming_header"):
+            contracts = node_data.get("contracts", [])
+            is_expanded = node_data.get("expanded", False)
+            
+            # Toggle expansion
+            if is_expanded:
+                event.node.collapse()
+                direction = "Outgoing" if node_type == "contracts_outgoing_header" else "Incoming"
+                event.node.label = f"  {'→' if direction == 'Outgoing' else '←'} {direction} ({len(contracts)})"
+                node_data["expanded"] = False
+            else:
+                event.node.expand()
+                direction = "Outgoing" if node_type == "contracts_outgoing_header" else "Incoming"
+                event.node.label = f"  {'→' if direction == 'Outgoing' else '←'} {direction} ({len(contracts)})"
+                node_data["expanded"] = True
+        
         # Emit message for Inspector to handle (for component selection)
         if node_type == "component":
             self.post_message(ComponentSelected(node_data))
+    
+    def highlight_task_files_and_components(self, task: Dict[str, Any]) -> None:
+        """Highlight files and components related to a task.
+        
+        Args:
+            task: Task dictionary with scope information.
+        """
+        # Clear previous highlights
+        self.highlighted_files.clear()
+        self.highlighted_components.clear()
+        
+        # Get task scope
+        scope = task.get("scope", {})
+        task_files = scope.get("files", [])
+        task_components = scope.get("components", [])
+        
+        # Also check modified files from worker squad stages
+        worker_squad = task.get("worker_squad", {})
+        stages = worker_squad.get("stages", {})
+        for stage_data in stages.values():
+            tool_execution = stage_data.get("tool_execution", {})
+            modified_files = tool_execution.get("modified_files", [])
+            task_files.extend(modified_files)
+        
+        # Also check task-level tool_execution
+        tool_execution = task.get("tool_execution", {})
+        task_summary = tool_execution.get("last_summary", {})
+        modified_files = task_summary.get("modified_files", [])
+        task_files.extend(modified_files)
+        
+        # Store highlighted items
+        self.highlighted_files.update(task_files)
+        self.highlighted_components.update(task_components)
+        
+        # Rebuild tree to show highlights
+        self._build_tree()
+    
+    def clear_highlights(self) -> None:
+        """Clear all highlights."""
+        self.highlighted_files.clear()
+        self.highlighted_components.clear()
+        self._build_tree()
 
 
 class ComponentSelected(Message):
