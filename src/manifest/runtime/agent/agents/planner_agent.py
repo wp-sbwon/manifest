@@ -118,18 +118,14 @@ class PlannerAgent:
             yield chunk
     
     async def _save_response(self, content: str) -> None:
-        """Save planner response and extract product logic metadata.
+        """Extract product logic metadata from planner response.
         
-        Saves the planner's output to state and extracts information about
-        algorithms, design patterns, and complexity from the plan. This
-        metadata is then added to the blueprint to document the design decisions.
+        Note: State saving is handled by agent_bridge._handle_agent_chunk() to avoid
+        duplicate saves. This method only extracts and saves blueprint metadata.
         
         Args:
             content: The complete planner output content.
         """
-        channel = f"squad-{self.agent_id}-planner"
-        self.state_manager.add_chat_message(channel, "assistant", content)
-        
         # Extract product logic information (algorithms, patterns, complexity)
         methodology_info = self._extract_methodology_info(content)
         
@@ -137,7 +133,8 @@ class PlannerAgent:
         if methodology_info:
             await self._update_blueprint_metadata(methodology_info)
         
-        await self.state_manager.save_state()
+        # Note: State saving is handled by agent_bridge._handle_agent_chunk()
+        # to avoid duplicate saves when called through agent_bridge
     
     def _extract_methodology_info(self, content: str) -> Optional[Dict[str, Any]]:
         """Extract algorithm, design pattern, and complexity information from planner output.

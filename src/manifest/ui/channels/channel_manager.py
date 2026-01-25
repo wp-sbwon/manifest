@@ -285,7 +285,13 @@ class ChannelManager:
                 if channel_name and channel_name not in self.squad_channels:
                     await self.create_squad_channel(task_id, agent_type)
     
-    async def handle_agent_output(self, channel: str, content: str, role: str = "assistant"):
+    async def handle_agent_output(
+        self, 
+        channel: str, 
+        content: str, 
+        role: str = "assistant",
+        save_immediately: bool = True
+    ):
         """
         Handle agent output and display in appropriate channel.
         
@@ -297,10 +303,17 @@ class ChannelManager:
             channel: Channel name (e.g., "main", "squad-task-1-planner")
             content: Message content
             role: Message role ("user" or "assistant")
+            save_immediately: Whether to save state immediately. Set to False for
+                streaming chunks to batch saves.
         """
         # Always update state (for persistence)
         self.state_manager.add_chat_message(channel, role, content)
-        await self.state_manager.save_state()
+        
+        # Save state (can be batched for streaming chunks to reduce I/O)
+        # For streaming chunks, save_immediately=False to batch saves
+        # For complete messages, save_immediately=True to ensure persistence
+        if save_immediately:
+            await self.state_manager.save_state()
         
         # Update channel message count
         if channel in self.squad_channels:

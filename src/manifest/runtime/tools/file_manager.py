@@ -107,10 +107,15 @@ class FileManager:
                 "message": f"Edit operation denied for '{file_path}'"
             }
         elif permission == "ask":
-            logger.warning(
-                f"Permission 'ask' for edit '{file_path}' by agent '{self.agent_type}' - "
-                "allowing for now (approval not implemented)"
-            )
+            # Return permission_required flag for UI approval
+            return {
+                "success": False,
+                "error": "Permission approval required",
+                "message": f"Edit operation requires approval for '{file_path}'",
+                "permission_required": True,
+                "permission_type": "edit",
+                "resource": file_path
+            }
         
         try:
             # Read file
@@ -174,10 +179,15 @@ class FileManager:
                 "message": f"Write operation denied for '{file_path}'"
             }
         elif permission == "ask":
-            logger.warning(
-                f"Permission 'ask' for write '{file_path}' by agent '{self.agent_type}' - "
-                "allowing for now (approval not implemented)"
-            )
+            # Return permission_required flag for UI approval
+            return {
+                "success": False,
+                "error": "Permission approval required",
+                "message": f"Write operation requires approval for '{file_path}'",
+                "permission_required": True,
+                "permission_type": "write",
+                "resource": file_path
+            }
         
         try:
             # Create parent directories if needed

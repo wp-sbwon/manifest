@@ -49,6 +49,7 @@ class ToolExecutor:
             
         Returns:
             Dict with 'tool_call_id', 'tool_name', 'result', and optional 'error'.
+            May also include 'permission_denied' or 'permission_required' flags.
         """
         try:
             if tool_name == "bash":
@@ -70,14 +71,28 @@ class ToolExecutor:
                     "tool_call_id": tool_input.get("id", "unknown"),
                     "tool_name": tool_name,
                     "error": f"Unknown tool: {tool_name}",
-                    "result": None
+                    "result": None,
+                    "error_type": "unknown_tool"
                 }
         except Exception as e:
-            logger.error(f"Error executing tool '{tool_name}': {e}")
+            logger.error(f"Error executing tool '{tool_name}': {e}", exc_info=True)
+            # Analyze error type for better error handling
+            error_type = "execution_error"
+            error_msg = str(e)
+            
+            # Categorize common errors
+            if "Permission" in error_msg or "permission" in error_msg.lower():
+                error_type = "permission_error"
+            elif "File not found" in error_msg or "No such file" in error_msg:
+                error_type = "file_not_found"
+            elif "String not found" in error_msg:
+                error_type = "string_not_found"
+            
             return {
                 "tool_call_id": tool_input.get("id", "unknown"),
                 "tool_name": tool_name,
-                "error": str(e),
+                "error": error_msg,
+                "error_type": error_type,
                 "result": None
             }
     
@@ -139,6 +154,27 @@ class ToolExecutor:
                 args=args,
                 stream=False
             )
+            
+            # Check for permission denied
+            if result.get("permission_denied"):
+                return {
+                    "tool_call_id": tool_input.get("id", "unknown"),
+                    "tool_name": "bash",
+                    "error": result.get("stderr", "Permission denied"),
+                    "result": None,
+                    "permission_denied": True
+                }
+            
+            # Check for permission required (ask)
+            if result.get("permission_required"):
+                return {
+                    "tool_call_id": tool_input.get("id", "unknown"),
+                    "tool_name": "bash",
+                    "error": "Permission approval required",
+                    "result": None,
+                    "permission_required": True,
+                    "permission_details": result.get("permission_details", {})
+                }
             
             return {
                 "tool_call_id": tool_input.get("id", "unknown"),
@@ -225,6 +261,18 @@ class ToolExecutor:
             }
         
         result = self.file_manager.write(file_path, content)
+        
+        # Check for permission denied or required
+        if not result.get("success"):
+            error = result.get("error", "Unknown error")
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "write",
+                "error": error,
+                "result": None,
+                "permission_denied": error == "Permission denied",
+                "permission_required": result.get("permission_required", False)
+            }
         
         return {
             "tool_call_id": tool_input.get("id", "unknown"),

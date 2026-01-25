@@ -60,6 +60,15 @@ class CoderAgent:
         self.tool_executor = tool_executor
         self.message_history: List[Dict[str, str]] = []
         self.agent_type = "coder"
+        
+        # Track tool execution results for completion detection
+        self.tool_execution_summary: Dict[str, Any] = {
+            "modified_files": [],
+            "executed_commands": [],
+            "read_files": [],
+            "errors": [],
+            "total_tool_calls": 0
+        }
     
     async def implement(
         self,
@@ -96,6 +105,15 @@ class CoderAgent:
         
         # Get tool definitions
         tools = get_tool_definitions()
+        
+        # Reset tool execution summary for this implementation
+        self.tool_execution_summary = {
+            "modified_files": [],
+            "executed_commands": [],
+            "read_files": [],
+            "errors": [],
+            "total_tool_calls": 0
+        }
         
         # Tool execution loop
         max_iterations = 10  # Prevent infinite loops
@@ -142,15 +160,63 @@ class CoderAgent:
                             self.message_history.append({"role": "assistant", "content": full_response})
                         else:
                             self.message_history[-1]["content"] = full_response
+                    # Yield complete chunk for UI display
+                    # We'll check for tool calls after this and yield final completion with summary
                     yield chunk
                 elif chunk_type == "error":
-                    yield chunk
+                    # Include tool execution summary in error
+                    error_chunk = chunk.copy()
+                    error_chunk["tool_execution_summary"] = self.tool_execution_summary.copy()
+                    yield error_chunk
                     return
             
             # Execute tool calls if any
             if tool_calls_in_this_round and self.tool_executor:
+                # Track tool execution
+                self.tool_execution_summary["total_tool_calls"] += len(tool_calls_in_this_round)
+                
                 # Execute all tool calls
                 tool_results = await self.tool_executor.execute_tool_calls(tool_calls_in_this_round)
+                
+                # Parse tool results to track what was done
+                for i, tool_call in enumerate(tool_calls_in_this_round):
+                    tool_name = tool_call.get("name", "unknown")
+                    tool_input = tool_call.get("input", {})
+                    tool_result = tool_results[i] if i < len(tool_results) else {}
+                    
+                    # Track file modifications
+                    if tool_name == "edit" or tool_name == "write":
+                        file_path = tool_input.get("file_path", "unknown")
+                        if file_path not in self.tool_execution_summary["modified_files"]:
+                            self.tool_execution_summary["modified_files"].append(file_path)
+                    
+                    # Track file reads
+                    elif tool_name == "read":
+                        file_path = tool_input.get("file_path", "unknown")
+                        if file_path not in self.tool_execution_summary["read_files"]:
+                            self.tool_execution_summary["read_files"].append(file_path)
+                    
+                    # Track command executions
+                    elif tool_name == "bash":
+                        command = tool_input.get("command", "unknown")
+                        args = tool_input.get("args", [])
+                        full_command = f"{command} {' '.join(args) if args else ''}".strip()
+                        self.tool_execution_summary["executed_commands"].append(full_command)
+                    
+                    # Track errors and permission issues
+                    if tool_result.get("error"):
+                        error_info = {
+                            "tool": tool_name,
+                            "error": tool_result.get("error"),
+                            "file_path": tool_input.get("file_path") if tool_name in ["edit", "write", "read"] else None
+                        }
+                        # Track permission issues separately
+                        if tool_result.get("permission_denied"):
+                            error_info["permission_denied"] = True
+                        if tool_result.get("permission_required"):
+                            error_info["permission_required"] = True
+                            error_info["permission_details"] = tool_result.get("permission_details", {})
+                        self.tool_execution_summary["errors"].append(error_info)
                 
                 # Format tool results for Anthropic API (tool_result content blocks)
                 provider = model_config.get("provider", "anthropic")
@@ -229,7 +295,8 @@ class CoderAgent:
         if iteration >= max_iterations:
             yield {
                 "type": "error",
-                "content": f"Maximum tool execution iterations ({max_iterations}) reached"
+                "content": f"Maximum tool execution iterations ({max_iterations}) reached",
+                "tool_execution_summary": self.tool_execution_summary.copy()
             }
     
     async def _save_response(self, content: str):
