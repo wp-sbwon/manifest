@@ -1212,8 +1212,6 @@ class ManifestApp(App):
                 # Update conflict status
                 report.status = "resolved" if action == "approved" else "rejected"
                 report.user_decision = action
-                
-                # Save updated report
                 self.blueprint_synchronizer.save_conflict_report(report, conflict_file)
                 
                 # If approved and agent coordinator available, handle the resolution

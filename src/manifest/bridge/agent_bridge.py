@@ -654,7 +654,6 @@ Review Question: {review_request.get('question', 'Is this change necessary or a 
                         async for chunk in agent_instance.run_e2e_tests(task_id, context, model_config):
                             channel = f"squad-{task_id}-e2e_test"
                             await self._handle_agent_chunk(chunk, channel)
-            # Other agent types can be added here as needed
             
             # Mark agent as completed after execution finishes
             if task_id in self._active_agents:

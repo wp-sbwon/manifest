@@ -249,7 +249,6 @@ class WorkerSquadExecutor:
                 test_result = await self._execute_test_stage(task_id, previous_stages)
                 stages["test"] = test_result
                 previous_stages["test"] = test_result
-                # Save updated test result
                 await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
             else:
                 # Attempt recovery for debug failure

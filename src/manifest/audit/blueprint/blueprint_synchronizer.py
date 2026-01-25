@@ -301,7 +301,6 @@ class BlueprintSynchronizer:
         if resolution_note:
             report.resolution_note = resolution_note
         
-        # Save updated report
         self.save_conflict_report(report)
         return True
     

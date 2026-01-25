@@ -164,9 +164,7 @@ class TaskTreeView(Tree):
                 blocking_info = ""
                 dependencies = task.get("dependencies", [])
                 if dependencies:
-                    # We need access to state_manager or a way to check blocked status
-                    # For now, we'll assume the status is already updated to 'blocked' if needed
-                    # or we can just show the dependency count
+                    # Status is updated by task manager when dependencies block the task
                     blocking_info = f" (deps: {len(dependencies)})"
                 
                 # Calculate progress if worker squad stages exist

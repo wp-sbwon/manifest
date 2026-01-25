@@ -125,9 +125,6 @@ async def run_agent(task_id: str, agent_type: str):
         if not agent:
             raise ValueError(f"Agent instance not found for type {agent_type}")
             
-        # Execute agent mission
-        # Note: This part depends on how different agent types are executed.
-        # For now, we assume a generic execution pattern.
         logger.info(f"Executing agent {agent_type} for task {task_id}")
         
         # Get task description from context
