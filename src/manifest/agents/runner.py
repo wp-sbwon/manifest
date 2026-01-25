@@ -134,7 +134,12 @@ async def run_agent(task_id: str, agent_type: str):
         task_description = context.get("task_description", "No description provided")
         
         # Execution logic based on agent type
-        if agent_type == "planner":
+        if agent_type == "orchestrator":
+            mission_description = context.get("mission_description", task_description)
+            async for chunk in agent.orchestrate(mission_description, context, model_config):
+                if chunk.get("type") == "complete":
+                    logger.info(f"Orchestrator completed for task {task_id}")
+        elif agent_type == "planner":
             async for chunk in agent.plan(task_description, context, model_config):
                 if chunk.get("type") == "complete":
                     logger.info(f"Planner completed for task {task_id}")
@@ -148,11 +153,54 @@ async def run_agent(task_id: str, agent_type: str):
             stage = os.environ.get("AGENT_STAGE", "test")
             if stage == "tdd_test":
                 async for chunk in agent.write_tdd_tests(task_id, context, model_config):
-                    pass
+                    if chunk.get("type") == "complete":
+                        logger.info(f"TDD Test completed for task {task_id}")
             else:
                 async for chunk in agent.run_tests(task_id, context, model_config):
-                    pass
-        # Add other agent types as needed...
+                    if chunk.get("type") == "complete":
+                        logger.info(f"Test completed for task {task_id}")
+        elif agent_type == "debug":
+            # Debug agent needs test results and error messages from context
+            test_results = context.get("test_results", {})
+            error_messages = context.get("error_messages", [])
+            async for chunk in agent.debug(test_results, error_messages, context, model_config):
+                if chunk.get("type") == "complete":
+                    logger.info(f"Debug completed for task {task_id}")
+        elif agent_type == "approver":
+            # Approver needs outputs from previous stages
+            planner_output = context.get("planner_output", "")
+            coder_output = context.get("coder_output", "")
+            test_results = context.get("test_results", {})
+            self_review_result = context.get("self_review_result", {})
+            async for chunk in agent.approve(
+                planner_output, coder_output, test_results, self_review_result, context, model_config
+            ):
+                if chunk.get("type") == "complete":
+                    logger.info(f"Approver completed for task {task_id}")
+        elif agent_type == "project_review":
+            # Project review needs project-level data
+            prd_data = context.get("prd_data", {})
+            architecture_data = context.get("architecture_data", {})
+            blueprint_data = context.get("blueprint_data", {})
+            worker_squad_output = context.get("worker_squad_output", {})
+            async for chunk in agent.review(
+                prd_data, architecture_data, blueprint_data, worker_squad_output, context, model_config
+            ):
+                if chunk.get("type") == "complete":
+                    logger.info(f"Project Review completed for task {task_id}")
+        elif agent_type == "e2e_test":
+            async for chunk in agent.run_e2e_tests(task_id, context, model_config):
+                if chunk.get("type") == "complete":
+                    logger.info(f"E2E Test completed for task {task_id}")
+        elif agent_type == "integration_test":
+            sprint_id = context.get("sprint_id") or os.environ.get("SPRINT_ID", "")
+            if not sprint_id:
+                logger.warning(f"Integration test requires sprint_id, but none provided for task {task_id}")
+            async for chunk in agent.run_integration_tests(sprint_id, task_id, context, model_config):
+                if chunk.get("type") == "complete":
+                    logger.info(f"Integration Test completed for task {task_id}")
+        else:
+            logger.warning(f"Unknown agent type: {agent_type}. No execution logic defined.")
         
         # Mark as completed
         await message_bus.send_message(
