@@ -255,10 +255,46 @@ class AgentBridge:
         channel = f"shadow-{task_id}-{agent_type}"
         
         # Output callback to stream to state manager
+        # Use batched saving for streaming chunks to reduce I/O
+        class BatchSaver:
+            """Helper class for batched state saving."""
+            def __init__(self, state_manager):
+                import time
+                self.state_manager = state_manager
+                self.last_save_time = time.time()
+                self.message_count = 0
+                self.time = time
+            
+            async def save_if_needed(self):
+                """Save state if batch threshold is reached."""
+                self.message_count += 1
+                current_time = self.time.time()
+                
+                # Save immediately if:
+                # 1. First message
+                # 2. More than 10 messages accumulated
+                # 3. More than 5 seconds since last save
+                should_save = (
+                    self.message_count == 1 or
+                    self.message_count >= 10 or
+                    (current_time - self.last_save_time) >= 5.0
+                )
+                
+                if should_save:
+                    await self.state_manager.save_state()
+                    self.last_save_time = current_time
+                    self.message_count = 0
+        
+        batch_saver = BatchSaver(self.state_manager)
+        
         async def output_callback(output_channel: str, content: str):
-            """Stream shadow process output to state manager."""
+            """Stream shadow process output to state manager.
+            
+            Uses batched saving to reduce I/O operations. Saves immediately
+            only for important messages or after a batch threshold.
+            """
             self.state_manager.add_chat_message(output_channel, "assistant", content)
-            await self.state_manager.save_state()
+            await batch_saver.save_if_needed()
         
         try:
             process_id = await self.shadow_manager.start_shadow_agent(
@@ -292,6 +328,7 @@ class AgentBridge:
                 f"Model: {model_config.get('model', 'default')}"
             )
             
+            # Save immediately for important state change (agent start)
             await self.state_manager.save_state()
             return True
             
