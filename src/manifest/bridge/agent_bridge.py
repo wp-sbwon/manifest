@@ -355,12 +355,52 @@ class AgentBridge:
         stage: Optional[str] = None
     ) -> bool:
         """Start agent with direct execution (existing method)."""
+        # Create ToolExecutor with approval_manager and auditor for permission requests and logging
+        from manifest.runtime.tools.tool_executor import ToolExecutor
+        from manifest.runtime.tools.file_manager import FileManager
+        from manifest.runtime.permissions.permission_manager import PermissionManager
+        from manifest.runtime.tools.tool_execution_auditor import ToolExecutionAuditor
+        
+        # Create PermissionManager for this agent type
+        permission_manager = PermissionManager(
+            config_manager=self.config_manager or ConfigManager(),
+            agent_type=agent_type
+        )
+        
+        # Create FileManager with permission checking
+        file_manager = FileManager(
+            working_dir=self.working_dir,
+            permission_manager=permission_manager,
+            agent_type=agent_type
+        )
+        
+        # Update TerminalRouter with permission manager
+        if self.terminal_router:
+            self.terminal_router.permission_manager = permission_manager
+            self.terminal_router.agent_type = agent_type
+        
+        # Create ToolExecutionAuditor for logging
+        auditor = ToolExecutionAuditor(manifest_dir=self.state_manager.manifest_dir)
+        
+        # Create ToolExecutor with approval_manager and auditor
+        tool_executor = ToolExecutor(
+            terminal_router=self.terminal_router,
+            file_manager=file_manager,
+            approval_manager=self.approval_manager,
+            auditor=auditor,
+            agent_type=agent_type,
+            task_id=task_id,
+            agent_id=task_id  # Use task_id as agent_id for now
+        )
+        
         # Create agent using agent manager
         agent = await self.agent_manager.create_agent(
             agent_type=agent_type,
             context=context,
             model_config=model_config,
-            task_id=task_id
+            task_id=task_id,
+            terminal_router=self.terminal_router,
+            tool_executor=tool_executor
         )
         
         # Start the agent
