@@ -14,6 +14,7 @@ from manifest.core.logger import get_logger
 if TYPE_CHECKING:
     from manifest.runtime.router.terminal_router import TerminalRouter
     from manifest.runtime.permissions.permission_approval_manager import PermissionApprovalManager
+    from manifest.runtime.tools.tool_execution_auditor import ToolExecutionAuditor
 
 logger = get_logger(__name__)
 
@@ -58,23 +59,24 @@ class ToolExecutor:
             Dict with 'tool_call_id', 'tool_name', 'result', and optional 'error'.
             May also include 'permission_denied' or 'permission_required' flags.
         """
+        result = None
         try:
             if tool_name == "bash":
-                return await self._execute_bash(tool_input)
+                result = await self._execute_bash(tool_input)
             elif tool_name == "edit":
-                return self._execute_edit(tool_input)
+                result = self._execute_edit(tool_input)
             elif tool_name == "write":
-                return self._execute_write(tool_input)
+                result = self._execute_write(tool_input)
             elif tool_name == "read":
-                return self._execute_read(tool_input)
+                result = self._execute_read(tool_input)
             elif tool_name == "grep":
-                return self._execute_grep(tool_input)
+                result = self._execute_grep(tool_input)
             elif tool_name == "glob":
-                return self._execute_glob(tool_input)
+                result = self._execute_glob(tool_input)
             elif tool_name == "list":
-                return self._execute_list(tool_input)
+                result = self._execute_list(tool_input)
             else:
-                return {
+                result = {
                     "tool_call_id": tool_input.get("id", "unknown"),
                     "tool_name": tool_name,
                     "error": f"Unknown tool: {tool_name}",
@@ -95,13 +97,26 @@ class ToolExecutor:
             elif "String not found" in error_msg:
                 error_type = "string_not_found"
             
-            return {
+            result = {
                 "tool_call_id": tool_input.get("id", "unknown"),
                 "tool_name": tool_name,
                 "error": error_msg,
                 "error_type": error_type,
                 "result": None
             }
+        
+        # Log to auditor if available (for all executions, success or error)
+        if self.auditor and result:
+            await self.auditor.log_tool_execution(
+                tool_name=tool_name,
+                tool_input=tool_input,
+                result=result,
+                agent_type=self.agent_type,
+                task_id=self.task_id,
+                agent_id=self.agent_id
+            )
+        
+        return result
     
     async def execute_tool_calls(
         self,
@@ -126,6 +141,18 @@ class ToolExecutor:
             
             # Add validation information
             result["validated"] = self._validate_tool_result(result, tool_name, tool_input)
+            
+            # Log to auditor if available (for successful executions)
+            if self.auditor and not result.get("error"):
+                await self.auditor.log_tool_execution(
+                    tool_name=tool_name,
+                    tool_input=tool_input,
+                    result=result,
+                    agent_type=self.agent_type,
+                    task_id=self.task_id,
+                    agent_id=self.agent_id
+                )
+            
             results.append(result)
         
         return results
