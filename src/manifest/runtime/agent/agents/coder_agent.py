@@ -8,10 +8,16 @@ planner plans and task requirements. The coder agent receives scoped context
 The coder can also perform self-review to verify its implementation complies
 with the original plan.
 """
-from typing import Dict, Any, Optional, List, AsyncIterator
+import json
+from typing import Dict, Any, Optional, List, AsyncIterator, TYPE_CHECKING
 from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.runtime.agent.prompts.coder_prompt import get_coder_prompt
 from manifest.core.state_manager import StateManager
+from manifest.runtime.tools.tool_executor import ToolExecutor
+from manifest.runtime.tools.tool_definitions import get_tool_definitions
+
+if TYPE_CHECKING:
+    from manifest.runtime.router.terminal_router import TerminalRouter
 
 
 class CoderAgent:
@@ -27,13 +33,16 @@ class CoderAgent:
         executor: AgentExecutor for making LLM API calls.
         state_manager: StateManager for persisting agent output.
         message_history: List of conversation messages for context.
+        terminal_router: Optional TerminalRouter for executing commands.
     """
     
     def __init__(
         self,
         agent_id: str,
         executor: AgentExecutor,
-        state_manager: StateManager
+        state_manager: StateManager,
+        terminal_router: Optional["TerminalRouter"] = None,
+        tool_executor: Optional[ToolExecutor] = None
     ):
         """Initialize the coder agent.
         
@@ -41,11 +50,16 @@ class CoderAgent:
             agent_id: Unique identifier for this agent.
             executor: Executor instance for LLM API calls.
             state_manager: State manager for saving agent output to channels.
+            terminal_router: Optional terminal router for command execution.
+            tool_executor: Optional tool executor for executing tool calls.
         """
         self.agent_id = agent_id
         self.executor = executor
         self.state_manager = state_manager
+        self.terminal_router = terminal_router
+        self.tool_executor = tool_executor
         self.message_history: List[Dict[str, str]] = []
+        self.agent_type = "coder"
     
     async def implement(
         self,

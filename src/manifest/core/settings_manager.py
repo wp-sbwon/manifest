@@ -327,6 +327,47 @@ class SettingsManager:
             "warnings": warnings
         }
     
+    # Agent Permissions Management
+    def get_agent_permissions(self) -> Dict[str, Dict[str, Any]]:
+        """Get all agent permissions."""
+        agent_types = ["orchestrator", "planner", "coder", "test", "review", "debug", "approver", "project_review", "e2e_test", "integration_test"]
+        permissions = {}
+        for agent_type in agent_types:
+            permissions[agent_type] = self.config_manager.get_agent_permissions(agent_type)
+        return permissions
+    
+    def set_agent_permission(
+        self,
+        agent_type: str,
+        permission_type: str,
+        value: str
+    ) -> bool:
+        """Set a specific permission for an agent type.
+        
+        Args:
+            agent_type: Type of agent (e.g., "coder", "planner").
+            permission_type: Type of permission (e.g., "read", "write", "bash").
+            value: Permission value ("allow", "ask", "deny").
+        
+        Returns:
+            True if saved successfully, False otherwise.
+        """
+        current_perms = self.config_manager.get_agent_permissions(agent_type)
+        if "permission" not in current_perms:
+            current_perms["permission"] = {}
+        
+        current_perms["permission"][permission_type] = value
+        
+        return self.config_manager.set_agent_permissions(agent_type, current_perms)
+    
+    def get_global_permissions(self) -> Dict[str, Any]:
+        """Get global permissions."""
+        return self.config_manager.get_global_permissions()
+    
+    def set_global_permissions(self, permissions: Dict[str, Any]) -> bool:
+        """Set global permissions."""
+        return self.config_manager.set_global_permissions(permissions)
+    
     # Get all settings (for UI display)
     def get_all_settings(self) -> Dict[str, Any]:
         """Get all settings as a dictionary."""
@@ -339,6 +380,8 @@ class SettingsManager:
             "default_models": self.get_default_models(),
             "agent_skills": self.get_agent_skills(),
             "project_skills": self.get_project_skills(),
+            "agent_permissions": self.get_agent_permissions(),
+            "global_permissions": self.get_global_permissions(),
             "policy_exists": self.policy_file.exists(),
             "agents_md_exists": self.agents_md_file.exists()
         }

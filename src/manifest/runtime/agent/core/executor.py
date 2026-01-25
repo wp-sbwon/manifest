@@ -17,6 +17,8 @@ import httpx
 from manifest.core.config import ConfigManager
 from manifest.core.state_manager import StateManager
 from manifest.runtime.hooks.prompt_hooks import HookManager
+from manifest.runtime.tools.tool_definitions import get_tool_definitions
+from manifest.runtime.tools.tool_call_parser import ToolCallParser
 
 
 class AgentExecutor:
@@ -95,12 +97,15 @@ class AgentExecutor:
             "status": "running"
         }
         
+        # Prepare tools for API
+        api_tools = tools if tools is not None else get_tool_definitions()
+        
         try:
             if provider == "anthropic":
-                async for chunk in self._call_anthropic(api_key, model, messages):
+                async for chunk in self._call_anthropic(api_key, model, messages, api_tools):
                     yield chunk
             elif provider == "openai":
-                async for chunk in self._call_openai(api_key, model, messages):
+                async for chunk in self._call_openai(api_key, model, messages, api_tools):
                     yield chunk
             else:
                 yield {"type": "error", "content": f"Unsupported provider: {provider}"}
@@ -201,6 +206,18 @@ class AgentExecutor:
         if system_message:
             payload["system"] = system_message
         
+        # Add tools if provided
+        if tools:
+            # Convert tool definitions to Anthropic format
+            anthropic_tools = []
+            for tool in tools:
+                anthropic_tools.append({
+                    "name": tool["name"],
+                    "description": tool.get("description", ""),
+                    "input_schema": tool.get("input_schema", {})
+                })
+            payload["tools"] = anthropic_tools
+        
         async with httpx.AsyncClient(timeout=300.0) as client:
             async with client.stream("POST", url, headers=headers, json=payload) as response:
                 if response.status_code != 200:
@@ -236,7 +253,8 @@ class AgentExecutor:
         self,
         api_key: str,
         model: str,
-        messages: List[Dict[str, str]]
+        messages: List[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """Call OpenAI API."""
         url = "https://api.openai.com/v1/chat/completions"
@@ -259,6 +277,9 @@ class AgentExecutor:
                     return
                 
                 full_content = ""
+                function_calls = []
+                current_function_call = None
+                
                 async for line in response.aiter_lines():
                     if not line.strip():
                         continue
@@ -273,15 +294,49 @@ class AgentExecutor:
                             choices = data.get("choices", [])
                             if choices:
                                 delta = choices[0].get("delta", {})
+                                
+                                # Handle function calls
+                                if "function_call" in delta:
+                                    func_call = delta["function_call"]
+                                    if "name" in func_call:
+                                        current_function_call = {
+                                            "name": func_call["name"],
+                                            "arguments": ""
+                                        }
+                                    elif "arguments" in func_call and current_function_call:
+                                        current_function_call["arguments"] += func_call["arguments"]
+                                
+                                # Handle text content
                                 text = delta.get("content", "")
                                 if text:
                                     full_content += text
                                     yield {"type": "chunk", "content": text}
+                                
+                                # Check if function call is complete
+                                if choices[0].get("finish_reason") == "function_call" and current_function_call:
+                                    try:
+                                        arguments = json.loads(current_function_call["arguments"])
+                                        tool_call = {
+                                            "id": f"openai_{id(current_function_call)}",
+                                            "name": current_function_call["name"],
+                                            "input": arguments
+                                        }
+                                        function_calls.append(tool_call)
+                                        yield {
+                                            "type": "tool_use",
+                                            "tool_call": tool_call
+                                        }
+                                    except json.JSONDecodeError:
+                                        pass
+                                    current_function_call = None
                         except json.JSONDecodeError:
                             continue
                 
                 if full_content:
                     yield {"type": "complete", "content": full_content}
+                
+                if function_calls:
+                    yield {"type": "tool_use_complete", "tool_calls": function_calls}
     
     def get_session_status(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """Get agent session status."""

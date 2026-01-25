@@ -6,9 +6,12 @@ error messages to identify root causes and propose fixes. The debug agent
 doesn't write code directly but provides clear instructions for the coder
 to implement fixes.
 """
-from typing import Dict, Any, Optional, List, AsyncIterator
+from typing import Dict, Any, Optional, List, AsyncIterator, TYPE_CHECKING
 from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.state_manager import StateManager
+
+if TYPE_CHECKING:
+    from manifest.runtime.router.terminal_router import TerminalRouter
 
 
 DEBUG_IDENTITY = """
@@ -61,10 +64,12 @@ class DebugAgent:
             agent_id: Unique identifier for this agent.
             executor: Executor instance for LLM API calls.
             state_manager: State manager for saving debug analysis.
+            terminal_router: Optional terminal router for command execution.
         """
         self.agent_id = agent_id
         self.executor = executor
         self.state_manager = state_manager
+        self.terminal_router = terminal_router
         self.message_history: List[Dict[str, str]] = []
     
     async def debug(

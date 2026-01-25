@@ -9,9 +9,12 @@ and reports results.
 The agent extracts test information (files, cases, results) and saves it to
 task state for tracking throughout the Worker Squad workflow.
 """
-from typing import Dict, Any, Optional, List, AsyncIterator
+from typing import Dict, Any, Optional, List, AsyncIterator, TYPE_CHECKING
 from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.state_manager import StateManager
+
+if TYPE_CHECKING:
+    from manifest.runtime.router.terminal_router import TerminalRouter
 
 
 TEST_AGENT_IDENTITY = """
@@ -145,7 +148,8 @@ class TestAgent:
         self,
         agent_id: str,
         executor: AgentExecutor,
-        state_manager: StateManager
+        state_manager: StateManager,
+        terminal_router: Optional["TerminalRouter"] = None
     ):
         """Initialize the test agent.
         
@@ -153,10 +157,12 @@ class TestAgent:
             agent_id: Unique identifier for this agent.
             executor: Executor instance for LLM API calls.
             state_manager: State manager for saving test results.
+            terminal_router: Optional terminal router for command execution.
         """
         self.agent_id = agent_id
         self.executor = executor
         self.state_manager = state_manager
+        self.terminal_router = terminal_router
         self.message_history: List[Dict[str, str]] = []
     
     async def write_tdd_tests(

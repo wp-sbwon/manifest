@@ -11,8 +11,13 @@ or internal execution is being used, making it transparent to callers.
 """
 import asyncio
 import subprocess
+import sys
+import importlib
 from typing import Dict, Any, Optional, AsyncIterator
 from pathlib import Path
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Try to import OpenCode
 try:
@@ -85,6 +90,10 @@ class OpenCodeAdapter:
                 # If OpenCode initialization fails, fall back to internal
                 self.use_opencode = False
                 self.opencode_router = None
+        elif self.use_opencode and not OPENCODE_AVAILABLE:
+            # Try to install OpenCode automatically
+            # Note: This is async, so we'll do it lazily on first use
+            pass
     
     def _init_opencode_router(self):
         """

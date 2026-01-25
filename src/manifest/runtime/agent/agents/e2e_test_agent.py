@@ -10,9 +10,12 @@ The agent supports both TDD mode (write tests first) and execution mode
 (run tests after implementation), and operates at the Sprint level to
 test complete user journeys.
 """
-from typing import Dict, Any, Optional, List, AsyncIterator
+from typing import Dict, Any, Optional, List, AsyncIterator, TYPE_CHECKING
 from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.state_manager import StateManager
+
+if TYPE_CHECKING:
+    from manifest.runtime.router.terminal_router import TerminalRouter
 
 
 E2E_TEST_IDENTITY = """
@@ -127,7 +130,8 @@ class E2ETestAgent:
         self,
         agent_id: str,
         executor: AgentExecutor,
-        state_manager: StateManager
+        state_manager: StateManager,
+        terminal_router: Optional["TerminalRouter"] = None
     ):
         """Initialize the E2E test agent.
         
@@ -139,6 +143,7 @@ class E2ETestAgent:
         self.agent_id = agent_id
         self.executor = executor
         self.state_manager = state_manager
+        self.terminal_router = terminal_router
         self.message_history: List[Dict[str, str]] = []
     
     async def write_tdd_tests(

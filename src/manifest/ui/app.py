@@ -60,6 +60,82 @@ except ImportError:
 logger = get_logger(__name__)
 
 
+class DashboardHeader(Static):
+    """Header widget showing real-time project metrics."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.metrics = {
+            "match_pct": 0,
+            "active_tasks": 0,
+            "completed_tasks": 0,
+            "running_agents": 0
+        }
+
+    def update_metrics(self, metrics: Dict[str, Any]):
+        """Update the metrics display."""
+        self.metrics.update(metrics)
+        self.refresh()
+
+    def render(self) -> str:
+        """Render the dashboard header."""
+        m = self.metrics
+        match_color = "green" if m["match_pct"] > 90 else "yellow" if m["match_pct"] > 70 else "red"
+        
+        return (
+            f"[bold cyan]Manifest Dashboard[/] | "
+            f"Architecture Match: [bold {match_color}]{m['match_pct']}%[/] | "
+            f"Tasks: [bold]{m['completed_tasks']}/{m['active_tasks'] + m['completed_tasks']}[/] | "
+            f"Active Agents: [bold green]{m['running_agents']}[/]"
+        )
+
+
+class ContextBar(RichLog):
+    """Context bar showing real-time agent activity streaming."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.max_lines = 1
+        self.activities: List[Dict[str, Any]] = []
+    
+    def add_activity(self, task_id: str, agent_type: str, activity: str):
+        """Add or update an agent activity."""
+        # Remove existing activity for this task/agent
+        self.activities = [a for a in self.activities if not (a.get("task_id") == task_id and a.get("agent_type") == agent_type)]
+        # Add new activity
+        self.activities.append({
+            "task_id": task_id,
+            "agent_type": agent_type,
+            "activity": activity,
+            "timestamp": time.time()
+        })
+        # Keep only recent activities (last 3)
+        self.activities = self.activities[-3:]
+        self.update_display()
+    
+    def remove_activity(self, task_id: str, agent_type: str):
+        """Remove an activity."""
+        self.activities = [a for a in self.activities if not (a.get("task_id") == task_id and a.get("agent_type") == agent_type)]
+        self.update_display()
+    
+    def update_display(self):
+        """Update the displayed activities."""
+        self.clear()
+        if not self.activities:
+            self.write("[dim]No active agents[/]")
+        else:
+            activity_texts = []
+            for activity in self.activities:
+                agent_type = activity.get("agent_type", "agent")
+                task_id = activity.get("task_id", "unknown")
+                activity_text = activity.get("activity", "")
+                # Truncate long activities
+                if len(activity_text) > 40:
+                    activity_text = activity_text[:37] + "..."
+                activity_texts.append(f"[cyan]{agent_type}[/] on [bold]{task_id[:8]}[/]: {activity_text}")
+            self.write(" | ".join(activity_texts))
+
+
 class ManifestApp(App):
     """Main application class for the Manifest TUI.
     
@@ -213,6 +289,16 @@ class ManifestApp(App):
     #insp-drift {
         display: none;
     }
+
+    /* --- Dashboard Header --- */
+    #dashboard-header {
+        height: 3;
+        dock: top;
+        background: #161b22;
+        border-bottom: solid #30363d;
+        padding: 0 1;
+        text-align: center;
+    }
     """
 
     BINDINGS = [
@@ -286,6 +372,8 @@ class ManifestApp(App):
             ComposeResult containing all widgets to be mounted.
         """
         yield Header(show_clock=True)
+        yield DashboardHeader(id="dashboard-header")
+        yield ContextBar(id="context-bar")
         
         with Horizontal():
             # 1. Mission Control (Sidebar)
@@ -452,6 +540,14 @@ class ManifestApp(App):
         
         # Start drift audit (non-blocking to avoid blocking UI)
         asyncio.create_task(self.audit_drift())
+        
+        # Initialize dashboard metrics
+        await self.update_dashboard_metrics()
+        
+        # Set up periodic dashboard updates
+        self.set_interval(5.0, self.update_dashboard_metrics)
+        # Set up periodic context bar updates
+        self.set_interval(2.0, self.update_context_bar)
         
         # Focus input field after everything is loaded
         self.query_one("#global-input").focus()
@@ -682,6 +778,199 @@ class ManifestApp(App):
         # TODO: Add approval buttons/widgets
         # For now, user can approve via command: /approve_sprint {sprint_id}
     
+    async def _update_task_inspector(self, task_id: str, task: Dict[str, Any]) -> None:
+        """Update inspector with task logs and diff."""
+        try:
+            # Switch inspector to data mode
+            visual_pane = self.query_one("#insp-visual")
+            data_pane = self.query_one("#insp-data")
+            drift_pane = self.query_one("#insp-drift")
+            visual_pane.styles.display = "none"
+            drift_pane.styles.display = "none"
+            data_pane.styles.display = "block"
+            self.inspector_mode = "data"
+            
+            data_trace = self.query_one("#data-trace", RichLog)
+            data_trace.clear()
+            
+            # Show task header
+            task_name = task.get("name", task_id)
+            task_status = task.get("status", "unknown")
+            data_trace.write(f"[bold cyan]Task: {task_name} ({task_id})[/]")
+            data_trace.write(f"Status: [bold]{task_status}[/]")
+            data_trace.write("")
+            
+            # Show task logs from channels
+            worker_squad = task.get("worker_squad", {})
+            stages = worker_squad.get("stages", {})
+            
+            if stages:
+                data_trace.write("[bold yellow]Worker Squad Logs:[/]")
+                for stage_name, stage_data in stages.items():
+                    status = stage_data.get("status", "pending")
+                    output = stage_data.get("output", "")
+                    if output:
+                        data_trace.write(f"\n[bold]{stage_name.upper()}[/] [{status}]:")
+                        # Truncate very long outputs
+                        if len(output) > 500:
+                            data_trace.write(output[:500] + "\n... (truncated)")
+                        else:
+                            data_trace.write(output)
+                data_trace.write("")
+            
+            # Also check agent channels
+            if self.agent_coordinator:
+                agent_info = self.agent_coordinator.get_active_agents().get(task_id)
+                if agent_info:
+                    channel = agent_info.get("channel")
+                    if channel:
+                        history = self.state_manager.get_chat_history(channel)
+                        if history:
+                            data_trace.write("[bold cyan]Agent Channel Logs:[/]")
+                            for msg in history[-10:]:  # Last 10 messages
+                                role = msg.get("role", "unknown")
+                                content = msg.get("content", "")
+                                if role == "user":
+                                    data_trace.write(f"[dim]User:[/] {content[:200]}")
+                                elif role == "assistant":
+                                    data_trace.write(f"[cyan]Agent:[/] {content[:200]}")
+                                elif role == "system":
+                                    data_trace.write(f"[yellow]System:[/] {content[:200]}")
+                            data_trace.write("")
+            
+            # Show Git diff if available
+            from manifest.core.task_manager import TaskManager
+            task_manager = TaskManager(self.state_manager)
+            git_diff = task_manager.get_task_git_diff(task_id)
+            
+            if git_diff:
+                data_trace.write("[bold green]Git Diff:[/]")
+                # Truncate very long diffs
+                if len(git_diff) > 2000:
+                    data_trace.write(git_diff[:2000] + "\n... (truncated)")
+                else:
+                    data_trace.write(git_diff)
+            else:
+                # Check if diff is stored in task changes
+                changes = task.get("changes", {})
+                stored_diff = changes.get("git_diff")
+                if stored_diff:
+                    data_trace.write("[bold green]Stored Git Diff:[/]")
+                    if len(stored_diff) > 2000:
+                        data_trace.write(stored_diff[:2000] + "\n... (truncated)")
+                    else:
+                        data_trace.write(stored_diff)
+                else:
+                    data_trace.write("[dim]No Git diff available for this task[/]")
+        except Exception as e:
+            logger.error(f"Error updating task inspector: {e}", exc_info=True)
+
+    async def update_context_bar(self) -> None:
+        """Update context bar with current agent activities."""
+        try:
+            context_bar = self.query_one("#context-bar", ContextBar)
+            
+            if not self.agent_coordinator:
+                context_bar.clear()
+                context_bar.write("[dim]No agent coordinator[/]")
+                return
+            
+            # Get active agents
+            active_agents = self.agent_coordinator.get_active_agents()
+            
+            # Clear existing activities
+            context_bar.activities = []
+            
+            # Add activities for each active agent
+            for task_id, agent_info in active_agents.items():
+                if agent_info.get("status") == "active":
+                    agent_type = agent_info.get("agent_type", "agent")
+                    stage = agent_info.get("stage", "working")
+                    
+                    # Get more detailed activity from state
+                    task = self.state_manager.get_task(task_id)
+                    if task:
+                        worker_squad = task.get("worker_squad", {})
+                        stages = worker_squad.get("stages", {})
+                        current_stage = None
+                        for stage_name, stage_data in stages.items():
+                            if stage_data.get("status") == "in_progress":
+                                current_stage = stage_name
+                                break
+                        
+                        if current_stage:
+                            activity = f"{current_stage}"
+                        else:
+                            activity = stage
+                    else:
+                        activity = stage
+                    
+                    context_bar.add_activity(task_id, agent_type, activity)
+            
+            context_bar.update_display()
+        except Exception:
+            # Silently fail if context bar not available
+            pass
+
+    async def update_dashboard_metrics(self) -> None:
+        """Update dashboard header with current project metrics."""
+        try:
+            dashboard = self.query_one("#dashboard-header", DashboardHeader)
+            
+            # Calculate architecture match percentage
+            match_pct = 0
+            try:
+                from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
+                top_down = BlueprintLoader.load_blueprint(
+                    self.manifest_dir,
+                    with_metadata=True,
+                    default_source="llm_design"
+                )
+                bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+                
+                status_info = self.blueprint_synchronizer.calculate_implementation_status(
+                    top_down,
+                    bottom_up,
+                    getattr(self, 'architecture_data', None)
+                )
+                
+                # Calculate match percentage from component statuses
+                component_statuses = status_info.get("component_statuses", {})
+                if component_statuses:
+                    total = len(component_statuses)
+                    matched = sum(1 for status in component_statuses.values() if status == "implemented")
+                    match_pct = int((matched / total) * 100) if total > 0 else 0
+            except Exception:
+                pass
+            
+            # Get task counts
+            tasks = self.state_manager.get_task_checklist()
+            active_tasks = sum(1 for t in tasks if t.get("status") in ["pending", "in_progress"])
+            completed_tasks = sum(1 for t in tasks if t.get("status") == "done")
+            
+            # Count running agents
+            running_agents = 0
+            if self.agent_coordinator:
+                # Check active worker squads
+                state = self.state_manager.get_state()
+                tasks = state.get("tasks", [])
+                for task in tasks:
+                    worker_squad = task.get("worker_squad", {})
+                    stages = worker_squad.get("stages", {})
+                    for stage_data in stages.values():
+                        if stage_data.get("status") == "in_progress":
+                            running_agents += 1
+            
+            dashboard.update_metrics({
+                "match_pct": match_pct,
+                "active_tasks": active_tasks,
+                "completed_tasks": completed_tasks,
+                "running_agents": running_agents
+            })
+        except Exception:
+            # Silently fail if dashboard not available
+            pass
+
     async def update_task_tree(self) -> None:
         """Update the task tree widget with current tasks from state.
         
@@ -1269,6 +1558,8 @@ class ManifestApp(App):
             
             # Update task tree in UI
             await self.update_task_tree()
+            # Update dashboard metrics
+            await self.update_dashboard_metrics()
             
             # Optionally auto-start worker squads for created tasks
             # Check if orchestrator response suggests immediate execution
@@ -1320,8 +1611,8 @@ class ManifestApp(App):
     async def on_task_selected(self, message: TaskSelected) -> None:
         """Handle task selection from TaskTreeView.
         
-        When a task is selected, shows task details and allows status changes
-        via keyboard shortcuts or a status change dialog.
+        When a task is selected, shows task details in inspector with logs and diff,
+        and allows status changes via keyboard shortcuts.
         
         Args:
             message: TaskSelected message with task information.
@@ -1351,6 +1642,9 @@ class ManifestApp(App):
             log.write("[dim]Press 's' to change status, 'Enter' to view details[/]")
         else:
             log.write("[dim]Press 's' to change status, 'Enter' to view details[/]")
+        
+        # Update inspector with task logs and diff
+        await self._update_task_inspector(task_id, task)
         
         # Store selected task for status change
         self._selected_task_id = task_id
