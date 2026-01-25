@@ -17,6 +17,8 @@ class StructureHierarchyView(Tree):
         self.status_info: Dict[str, Any] = {}
         self.component_statuses: Dict[str, str] = {}
         self.feature_completions: Dict[str, float] = {}
+        self.tasks: List[Dict[str, Any]] = []  # Tasks for task-file association
+        self.app_ref: Optional[Any] = None  # Reference to app for accessing state
     
     def load_data(
         self,
@@ -140,15 +142,17 @@ class StructureHierarchyView(Tree):
         
         metadata_str = f" [{'] ['.join(metadata_tags)}]" if metadata_tags else ""
         
-        # Component label
-        comp_label = f"{status_icon} {comp_name}{metadata_str}"
+        # Component label with type
+        comp_type_display = f"[{comp_type}]" if comp_type != "unknown" else ""
+        comp_label = f"{status_icon} {comp_name} {comp_type_display}{metadata_str}"
         comp_node = parent_node.add(comp_label, expand=False)
         comp_node.data = {
             "type": "component",
             "id": comp_id,
             "status": status,
             "file": comp_file,
-            "line": comp_line
+            "line": comp_line,
+            "component_type": comp_type
         }
         
         # Add file path as child node
@@ -161,14 +165,57 @@ class StructureHierarchyView(Tree):
                 "line": comp_line
             }
         
-        # Add methods if available
+        # Add module path if available
+        module_path = comp.get("module_path", "")
+        if module_path:
+            module_label = f"📦 {module_path}"
+            module_node = comp_node.add(module_label, expand=False)
+            module_node.data = {
+                "type": "module",
+                "module_path": module_path
+            }
+        
+        # Add methods if available (expandable)
         methods = comp.get("methods", [])
         if methods:
-            methods_label = f"Methods: {', '.join(methods[:5])}"
-            if len(methods) > 5:
-                methods_label += f" (+{len(methods) - 5} more)"
+            methods_count = len(methods)
+            methods_label = f"Methods ({methods_count}) [▶]"
             methods_node = comp_node.add(methods_label, expand=False)
-            methods_node.data = {"type": "methods", "methods": methods}
+            methods_node.data = {
+                "type": "methods_header",
+                "methods": methods,
+                "expanded": False
+            }
+            
+            # Add individual method nodes (initially collapsed)
+            for method_name in methods:
+                method_node = methods_node.add(f"  • {method_name}", expand=False)
+                method_node.data = {
+                    "type": "method",
+                    "name": method_name,
+                    "component_id": comp_id
+                }
+        
+        # Add attributes if available (expandable)
+        attributes = comp.get("attributes", [])
+        if attributes:
+            attributes_count = len(attributes)
+            attributes_label = f"Attributes ({attributes_count}) [▶]"
+            attributes_node = comp_node.add(attributes_label, expand=False)
+            attributes_node.data = {
+                "type": "attributes_header",
+                "attributes": attributes,
+                "expanded": False
+            }
+            
+            # Add individual attribute nodes (initially collapsed)
+            for attr_name in attributes:
+                attr_node = attributes_node.add(f"  • {attr_name}", expand=False)
+                attr_node.data = {
+                    "type": "attribute",
+                    "name": attr_name,
+                    "component_id": comp_id
+                }
     
     def _get_status_icon_color(self, status: str, completion: float) -> tuple[str, str]:
         """Get status icon and color for feature."""
@@ -194,12 +241,104 @@ class StructureHierarchyView(Tree):
         else:
             return "○", "gray"
     
+    def _find_tasks_for_file(self, file_path: str) -> List[Dict[str, Any]]:
+        """Find tasks associated with a file.
+        
+        Args:
+            file_path: Path to the file.
+        
+        Returns:
+            List of tasks that have modified or are working on this file.
+        """
+        if not self.tasks and self.app_ref:
+            # Load tasks from state if not already loaded
+            try:
+                self.tasks = self.app_ref.state_manager.get_task_checklist()
+            except Exception:
+                pass
+        
+        associated = []
+        for task in self.tasks:
+            # Check if task has modified this file
+            worker_squad = task.get("worker_squad", {})
+            stages = worker_squad.get("stages", {})
+            for stage_data in stages.values():
+                output = stage_data.get("output", "")
+                tool_execution = stage_data.get("tool_execution", {})
+                modified_files = tool_execution.get("modified_files", [])
+                
+                if file_path in modified_files:
+                    associated.append(task)
+                    break
+            
+            # Also check task scope
+            scope = task.get("scope", {})
+            allowed_files = scope.get("files", [])
+            if file_path in allowed_files:
+                if task not in associated:
+                    associated.append(task)
+        
+        return associated
+    
+    def set_app(self, app: Any):
+        """Set reference to app for accessing state.
+        
+        Args:
+            app: ManifestApp instance.
+        """
+        self.app_ref = app
+        if app:
+            try:
+                self.tasks = app.state_manager.get_task_checklist()
+            except Exception:
+                pass
+    
     @on(Tree.NodeSelected)
     def on_node_selected(self, event: Tree.NodeSelected) -> None:
-        """Handle node selection - can be used to update Inspector."""
+        """Handle node selection - can be used to update Inspector or toggle expansion."""
         node_data = event.node.data
-        if node_data:
-            # Emit message for Inspector to handle
+        if not node_data:
+            return
+        
+        node_type = node_data.get("type")
+        
+        # Handle methods/attributes header expansion
+        if node_type == "methods_header":
+            methods = node_data.get("methods", [])
+            is_expanded = node_data.get("expanded", False)
+            
+            # Toggle expansion
+            if is_expanded:
+                # Collapse: remove individual method nodes
+                event.node.collapse()
+                # Update label
+                event.node.label = f"Methods ({len(methods)}) [▶]"
+                node_data["expanded"] = False
+            else:
+                # Expand: individual method nodes are already added in _add_component_node
+                event.node.expand()
+                # Update label
+                event.node.label = f"Methods ({len(methods)}) [▼]"
+                node_data["expanded"] = True
+        
+        elif node_type == "attributes_header":
+            attributes = node_data.get("attributes", [])
+            is_expanded = node_data.get("expanded", False)
+            
+            # Toggle expansion
+            if is_expanded:
+                # Collapse
+                event.node.collapse()
+                event.node.label = f"Attributes ({len(attributes)}) [▶]"
+                node_data["expanded"] = False
+            else:
+                # Expand
+                event.node.expand()
+                event.node.label = f"Attributes ({len(attributes)}) [▼]"
+                node_data["expanded"] = True
+        
+        # Emit message for Inspector to handle (for component selection)
+        if node_type == "component":
             self.post_message(ComponentSelected(node_data))
 
 
