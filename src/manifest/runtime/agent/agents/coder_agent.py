@@ -217,6 +217,26 @@ class CoderAgent:
                             error_info["permission_required"] = True
                             error_info["permission_details"] = tool_result.get("permission_details", {})
                         self.tool_execution_summary["errors"].append(error_info)
+                    
+                    # Track validation results
+                    validation = tool_result.get("validated", {})
+                    if not validation.get("success"):
+                        # Add validation errors to summary
+                        validation_errors = validation.get("validation_errors", [])
+                        for val_error in validation_errors:
+                            if val_error not in [e.get("error") for e in self.tool_execution_summary["errors"]]:
+                                self.tool_execution_summary["errors"].append({
+                                    "tool": tool_name,
+                                    "error": f"Validation failed: {val_error}",
+                                    "file_path": tool_input.get("file_path") if tool_name in ["edit", "write", "read"] else None
+                                })
+                    
+                    # Track validation warnings
+                    validation_warnings = validation.get("warnings", [])
+                    if validation_warnings:
+                        if "validation_warnings" not in self.tool_execution_summary:
+                            self.tool_execution_summary["validation_warnings"] = []
+                        self.tool_execution_summary["validation_warnings"].extend(validation_warnings)
                 
                 # Format tool results for Anthropic API (tool_result content blocks)
                 provider = model_config.get("provider", "anthropic")
