@@ -406,6 +406,11 @@ class ManifestApp(App):
                         # View 2: Project (Tasks + History)
                         with TabPane("Project", id="tab-project"):
                             yield ProjectView(id="project-view")
+                        
+                        # View 3: Agent Status
+                        with TabPane("Agent Status", id="tab-agent-status"):
+                            from manifest.ui.widgets.agent_status_view import AgentStatusView
+                            yield AgentStatusView(id="agent-status-view")
 
                 # 2-B. Inspector Side (Verification)
                 with Vertical(id="inspector-side"):
@@ -549,6 +554,18 @@ class ManifestApp(App):
         # Update squad channels based on active tasks
         if self.channel_manager:
             await self.channel_manager.update_squad_channels(self.agent_coordinator)
+            
+            # Set up main channel button click handler
+            try:
+                main_button = self.query_one("#btn-channel-main", Button)
+                async def switch_to_main():
+                    await self.channel_manager.switch_channel("main")
+                main_button.on_click = lambda: asyncio.create_task(switch_to_main())
+            except Exception as e:
+                logger.debug(f"Could not set up main channel button: {e}")
+            
+            # Activate main channel and refresh display
+            await self.channel_manager.switch_channel("main")
         
         # Initialize views
         await self._load_structure_data()
@@ -564,6 +581,8 @@ class ManifestApp(App):
         self.set_interval(5.0, self.update_dashboard_metrics)
         # Set up periodic context bar updates
         self.set_interval(2.0, self.update_context_bar)
+        # Set up periodic agent status updates
+        self.set_interval(3.0, self.update_agent_status)
         
         # Focus input field after everything is loaded
         self.query_one("#global-input").focus()
@@ -986,6 +1005,19 @@ class ManifestApp(App):
         except Exception:
             # Silently fail if dashboard not available
             pass
+    
+    async def update_agent_status(self) -> None:
+        """Update agent status view with current agent information."""
+        try:
+            agent_status_view = self.query_one("#agent-status-view", raise_if_missing=False)
+            if agent_status_view:
+                from manifest.ui.widgets.agent_status_view import AgentStatusView
+                if isinstance(agent_status_view, AgentStatusView):
+                    agent_status_view.set_app(self)
+                    await agent_status_view.update_agents()
+        except Exception:
+            # Silently fail if agent status view not available
+            pass
 
     async def update_task_tree(self) -> None:
         """Update the task tree widget with current tasks from state.
@@ -1299,6 +1331,7 @@ class ManifestApp(App):
         # Update hierarchy view
         try:
             hierarchy_view = self.query_one("#structure-hierarchy-view", StructureHierarchyView)
+            hierarchy_view.set_app(self)  # Set app reference for task association
             hierarchy_view.load_data(self.architecture_data, top_down_blueprint, status_info)
         except Exception:
             pass
@@ -1421,7 +1454,15 @@ class ManifestApp(App):
                     )
                     
                     if orchestrator_agent and orchestrator_agent.get("instance"):
-                        # Add user message to history
+                        # Add user message to history via channel_manager
+                        channel = "main-orchestrator"
+                        if self.channel_manager:
+                            await self.channel_manager.handle_agent_output(channel, user_input, "user", save_immediately=True)
+                        else:
+                            # Fallback to direct state manager
+                            self.state_manager.add_chat_message(channel, "user", user_input)
+                            await self.state_manager.save_state()
+                        
                         orchestrator_instance = orchestrator_agent["instance"]
                         orchestrator_instance.message_history.append({
                             "role": "user",
@@ -1429,7 +1470,13 @@ class ManifestApp(App):
                         })
                         
                         # Process with orchestrator
-                        log.write("[bold green]Processing with Orchestrator...[/]")
+                        if self.channel_manager:
+                            await self.channel_manager.handle_agent_output(
+                                channel, "[bold green]Processing with Orchestrator...[/]", "system", save_immediately=False
+                            )
+                        else:
+                            log.write("[bold green]Processing with Orchestrator...[/]")
+                        
                         response_content = ""
                         
                         async for chunk in orchestrator_instance.coordinate(
@@ -1442,18 +1489,34 @@ class ManifestApp(App):
                             if chunk_type == "chunk":
                                 content = chunk.get("content", "")
                                 response_content += content
-                                # Stream to UI (RichLog doesn't support end parameter, so write each chunk)
-                                log.write(content)
+                                # Stream to UI via channel_manager
+                                if self.channel_manager:
+                                    await self.channel_manager.handle_agent_output(
+                                        channel, content, "assistant", save_immediately=False
+                                    )
+                                else:
+                                    log.write(content)
                             elif chunk_type == "complete":
                                 content = chunk.get("content", "")
                                 if content and content != response_content:
                                     # Write remaining content if any
                                     remaining = content[len(response_content):]
                                     if remaining:
-                                        log.write(remaining)
+                                        if self.channel_manager:
+                                            await self.channel_manager.handle_agent_output(
+                                                channel, remaining, "assistant", save_immediately=True
+                                            )
+                                        else:
+                                            log.write(remaining)
                                     response_content = content
+                                elif content:
+                                    # Save complete response
+                                    if self.channel_manager:
+                                        await self.channel_manager.handle_agent_output(
+                                            channel, content, "assistant", save_immediately=True
+                                        )
                             elif chunk_type == "tool_use" or chunk_type == "tool_use_start":
-                                # Display tool call
+                                # Display tool call via channel_manager
                                 tool_call = chunk.get("tool_call", {})
                                 tool_name = tool_call.get("name", "unknown")
                                 tool_id = tool_call.get("id", "unknown")
@@ -1463,9 +1526,15 @@ class ManifestApp(App):
                                 tool_display = f"[cyan]🔧 Tool: {tool_name}[/] (id: {tool_id[:8]}...)\n"
                                 if tool_input:
                                     tool_display += f"  Input: {json.dumps(tool_input, indent=2)[:200]}...\n"
-                                log.write(tool_display)
+                                
+                                if self.channel_manager:
+                                    await self.channel_manager.handle_agent_output(
+                                        channel, tool_display, "system", save_immediately=False
+                                    )
+                                else:
+                                    log.write(tool_display)
                             elif chunk_type == "tool_result":
-                                # Display tool result
+                                # Display tool result via channel_manager
                                 tool_name = chunk.get("tool_name", "unknown")
                                 tool_call_id = chunk.get("tool_call_id", "unknown")
                                 result = chunk.get("result")
@@ -1482,40 +1551,63 @@ class ManifestApp(App):
                                     else:
                                         result_display += f"  Result: {result_str}\n"
                                 
-                                log.write(result_display)
+                                if self.channel_manager:
+                                    await self.channel_manager.handle_agent_output(
+                                        channel, result_display, "system", save_immediately=False
+                                    )
+                                else:
+                                    log.write(result_display)
                             elif chunk_type == "error":
                                 error_msg = chunk.get("content", "Unknown error")
-                                log.write(f"[bold red]Error: {error_msg}[/]")
+                                error_display = f"[bold red]Error: {error_msg}[/]"
+                                if self.channel_manager:
+                                    await self.channel_manager.handle_agent_output(
+                                        channel, error_display, "system", save_immediately=True
+                                    )
+                                else:
+                                    log.write(error_display)
                         
-                        # Save complete response
+                        # Try to extract and create tasks from orchestrator response
                         if response_content:
-                            # Save to main channel
-                            channel = "main-orchestrator"
-                            self.state_manager.add_chat_message(channel, "user", user_input)
-                            self.state_manager.add_chat_message(channel, "assistant", response_content)
-                            await self.state_manager.save_state()
-                            
-                            # Try to extract and create tasks from orchestrator response
                             await self._process_orchestrator_response(response_content, log)
                     else:
-                        log.write("[bold yellow]Failed to create orchestrator agent.[/]")
-                        # Save error to state
-                        self.state_manager.add_chat_message("main", "user", user_input)
-                        self.state_manager.add_chat_message("main", "assistant", "Error: Failed to create orchestrator agent.")
-                        await self.state_manager.save_state()
+                        error_msg = "[bold yellow]Failed to create orchestrator agent.[/]"
+                        if self.channel_manager:
+                            await self.channel_manager.handle_agent_output(
+                                "main", error_msg, "system", save_immediately=True
+                            )
+                        else:
+                            log.write(error_msg)
+                            # Save error to state
+                            self.state_manager.add_chat_message("main", "user", user_input)
+                            self.state_manager.add_chat_message("main", "assistant", "Error: Failed to create orchestrator agent.")
+                            await self.state_manager.save_state()
                 else:
                     # Agent bridge not connected - provide helpful message
+                    error_msg = ""
                     if not self.agent_bridge:
-                        log.write("[bold yellow]Agent system not initialized. Please wait for initialization...[/]")
+                        error_msg = "[bold yellow]Agent system not initialized. Please wait for initialization...[/]"
                     elif not self.agent_bridge.is_connected:
-                        log.write("[bold yellow]Agent system not connected. Use /start_agent to initialize.[/]")
+                        error_msg = "[bold yellow]Agent system not connected. Use /start_agent to initialize.[/]"
                     elif not self.agent_coordinator:
-                        log.write("[bold yellow]Agent coordinator not available.[/]")
+                        error_msg = "[bold yellow]Agent coordinator not available.[/]"
+                    
+                    if error_msg:
+                        if self.channel_manager:
+                            await self.channel_manager.handle_agent_output("main", error_msg, "system", save_immediately=True)
+                        else:
+                            log.write(error_msg)
                     
                     # Save to state anyway
-                    self.state_manager.add_chat_message("main", "user", user_input)
-                    self.state_manager.add_chat_message("main", "assistant", "Agent system not available. Please check connection.")
-                    await self.state_manager.save_state()
+                    if self.channel_manager:
+                        await self.channel_manager.handle_agent_output("main", user_input, "user", save_immediately=False)
+                        await self.channel_manager.handle_agent_output(
+                            "main", "Agent system not available. Please check connection.", "assistant", save_immediately=True
+                        )
+                    else:
+                        self.state_manager.add_chat_message("main", "user", user_input)
+                        self.state_manager.add_chat_message("main", "assistant", "Agent system not available. Please check connection.")
+                        await self.state_manager.save_state()
         finally:
             # Refocus input after command processing completes
             # This ensures the input field is ready for next command

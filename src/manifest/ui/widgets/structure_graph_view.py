@@ -122,6 +122,9 @@ class StructureGraphView(Static):
                     
                     for comp_id, comp in row_comps:
                         comp_name = comp.get("name", "Unknown")
+                        comp_type = comp.get("type", "unknown")
+                        comp_file = comp.get("file", "")
+                        comp_module = comp.get("module_path", "")
                         status = self.component_statuses.get(comp_id, comp.get("status", "pending"))
                         status_icon, _ = self._get_component_status_icon(status)
                         
@@ -134,16 +137,38 @@ class StructureGraphView(Static):
                         
                         metadata_str = f" [{'] ['.join(metadata_tags)}]" if metadata_tags else ""
                         
-                        # Component box (simplified ASCII art)
-                        comp_box = f"  ┌──────────────┐"
-                        comp_label = f"  │{status_icon} {comp_name[:12]:<12}│"
+                        # Component box with more details
+                        comp_box = f"  ┌──────────────────────────┐"
+                        comp_label = f"  │{status_icon} {comp_name[:20]:<20}│"
+                        comp_type_line = f"  │[{comp_type}]" + " " * (23 - len(comp_type) - 2) + "│"
                         if metadata_str:
-                            comp_meta = f"  │{metadata_str[:15]:<15}│"
+                            comp_meta = f"  │{metadata_str[:22]:<22}│"
                         else:
-                            comp_meta = f"  │              │"
-                        comp_bottom = f"  └──────────────┘"
+                            comp_meta = f"  │" + " " * 22 + "│"
                         
-                        row_lines.append([comp_box, comp_label, comp_meta, comp_bottom])
+                        # Add file/module info if available
+                        comp_info_lines = []
+                        if comp_file:
+                            file_short = comp_file.split("/")[-1] if "/" in comp_file else comp_file
+                            comp_info_lines.append(f"  │📁 {file_short[:21]:<21}│")
+                        if comp_module:
+                            module_short = comp_module.split(".")[-1] if "." in comp_module else comp_module
+                            comp_info_lines.append(f"  │📦 {module_short[:21]:<21}│")
+                        
+                        # Add methods count if available
+                        methods = comp.get("methods", [])
+                        if methods:
+                            methods_count = len(methods)
+                            comp_info_lines.append(f"  │Methods: {methods_count}" + " " * (23 - 11 - len(str(methods_count))) + "│")
+                        
+                        comp_bottom = f"  └──────────────────────────┘"
+                        
+                        # Combine all lines
+                        comp_lines = [comp_box, comp_label, comp_type_line, comp_meta]
+                        comp_lines.extend(comp_info_lines)
+                        comp_lines.append(comp_bottom)
+                        
+                        row_lines.append(comp_lines)
                     
                     # Combine row components
                     if len(row_lines) == 1:
@@ -159,21 +184,38 @@ class StructureGraphView(Static):
                     
                     # Add contract arrows between components in this feature
                     if i < len(comp_nodes) - 1:
-                        # Show contract if exists
-                        comp1_id = comp_nodes[i][0]
-                        if i + 1 < len(comp_nodes):
-                            comp2_id = comp_nodes[i + 1][0]
-                            # Check for contract
-                            for contract in contracts_by_from.get(comp1_id, []):
-                                if contract.get("to", "") == comp2_id:
-                                    contract_type = contract.get("type", "")
-                                    data_flow = contract.get("data_flow", {})
-                                    if data_flow:
-                                        flow_label = f"  → {contract_type}: {data_flow.get('input', '')} → {data_flow.get('output', '')}"
-                                    else:
-                                        flow_label = f"  → {contract_type}"
-                                    lines.append(f"│{flow_label}" + " " * (59 - len(flow_label) - 1) + "│")
-                                    break
+                        # Show contracts for all components in this row
+                        for comp_idx, (comp_id, comp) in enumerate(row_comps):
+                            if comp_idx < len(row_comps) - 1:
+                                # Check contract to next component in row
+                                next_comp_id = row_comps[comp_idx + 1][0]
+                                for contract in contracts_by_from.get(comp_id, []):
+                                    if contract.get("to", "") == next_comp_id:
+                                        contract_type = contract.get("type", "")
+                                        contract_file = contract.get("file", "")
+                                        symbols = contract.get("symbols", [])
+                                        data_flow = contract.get("data_flow", {})
+                                        
+                                        # Build contract label with more details
+                                        if data_flow:
+                                            flow_label = f"  → {contract_type}: {data_flow.get('input', '')} → {data_flow.get('output', '')}"
+                                        else:
+                                            flow_label = f"  → {contract_type}"
+                                        
+                                        # Add symbols if available
+                                        if symbols:
+                                            symbols_str = ", ".join(symbols[:3])
+                                            if len(symbols) > 3:
+                                                symbols_str += f" (+{len(symbols) - 3} more)"
+                                            flow_label += f" [{symbols_str}]"
+                                        
+                                        # Add file location if available
+                                        if contract_file:
+                                            file_short = contract_file.split("/")[-1] if "/" in contract_file else contract_file
+                                            flow_label += f" 📁 {file_short}"
+                                        
+                                        lines.append(f"│{flow_label}" + " " * (59 - len(flow_label) - 1) + "│")
+                                        break
             
             lines.append(f"└─────────────────────────────────────────────────────────────┘")
             lines.append("")
