@@ -19,6 +19,10 @@ from manifest.core.state_manager import StateManager
 from manifest.runtime.hooks.prompt_hooks import HookManager
 from manifest.runtime.tools.tool_definitions import get_tool_definitions
 from manifest.runtime.tools.tool_call_parser import ToolCallParser
+from manifest.agents.context_size_calculator import ContextSizeCalculator
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class AgentExecutor:
@@ -94,6 +98,28 @@ class AgentExecutor:
         # Prepare messages (prompt can be None for continuing conversation)
         messages = self._prepare_messages(modified_prompt, message_history or [])
         
+        # Validate and optimize context size before API call
+        if context:
+            validation_result = self._validate_and_optimize_context(
+                messages=messages,
+                context=context,
+                model=model,
+                provider=provider,
+                tools=tools
+            )
+            
+            if validation_result.get("optimized"):
+                logger.info(
+                    f"Context optimized for {agent_id}: "
+                    f"{validation_result.get('original_tokens')} -> "
+                    f"{validation_result.get('optimized_tokens')} tokens"
+                )
+            
+            if not validation_result.get("valid"):
+                warnings = validation_result.get("warnings", [])
+                for warning in warnings:
+                    logger.warning(f"Context size warning for {agent_id}: {warning}")
+        
         # Create session
         session_id = f"{agent_id}_{asyncio.get_event_loop().time()}"
         self.active_sessions[agent_id] = {
@@ -102,8 +128,12 @@ class AgentExecutor:
             "status": "running"
         }
         
-        # Prepare tools for API
-        api_tools = tools if tools is not None else get_tool_definitions()
+        # Prepare tools for API - optimize tool list based on agent type and context
+        api_tools = self._optimize_tool_list(
+            tools=tools,
+            agent_type=agent_type,
+            context=context
+        )
         
         try:
             if provider == "anthropic":
@@ -435,6 +465,136 @@ class AgentExecutor:
                 
                 if function_calls:
                     yield {"type": "tool_use_complete", "tool_calls": function_calls}
+    
+    def _validate_and_optimize_context(
+        self,
+        messages: List[Dict[str, Any]],
+        context: Dict[str, Any],
+        model: str,
+        provider: str,
+        tools: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
+        """Validate and optimize context size.
+        
+        Checks if the total context (messages + context dict) fits within
+        model token limits. If not, suggests optimizations or trims message history.
+        
+        Args:
+            messages: Prepared message list for API.
+            context: Context dictionary.
+            model: Model name.
+            provider: Provider name.
+            tools: Optional tool definitions.
+        
+        Returns:
+            Dictionary with validation result and optimization info.
+        """
+        # Estimate tokens in messages
+        messages_text = json.dumps(messages, indent=2)
+        messages_tokens = ContextSizeCalculator.estimate_tokens(messages_text)
+        
+        # Estimate tokens in context
+        context_tokens = ContextSizeCalculator.estimate_context_tokens(context)
+        
+        # Estimate tokens in tools (if provided)
+        tools_tokens = 0
+        if tools:
+            tools_text = json.dumps(tools, indent=2)
+            tools_tokens = ContextSizeCalculator.estimate_tokens(tools_text)
+        
+        total_tokens = messages_tokens + context_tokens + tools_tokens
+        model_limit = ContextSizeCalculator.get_model_token_limit(model, provider)
+        available_tokens = model_limit - ContextSizeCalculator.RESPONSE_TOKEN_RESERVE
+        
+        result = {
+            "valid": total_tokens <= available_tokens,
+            "estimated_tokens": total_tokens,
+            "model_limit": model_limit,
+            "available_tokens": available_tokens,
+            "messages_tokens": messages_tokens,
+            "context_tokens": context_tokens,
+            "tools_tokens": tools_tokens,
+            "optimized": False,
+            "warnings": [],
+            "suggestions": []
+        }
+        
+        if total_tokens > available_tokens:
+            excess = total_tokens - available_tokens
+            result["warnings"].append(
+                f"Total context ({total_tokens} tokens) exceeds available limit "
+                f"({available_tokens} tokens) by {excess} tokens"
+            )
+            result["suggestions"].append("Reduce message history length")
+            result["suggestions"].append("Reduce context tier sizes")
+            result["suggestions"].append("Use fewer tools")
+        
+        elif total_tokens > available_tokens * 0.8:
+            result["warnings"].append(
+                f"Context size ({total_tokens} tokens) is {total_tokens/available_tokens*100:.1f}% "
+                "of available limit. Consider reducing context."
+            )
+        
+        return result
+    
+    def _optimize_tool_list(
+        self,
+        tools: Optional[List[Dict[str, Any]]],
+        agent_type: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """Optimize tool list based on agent type and context.
+        
+        Returns only the tools that are relevant for the agent type,
+        reducing token usage and improving focus.
+        
+        Args:
+            tools: Full tool list (or None to use defaults).
+            agent_type: Type of agent (coder, test, debug, etc.).
+            context: Optional context to determine tool needs.
+        
+        Returns:
+            Optimized list of tool definitions.
+        """
+        if tools is None:
+            tools = get_tool_definitions()
+        
+        # Agent-specific tool filtering
+        agent_tool_map = {
+            "coder": ["edit", "write", "read", "grep", "glob", "list", "bash"],
+            "test": ["read", "bash", "grep", "glob"],
+            "debug": ["read", "edit", "grep", "bash"],
+            "planner": ["read", "grep", "glob"],
+            "orchestrator": ["read", "grep", "glob"],
+        }
+        
+        # Get relevant tools for this agent type
+        relevant_tool_names = agent_tool_map.get(agent_type, [])
+        
+        if not relevant_tool_names:
+            # If no specific mapping, return all tools
+            return tools
+        
+        # Filter tools to only include relevant ones
+        optimized_tools = [
+            tool for tool in tools
+            if tool.get("name") in relevant_tool_names
+        ]
+        
+        # If filtering resulted in empty list, return all tools (fallback)
+        if not optimized_tools:
+            logger.warning(
+                f"No tools matched for agent type '{agent_type}', "
+                "returning all tools"
+            )
+            return tools
+        
+        logger.debug(
+            f"Optimized tools for {agent_type}: "
+            f"{len(optimized_tools)}/{len(tools)} tools"
+        )
+        
+        return optimized_tools
     
     def get_session_status(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """Get agent session status."""
