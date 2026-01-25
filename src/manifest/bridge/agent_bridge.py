@@ -407,7 +407,7 @@ class AgentBridge:
                     conflict_review = context.get("conflict_review", {})
                     task_description = context.get("task_description", "Review blueprint conflict")
                     # Create a special task description for conflict review
-                    conflict_issue = conflict_review.get("conflict_issue", {}")
+                    conflict_issue = conflict_review.get("conflict_issue", {})
                     review_request = conflict_review.get("review_request", {})
                     
                     # Build conflict review task description

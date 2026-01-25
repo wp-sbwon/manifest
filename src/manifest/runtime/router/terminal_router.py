@@ -6,13 +6,17 @@ on behalf of agents. It integrates with OpenCode (if available) for enhanced
 command execution, with fallback to standard subprocess execution.
 
 The router handles command execution, streaming output, cancellation, and
-monitoring through an optional watchdog system.
+monitoring through an optional watchdog system. It also supports permission
+checking via PermissionManager for role-based access control.
 """
 import asyncio
 import subprocess
-from typing import Dict, Any, Optional, AsyncIterator
+from typing import Dict, Any, Optional, AsyncIterator, TYPE_CHECKING
 from pathlib import Path
 from manifest.runtime.opencode_adapter import OpenCodeAdapter
+
+if TYPE_CHECKING:
+    from manifest.runtime.permissions.permission_manager import PermissionManager
 
 
 class TerminalRouter:
@@ -36,7 +40,9 @@ class TerminalRouter:
         self,
         working_dir: Optional[Path] = None,
         watchdog=None,
-        use_opencode: Optional[bool] = None
+        use_opencode: Optional[bool] = None,
+        permission_manager: Optional["PermissionManager"] = None,
+        agent_type: Optional[str] = None
     ):
         """Initialize the terminal router.
         
@@ -51,10 +57,14 @@ class TerminalRouter:
                 execution and resource usage.
             use_opencode: Force OpenCode usage. True forces OpenCode,
                 False forces internal execution, None auto-detects.
+            permission_manager: Optional PermissionManager for access control.
+            agent_type: Optional agent type for permission checks.
         """
         self.working_dir = working_dir or Path.cwd()
         self.active_commands: Dict[str, subprocess.Popen] = {}
         self.watchdog = watchdog
+        self.permission_manager = permission_manager
+        self.agent_type = agent_type
         
         # Initialize OpenCode adapter with shared resources
         self.opencode_adapter = OpenCodeAdapter(
@@ -73,6 +83,7 @@ class TerminalRouter:
     ) -> Dict[str, Any]:
         """Execute a terminal command and return results.
         
+        Checks permissions before execution if PermissionManager is configured.
         Delegates to OpenCodeAdapter which handles OpenCode integration
         and fallback. The command is registered with the watchdog if
         available for monitoring.
@@ -92,9 +103,36 @@ class TerminalRouter:
             - returncode: Exit code of the command
             - command_id: Unique ID for this command execution
             - backend: Which backend was used ("opencode" or "internal")
+            - permission_denied: True if command was denied (only if denied)
         """
         full_command = [command] + (args or [])
         command_id = f"cmd_{id(full_command)}"
+        
+        # Check permissions if PermissionManager is configured
+        if self.permission_manager and self.agent_type:
+            permission = self.permission_manager.check_permission(
+                "bash",
+                full_command
+            )
+            
+            if permission == "deny":
+                return {
+                    "stdout": "",
+                    "stderr": f"Permission denied: Command '{' '.join(full_command)}' is not allowed for agent type '{self.agent_type}'",
+                    "returncode": -1,
+                    "command_id": command_id,
+                    "permission_denied": True,
+                    "backend": "internal"
+                }
+            elif permission == "ask":
+                # TODO: Implement user approval request
+                # For now, log and allow (can be changed to deny for stricter control)
+                from manifest.core.logger import get_logger
+                logger = get_logger(__name__)
+                logger.warning(
+                    f"Permission 'ask' for command '{' '.join(full_command)}' "
+                    f"by agent '{self.agent_type}' - allowing for now (approval not implemented)"
+                )
         
         # Register with watchdog if available
         if self.watchdog:

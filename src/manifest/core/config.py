@@ -418,6 +418,100 @@ class ConfigManager:
             "provider": "anthropic",
             "model": default_models.get("anthropic", "claude-3-5-sonnet-20241022")
         }
+    
+    def get_agent_permissions(self, agent_type: str) -> Dict[str, Any]:
+        """Get permissions for a specific agent type.
+        
+        Loads agent-specific permissions from agent_config.json. If no
+        agent-specific permissions are set, returns an empty dictionary.
+        
+        Args:
+            agent_type: Type of agent (e.g., "coder", "planner").
+        
+        Returns:
+            Dictionary containing permission configuration for the agent.
+        """
+        agent_config = self._load_agent_config()
+        permissions_config = agent_config.get("agent_permissions", {})
+        agent_config_section = permissions_config.get("agent", {})
+        return agent_config_section.get(agent_type, {})
+    
+    def set_agent_permissions(
+        self,
+        agent_type: str,
+        permissions: Dict[str, Any]
+    ) -> bool:
+        """Set permissions for a specific agent type.
+        
+        Saves the permissions configuration to agent_config.json under
+        agent_permissions.agent.{agent_type}.
+        
+        Args:
+            agent_type: Type of agent to configure.
+            permissions: Dictionary containing permission configuration.
+                Should have a "permission" key with permission rules.
+        
+        Returns:
+            True if configuration was saved successfully, False otherwise.
+        """
+        agent_config = self._load_agent_config()
+        
+        if "agent_permissions" not in agent_config:
+            agent_config["agent_permissions"] = {}
+        
+        if "agent" not in agent_config["agent_permissions"]:
+            agent_config["agent_permissions"]["agent"] = {}
+        
+        agent_config["agent_permissions"]["agent"][agent_type] = permissions
+        
+        # Save to file
+        agent_config_file = self.manifest_dir / "agent_config.json"
+        try:
+            self.manifest_dir.mkdir(parents=True, exist_ok=True)
+            with open(agent_config_file, "w") as f:
+                json.dump(agent_config, f, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"Error saving agent permissions: {e}", exc_info=True)
+            return False
+    
+    def get_global_permissions(self) -> Dict[str, Any]:
+        """Get global permissions configuration.
+        
+        Returns:
+            Dictionary containing global permission configuration.
+        """
+        agent_config = self._load_agent_config()
+        permissions_config = agent_config.get("agent_permissions", {})
+        return permissions_config.get("global", {})
+    
+    def set_global_permissions(self, permissions: Dict[str, Any]) -> bool:
+        """Set global permissions configuration.
+        
+        Args:
+            permissions: Dictionary containing global permission configuration.
+                Should have a "permission" key with permission rules.
+        
+        Returns:
+            True if configuration was saved successfully, False otherwise.
+        """
+        agent_config = self._load_agent_config()
+        
+        if "agent_permissions" not in agent_config:
+            agent_config["agent_permissions"] = {}
+        
+        agent_config["agent_permissions"]["global"] = permissions
+        
+        # Save to file
+        agent_config_file = self.manifest_dir / "agent_config.json"
+        try:
+            self.manifest_dir.mkdir(parents=True, exist_ok=True)
+            with open(agent_config_file, "w") as f:
+                json.dump(agent_config, f, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"Error saving global permissions: {e}", exc_info=True)
+            return False
 
 
 # Global config instance

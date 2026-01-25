@@ -121,7 +121,11 @@ class SettingsScreen(Screen):
                 with TabPane("Skills", id="tab-skills"):
                     yield from self._compose_skills_tab()
                 
-                # Tab 4: Policy
+                # Tab 4: Agent Permissions
+                with TabPane("Permissions", id="tab-permissions"):
+                    yield from self._compose_permissions_tab()
+                
+                # Tab 5: Policy
                 with TabPane("Policy", id="tab-policy"):
                     yield from self._compose_policy_tab()
             
@@ -234,6 +238,8 @@ class SettingsScreen(Screen):
             tabs.active = "tab-models"
         elif self.initial_tab == "skills":
             tabs.active = "tab-skills"
+        elif self.initial_tab == "permissions":
+            tabs.active = "tab-permissions"
         elif self.initial_tab == "policy":
             tabs.active = "tab-policy"
     
@@ -441,6 +447,24 @@ class SettingsScreen(Screen):
             agents_md_content = agents_md_textarea.text
             if agents_md_content != self._agents_md_content:
                 self.settings_manager.save_agents_md_content(agents_md_content)
+            
+            # Save agent permissions
+            try:
+                agent_types = ["orchestrator", "planner", "coder", "test", "review", "debug", "approver", "project_review", "e2e_test", "integration_test"]
+                permission_types = ["read", "write", "edit", "bash", "websearch", "webfetch"]
+                
+                for agent_type in agent_types:
+                    for perm_type in permission_types:
+                        try:
+                            select = self.query_one(f"#select-{agent_type}-{perm_type}", Select)
+                            value = select.value if select.value else "deny"
+                            self.settings_manager.set_agent_permission(agent_type, perm_type, value)
+                        except Exception:
+                            # Select might not exist if tab wasn't visited
+                            pass
+            except Exception as e:
+                # Permissions tab might not be visible
+                pass
             
             status_msg.update("✅ Settings saved", classes="status-success")
             self.unsaved_changes = False

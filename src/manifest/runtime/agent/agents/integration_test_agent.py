@@ -10,9 +10,12 @@ The agent supports both TDD mode (write tests first) and execution mode
 (run tests after implementation), and operates at the Sprint level to test
 component integrations across the Sprint scope.
 """
-from typing import Dict, Any, Optional, List, AsyncIterator
+from typing import Dict, Any, Optional, List, AsyncIterator, TYPE_CHECKING
 from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.state_manager import StateManager
+
+if TYPE_CHECKING:
+    from manifest.runtime.router.terminal_router import TerminalRouter
 
 
 INTEGRATION_TEST_IDENTITY = """
@@ -184,6 +187,7 @@ class IntegrationTestAgent:
         self.agent_id = agent_id
         self.executor = executor
         self.state_manager = state_manager
+        self.terminal_router = terminal_router
         self.message_history: List[Dict[str, str]] = []
     
     async def write_tdd_tests(

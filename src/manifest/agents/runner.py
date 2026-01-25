@@ -15,6 +15,10 @@ from manifest.agents.context_provider import ContextProvider
 from manifest.agents.container_communication import ContainerMessageBus, ContainerStateSync
 from manifest.runtime.agent.core.manager import AgentManager
 from manifest.runtime.agent.core.executor import AgentExecutor
+from manifest.runtime.permissions.permission_manager import PermissionManager
+from manifest.runtime.router.terminal_router import TerminalRouter
+from manifest.runtime.tools.tool_executor import ToolExecutor
+from manifest.runtime.tools.file_manager import FileManager
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -52,6 +56,32 @@ async def run_agent(task_id: str, agent_type: str):
     
     executor = AgentExecutor(state_manager, config_manager)
     agent_manager = AgentManager(executor, state_manager)
+
+    # Initialize PermissionManager for this agent type
+    permission_manager = PermissionManager(
+        config_manager=config_manager,
+        agent_type=agent_type
+    )
+    
+    # Initialize TerminalRouter with permission checking
+    terminal_router = TerminalRouter(
+        working_dir=Path("/app"),
+        permission_manager=permission_manager,
+        agent_type=agent_type
+    )
+    
+    # Initialize FileManager with permission checking
+    file_manager = FileManager(
+        working_dir=Path("/app"),
+        permission_manager=permission_manager,
+        agent_type=agent_type
+    )
+    
+    # Initialize ToolExecutor
+    tool_executor = ToolExecutor(
+        terminal_router=terminal_router,
+        file_manager=file_manager
+    )
     
     try:
         # Get context for the agent
@@ -70,10 +100,22 @@ async def run_agent(task_id: str, agent_type: str):
             }
         )
         
-        # Create and run agent
-        agent = agent_manager.create_agent(task_id, agent_type)
-        if not agent:
+        # Create and run agent with terminal router and tool executor
+        agent_dict = await agent_manager.create_agent(
+            agent_type=agent_type,
+            context=context,
+            model_config=model_config,
+            task_id=task_id,
+            terminal_router=terminal_router,
+            tool_executor=tool_executor
+        )
+        if not agent_dict:
             raise ValueError(f"Failed to create agent of type {agent_type}")
+        
+        # Get the actual agent instance
+        agent = agent_dict.get("instance")
+        if not agent:
+            raise ValueError(f"Agent instance not found for type {agent_type}")
             
         # Execute agent mission
         # Note: This part depends on how different agent types are executed.
