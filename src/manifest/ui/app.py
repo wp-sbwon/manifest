@@ -25,8 +25,8 @@ from typing import Optional, List, Dict, Any
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical, VerticalScroll, Grid
 from textual.widgets import Header, Footer, Tree, Input, RichLog, TabbedContent, TabPane, Static, Label, Button
-from manifest.ui.widgets.structure_hierarchy_view import StructureHierarchyView
-from manifest.ui.widgets.structure_graph_view import StructureGraphView
+from manifest.ui.widgets.structure_hierarchy_view import StructureHierarchyView, ComponentSelected
+from manifest.ui.widgets.structure_graph_view import StructureGraphView, ComponentSelectedFromGraph
 from manifest.ui.widgets.project_view import TaskTreeView, SprintStatusView, HistoryView, TaskSelected, SprintSelected
 from textual import on, work
 from manifest.agents.container_api import create_container_api
@@ -402,6 +402,10 @@ class ManifestApp(App):
                                 with TabPane("Graph", id="tab-structure-graph"):
                                     with VerticalScroll(id="structure-graph-scroll"):
                                         yield StructureGraphView(id="structure-graph-view")
+                                    # Component list for selection
+                                    with VerticalScroll(id="structure-graph-component-list"):
+                                        yield Static("[bold]Component List (Click to select):[/]", id="component-list-header")
+                                        # Component buttons will be added dynamically
                         
                         # View 2: Project (Tasks + History)
                         with TabPane("Project", id="tab-project"):
@@ -411,6 +415,16 @@ class ManifestApp(App):
                         with TabPane("Agent Status", id="tab-agent-status"):
                             from manifest.ui.widgets.agent_status_view import AgentStatusView
                             yield AgentStatusView(id="agent-status-view")
+                        
+                        # View 4: Task Progress
+                        with TabPane("Task Progress", id="tab-task-progress"):
+                            from manifest.ui.widgets.task_progress_view import TaskProgressView
+                            yield TaskProgressView(id="task-progress-view")
+                        
+                        # View 5: Agent Channels
+                        with TabPane("Agent Channels", id="tab-agent-channels"):
+                            from manifest.ui.widgets.agent_channels_view import AgentChannelsView
+                            yield AgentChannelsView(id="agent-channels-view")
 
                 # 2-B. Inspector Side (Verification)
                 with Vertical(id="inspector-side"):
@@ -551,9 +565,40 @@ class ManifestApp(App):
         if state.get("last_action"):
             self.query_one("#log-main", RichLog).write(f"[bold blue]Resuming: {state.get('last_action')}[/]")
         
+        # Set app references for widgets
+        try:
+            hierarchy_view = self.query_one("#structure-hierarchy-view", raise_if_missing=False)
+            if hierarchy_view:
+                hierarchy_view.set_app(self)
+        except Exception:
+            pass
+        
+        try:
+            task_progress_view = self.query_one("#task-progress-view", raise_if_missing=False)
+            if task_progress_view:
+                task_progress_view.set_app(self)
+        except Exception:
+            pass
+        
+        try:
+            agent_channels_view = self.query_one("#agent-channels-view", raise_if_missing=False)
+            if agent_channels_view:
+                agent_channels_view.set_app(self)
+        except Exception:
+            pass
+        
         # Update squad channels based on active tasks
         if self.channel_manager:
             await self.channel_manager.update_squad_channels(self.agent_coordinator)
+            
+            # Update agent channels view with available channels
+            try:
+                agent_channels_view = self.query_one("#agent-channels-view", raise_if_missing=False)
+                if agent_channels_view:
+                    channels = self.channel_manager.squad_channels
+                    await agent_channels_view.update_channels(channels)
+            except Exception as e:
+                logger.debug(f"Could not update agent channels view: {e}")
             
             # Set up main channel button click handler
             try:
@@ -899,6 +944,183 @@ class ManifestApp(App):
                     data_trace.write("[dim]No Git diff available for this task[/]")
         except Exception as e:
             logger.error(f"Error updating task inspector: {e}", exc_info=True)
+
+    async def _update_component_inspector(self, component_id: str, component_data: Dict[str, Any]) -> None:
+        """Update inspector with component details."""
+        try:
+            # Switch inspector to data mode
+            visual_pane = self.query_one("#insp-visual")
+            data_pane = self.query_one("#insp-data")
+            drift_pane = self.query_one("#insp-drift")
+            visual_pane.styles.display = "none"
+            drift_pane.styles.display = "none"
+            data_pane.styles.display = "block"
+            self.inspector_mode = "data"
+            
+            data_trace = self.query_one("#data-trace", RichLog)
+            data_trace.clear()
+            
+            # Get full component data from blueprint
+            component = None
+            if self.blueprint_data:
+                components = self.blueprint_data.get("components", [])
+                component = next((c for c in components if c.get("id") == component_id), None)
+            
+            # If not found in blueprint_data, use component_data from message
+            if not component:
+                component = component_data
+            
+            # Show component header
+            comp_name = component.get("name", "Unknown")
+            comp_type = component.get("type", "unknown")
+            comp_status = component_data.get("status", "unknown")
+            comp_file = component.get("file", "")
+            comp_line = component.get("line", 0)
+            comp_module = component.get("module_path", "")
+            
+            data_trace.write(f"[bold cyan]Component: {comp_name}[/]")
+            data_trace.write(f"Type: [bold]{comp_type}[/] | Status: {comp_status}")
+            if comp_file:
+                data_trace.write(f"File: {comp_file}:{comp_line}")
+            if comp_module:
+                data_trace.write(f"Module: {comp_module}")
+            data_trace.write("")
+            
+            # Show metadata
+            metadata_items = []
+            if component.get("algorithm"):
+                metadata_items.append(f"Algorithm: {component['algorithm']}")
+            if component.get("design_pattern"):
+                metadata_items.append(f"Design Pattern: {component['design_pattern']}")
+            if component.get("complexity"):
+                metadata_items.append(f"Complexity: {component['complexity']}")
+            if component.get("notes"):
+                metadata_items.append(f"Notes: {component['notes']}")
+            
+            if metadata_items:
+                data_trace.write("[bold yellow]Metadata:[/]")
+                for item in metadata_items:
+                    data_trace.write(f"  • {item}")
+                data_trace.write("")
+            
+            # Show methods
+            methods = component.get("methods", [])
+            if methods:
+                data_trace.write(f"[bold yellow]Methods ({len(methods)}):[/]")
+                for method in methods[:20]:  # Show first 20
+                    data_trace.write(f"  • {method}")
+                if len(methods) > 20:
+                    data_trace.write(f"  ... (+{len(methods) - 20} more)")
+                data_trace.write("")
+            
+            # Show attributes
+            attributes = component.get("attributes", [])
+            if attributes:
+                data_trace.write(f"[bold yellow]Attributes ({len(attributes)}):[/]")
+                for attr in attributes[:20]:  # Show first 20
+                    data_trace.write(f"  • {attr}")
+                if len(attributes) > 20:
+                    data_trace.write(f"  ... (+{len(attributes) - 20} more)")
+                data_trace.write("")
+            
+            # Show contracts
+            contracts = []
+            if self.blueprint_data:
+                all_contracts = self.blueprint_data.get("contracts", [])
+                # Find outgoing contracts
+                outgoing = [c for c in all_contracts if c.get("from") == component_id]
+                # Find incoming contracts
+                incoming = [c for c in all_contracts if c.get("to") == component_id]
+                contracts = {"outgoing": outgoing, "incoming": incoming}
+            
+            if contracts.get("outgoing") or contracts.get("incoming"):
+                data_trace.write("[bold yellow]Contracts:[/]")
+                
+                if contracts.get("outgoing"):
+                    data_trace.write(f"  [bold]Outgoing ({len(contracts['outgoing'])}):[/]")
+                    for contract in contracts["outgoing"][:10]:  # Show first 10
+                        to_id = contract.get("to", "")
+                        contract_type = contract.get("type", "unknown")
+                        symbols = contract.get("symbols", [])
+                        contract_file = contract.get("file", "")
+                        
+                        # Try to get target component name
+                        target_name = to_id.split("-")[-1] if "-" in to_id else to_id
+                        if self.blueprint_data:
+                            target_comp = next((c for c in self.blueprint_data.get("components", []) if c.get("id") == to_id), None)
+                            if target_comp:
+                                target_name = target_comp.get("name", target_name)
+                        
+                        contract_line = f"    → {target_name} ({contract_type})"
+                        if symbols:
+                            symbols_str = ", ".join(symbols[:3])
+                            if len(symbols) > 3:
+                                symbols_str += f" (+{len(symbols) - 3} more)"
+                            contract_line += f" [{symbols_str}]"
+                        if contract_file:
+                            file_short = contract_file.split("/")[-1] if "/" in contract_file else contract_file
+                            contract_line += f" 📁 {file_short}"
+                        data_trace.write(contract_line)
+                    if len(contracts["outgoing"]) > 10:
+                        data_trace.write(f"    ... (+{len(contracts['outgoing']) - 10} more)")
+                
+                if contracts.get("incoming"):
+                    data_trace.write(f"  [bold]Incoming ({len(contracts['incoming'])}):[/]")
+                    for contract in contracts["incoming"][:10]:  # Show first 10
+                        from_id = contract.get("from", "")
+                        contract_type = contract.get("type", "unknown")
+                        symbols = contract.get("symbols", [])
+                        contract_file = contract.get("file", "")
+                        
+                        # Try to get source component name
+                        source_name = from_id.split("-")[-1] if "-" in from_id else from_id
+                        if self.blueprint_data:
+                            source_comp = next((c for c in self.blueprint_data.get("components", []) if c.get("id") == from_id), None)
+                            if source_comp:
+                                source_name = source_comp.get("name", source_name)
+                        
+                        contract_line = f"    ← {source_name} ({contract_type})"
+                        if symbols:
+                            symbols_str = ", ".join(symbols[:3])
+                            if len(symbols) > 3:
+                                symbols_str += f" (+{len(symbols) - 3} more)"
+                            contract_line += f" [{symbols_str}]"
+                        if contract_file:
+                            file_short = contract_file.split("/")[-1] if "/" in contract_file else contract_file
+                            contract_line += f" 📁 {file_short}"
+                        data_trace.write(contract_line)
+                    if len(contracts["incoming"]) > 10:
+                        data_trace.write(f"    ... (+{len(contracts['incoming']) - 10} more)")
+                
+                data_trace.write("")
+            
+            # Show related tasks
+            if comp_file:
+                # Use StructureHierarchyView's method to find tasks
+                try:
+                    hierarchy_view = self.query_one("#structure-hierarchy-view", StructureHierarchyView)
+                    if hierarchy_view:
+                        related_tasks = hierarchy_view._find_tasks_for_file(comp_file)
+                        if related_tasks:
+                            data_trace.write("[bold yellow]Related Tasks:[/]")
+                            for task in related_tasks[:10]:  # Show first 10
+                                task_id = task.get("id", "unknown")
+                                task_name = task.get("name", task_id)
+                                task_status = task.get("status", "unknown")
+                                status_icon = {
+                                    "done": "✅",
+                                    "in_progress": "⚡",
+                                    "pending": "⏳",
+                                    "blocked": "🚫"
+                                }.get(task_status, "○")
+                                data_trace.write(f"  {status_icon} {task_id}: {task_name} ({task_status})")
+                            if len(related_tasks) > 10:
+                                data_trace.write(f"  ... (+{len(related_tasks) - 10} more)")
+                            data_trace.write("")
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error(f"Error updating component inspector: {e}", exc_info=True)
 
     async def update_context_bar(self) -> None:
         """Update context bar with current agent activities."""
@@ -1328,20 +1550,83 @@ class ManifestApp(App):
             self.architecture_data
         )
         
+        # Use bottom_up_blueprint (code-extracted) if top_down_blueprint is empty
+        # This allows viewing the actual project structure even without a design blueprint
+        display_blueprint = top_down_blueprint
+        if not top_down_blueprint.get("components") and bottom_up_blueprint.get("components"):
+            display_blueprint = bottom_up_blueprint
+            logger.debug("Using code-extracted blueprint for display (top-down blueprint is empty)")
+        
         # Update hierarchy view
         try:
             hierarchy_view = self.query_one("#structure-hierarchy-view", StructureHierarchyView)
             hierarchy_view.set_app(self)  # Set app reference for task association
-            hierarchy_view.load_data(self.architecture_data, top_down_blueprint, status_info)
+            hierarchy_view.load_data(self.architecture_data, display_blueprint, status_info)
         except Exception:
             pass
         
         # Update graph view
         try:
             graph_view = self.query_one("#structure-graph-view", StructureGraphView)
-            graph_view.load_data(self.architecture_data, top_down_blueprint, status_info)
+            graph_view.load_data(self.architecture_data, display_blueprint, status_info)
+            # Update component list
+            self._update_graph_component_list(display_blueprint, status_info)
         except Exception:
             pass
+    
+    def _update_graph_component_list(self, blueprint: Dict[str, Any], status_info: Dict[str, Any]) -> None:
+        """Update the component list in graph view with clickable buttons."""
+        try:
+            component_list = self.query_one("#structure-graph-component-list", VerticalScroll)
+            # Remove existing component buttons
+            for widget in list(component_list.query(Button)):
+                if widget.id and widget.id.startswith("comp-btn-"):
+                    widget.remove()
+            
+            # Get component statuses
+            component_statuses = status_info.get("component_statuses", {}) if status_info else {}
+            
+            # Add component buttons
+            components = blueprint.get("components", [])
+            for comp in components:
+                comp_id = comp.get("id", "")
+                if not comp_id:
+                    continue
+                
+                comp_name = comp.get("name", "Unknown")
+                comp_type = comp.get("type", "unknown")
+                status = component_statuses.get(comp_id, comp.get("status", "pending"))
+                
+                # Get status icon
+                status_icon = "●" if status == "implemented" else "⚠️" if status == "drift" else "○" if status == "ghost" else "➕" if status == "extra" else "○"
+                
+                button_id = f"comp-btn-{comp_id.replace(':', '-').replace('.', '-').replace(' ', '-')}"
+                button_label = f"{status_icon} {comp_name} [{comp_type}]"
+                
+                button = Button(button_label, id=button_id, variant="default")
+                button.data = {
+                    "component_id": comp_id,
+                    "component_data": comp
+                }
+                component_list.mount(button)
+        except Exception as e:
+            # Silently fail if component list doesn't exist
+            logger.debug(f"Could not update graph component list: {e}")
+    
+    @on(Button.Pressed, "#structure-graph-component-list Button")
+    async def on_graph_component_button_clicked(self, event: Button.Pressed) -> None:
+        """Handle component button click from graph view."""
+        button_data = event.button.data
+        if button_data and button_data.get("component_id"):
+            component_id = button_data["component_id"]
+            component_data = button_data.get("component_data", {})
+            
+            log = self.query_one("#log-main", RichLog)
+            log.write(f"[bold cyan]Component Selected: {component_data.get('name', 'Unknown')}[/]")
+            log.write(f"ID: {component_id}")
+            
+            # Update inspector with component details
+            await self._update_component_inspector(component_id, component_data)
     
     async def _load_project_data(self):
         """Load and update project view data."""
@@ -1785,9 +2070,65 @@ class ManifestApp(App):
         # Update inspector with task logs and diff
         await self._update_task_inspector(task_id, task)
         
+        # Update Task Progress view
+        try:
+            task_progress_view = self.query_one("#task-progress-view", raise_if_missing=False)
+            if task_progress_view:
+                task_progress_view.update_task(task_id, task)
+        except Exception as e:
+            logger.debug(f"Could not update task progress view: {e}")
+        
+        # Highlight related files and components in Structure Hierarchy View
+        try:
+            hierarchy_view = self.query_one("#structure-hierarchy-view", raise_if_missing=False)
+            if hierarchy_view:
+                hierarchy_view.highlight_task_files_and_components(task)
+        except Exception as e:
+            logger.debug(f"Could not highlight task files/components: {e}")
+        
         # Store selected task for status change
         self._selected_task_id = task_id
         self._selected_task_status = current_status
+
+    @on(ComponentSelected)
+    async def on_component_selected(self, message: ComponentSelected) -> None:
+        """Handle component selection from StructureHierarchyView.
+        
+        When a component is selected, shows component details in inspector with
+        methods, attributes, contracts, and related tasks.
+        
+        Args:
+            message: ComponentSelected message with component information.
+        """
+        component_data = message.data
+        component_id = component_data.get("id", "")
+        
+        log = self.query_one("#log-main", RichLog)
+        log.write(f"[bold cyan]Component Selected: {component_data.get('name', 'Unknown')}[/]")
+        log.write(f"ID: {component_id}")
+        
+        # Update inspector with component details
+        await self._update_component_inspector(component_id, component_data)
+    
+    @on(ComponentSelectedFromGraph)
+    async def on_component_selected_from_graph(self, message: ComponentSelectedFromGraph) -> None:
+        """Handle component selection from StructureGraphView.
+        
+        When a component is selected from the graph view, shows component details
+        in inspector with methods, attributes, contracts, and related tasks.
+        
+        Args:
+            message: ComponentSelectedFromGraph message with component information.
+        """
+        component_id = message.component_id
+        component_data = message.component_data
+        
+        log = self.query_one("#log-main", RichLog)
+        log.write(f"[bold cyan]Component Selected: {component_data.get('name', 'Unknown')}[/]")
+        log.write(f"ID: {component_id}")
+        
+        # Update inspector with component details
+        await self._update_component_inspector(component_id, component_data)
 
     @on(SprintSelected)
     async def on_sprint_selected(self, message: SprintSelected) -> None:

@@ -322,6 +322,22 @@ class ChannelManager:
             self.squad_channels[channel]["message_count"] += 1
             # Update button label with count
             await self._update_channel_button_label(channel)
+            
+            # Update Agent Channels View with updated channel info
+            try:
+                agent_channels_view = self.app.query_one("#agent-channels-view", raise_if_missing=False)
+                if agent_channels_view:
+                    await agent_channels_view.update_channels(self.squad_channels)
+            except Exception:
+                pass
+        
+        # Update Agent Channels View if available
+        try:
+            agent_channels_view = self.app.query_one("#agent-channels-view", raise_if_missing=False)
+            if agent_channels_view:
+                agent_channels_view.add_message(channel, role, content)
+        except Exception:
+            pass
         
         # Display in UI only if this is the active channel
         try:

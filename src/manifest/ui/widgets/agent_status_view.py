@@ -84,6 +84,9 @@ class AgentStatusCard(Static):
         if cpu_usage is not None:
             cpu_color = "green" if cpu_usage < 50 else "yellow" if cpu_usage < 80 else "red"
             lines.append(f"CPU: [{cpu_color}]{cpu_usage:.1f}%[/]")
+            # Add CPU bar chart
+            cpu_bar = self._create_bar_chart(cpu_usage, 20)
+            lines.append(f"     [{cpu_color}]{cpu_bar}[/]")
         
         if memory_usage is not None:
             memory_mb = memory_usage / (1024 * 1024) if memory_usage > 0 else 0
@@ -92,6 +95,9 @@ class AgentStatusCard(Static):
                 memory_pct = (memory_usage / memory_limit * 100) if memory_limit > 0 else 0
                 memory_color = "green" if memory_pct < 50 else "yellow" if memory_pct < 80 else "red"
                 lines.append(f"Memory: [{memory_color}]{memory_mb:.0f}MB/{memory_limit_mb:.0f}MB ({memory_pct:.1f}%)[/]")
+                # Add memory bar chart
+                memory_bar = self._create_bar_chart(memory_pct, 20)
+                lines.append(f"        [{memory_color}]{memory_bar}[/]")
             else:
                 lines.append(f"Memory: {memory_mb:.0f}MB")
         
@@ -129,6 +135,21 @@ class AgentStatusCard(Static):
             return f"{minutes}m {seconds}s"
         else:
             return f"{seconds}s"
+    
+    def _create_bar_chart(self, percentage: float, width: int = 20) -> str:
+        """Create an ASCII bar chart for resource usage.
+        
+        Args:
+            percentage: Percentage value (0-100).
+            width: Width of the bar in characters.
+        
+        Returns:
+            ASCII bar chart string.
+        """
+        filled = int(percentage / 100 * width)
+        empty = width - filled
+        bar = "█" * filled + "░" * empty
+        return bar
 
 
 class AgentStatusView(VerticalScroll):
