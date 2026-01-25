@@ -132,9 +132,6 @@ class PlannerAgent:
         # Update blueprint with metadata if found
         if methodology_info:
             await self._update_blueprint_metadata(methodology_info)
-        
-        # Note: State saving is handled by agent_bridge._handle_agent_chunk()
-        # to avoid duplicate saves when called through agent_bridge
     
     def _extract_methodology_info(self, content: str) -> Optional[Dict[str, Any]]:
         """Extract algorithm, design pattern, and complexity information from planner output.
@@ -247,7 +244,6 @@ class PlannerAgent:
                     comp["complexity"] = methodology_info["complexity"]
                     comp["complexity_reasoning"] = methodology_info.get("complexity_reasoning", "")
             
-            # Save updated blueprint with metadata
             save_blueprint_with_metadata(blueprint, blueprint_file, "llm_design", False, "llm_inference")
         except Exception as e:
             # Silently fail - blueprint update is optional

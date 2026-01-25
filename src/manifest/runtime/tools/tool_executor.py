@@ -214,7 +214,6 @@ class ToolExecutor:
                     tool_result.get("error", "Edit operation failed")
                 )
             else:
-                # Validate that file was actually modified
                 file_path = tool_input.get("file_path")
                 if file_path:
                     validation["warnings"].append(

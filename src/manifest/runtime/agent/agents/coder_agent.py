@@ -16,8 +16,6 @@ from manifest.core.state_manager import StateManager
 from manifest.runtime.tools.tool_executor import ToolExecutor
 from manifest.runtime.tools.tool_definitions import get_tool_definitions
 
-# Note: terminal_router is kept for backward compatibility but is not directly used.
-# All command execution goes through tool_executor which uses terminal_router internally.
 if TYPE_CHECKING:
     from manifest.runtime.router.terminal_router import TerminalRouter
 
@@ -60,7 +58,6 @@ class CoderAgent:
         self.agent_id = agent_id
         self.executor = executor
         self.state_manager = state_manager
-        # terminal_router kept for backward compatibility, but tool_executor is preferred
         self.terminal_router = terminal_router
         self.tool_executor = tool_executor
         self.message_history: List[Dict[str, str]] = []
@@ -325,10 +322,16 @@ class CoderAgent:
             }
     
     async def _save_response(self, content: str):
-        """Save agent response to state."""
-        channel = f"squad-{self.agent_id}-coder"
-        self.state_manager.add_chat_message(channel, "assistant", content)
-        await self.state_manager.save_state()
+        """Save agent response to state.
+        
+        Note: State saving is handled by agent_bridge._handle_agent_chunk() to avoid
+        duplicate saves. This method is kept for backward compatibility.
+        
+        Args:
+            content: The complete agent output content.
+        """
+        # State saving is handled by agent_bridge._handle_agent_chunk()
+        pass
     
     async def self_review(
         self,

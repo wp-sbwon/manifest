@@ -689,7 +689,6 @@ class StructureManager:
             if not existing_contract:
                 blueprint["contracts"].append(contract_dict)
         
-        # Save updated blueprint
         return save_blueprint_with_metadata(
             blueprint,
             self.blueprint_file,

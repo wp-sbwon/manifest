@@ -349,8 +349,6 @@ class TaskManager:
         
         # Save stage result
         task["worker_squad_stages"][stage] = stage_result_with_timestamp
-        
-        # Update task updated_at
         task["updated_at"] = datetime.now().isoformat()
         
         self.state_manager.set_task_checklist(tasks)
