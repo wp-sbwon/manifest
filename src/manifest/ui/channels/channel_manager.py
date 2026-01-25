@@ -206,6 +206,9 @@ class ChannelManager:
                 
                 if role == "user":
                     log.write(f"[bold blue]User:[/] {content}")
+                elif role == "system":
+                    # Tool information (tool_use, tool_result) - already formatted
+                    log.write(content)
                 else:
                     log.write(f"[bold green]Assistant:[/] {content}")
         else:
@@ -225,6 +228,9 @@ class ChannelManager:
                     
                     if role == "user":
                         log.write(f"[bold blue][{channel_label}] User:[/] {content}")
+                    elif role == "system":
+                        # Tool information (tool_use, tool_result) - already formatted
+                        log.write(f"[dim][{channel_label}][/] {content}")
                     else:
                         if channel_name.startswith("shadow-"):
                             log.write(f"[bold yellow][{channel_label}] {agent_type.title()}:[/] {content}")
@@ -238,6 +244,9 @@ class ChannelManager:
                     
                     if role == "user":
                         log.write(f"[bold blue][{channel_name}] User:[/] {content}")
+                    elif role == "system":
+                        # Tool information (tool_use, tool_result) - already formatted
+                        log.write(f"[dim][{channel_name}][/] {content}")
                     else:
                         log.write(f"[bold green][{channel_name}] Assistant:[/] {content}")
     
@@ -318,6 +327,9 @@ class ChannelManager:
                     # Main channel
                     if role == "user":
                         log.write(f"[bold blue]User:[/] {content}")
+                    elif role == "system":
+                        # Tool information (tool_use, tool_result)
+                        log.write(content)  # Already formatted with Rich markup
                     else:
                         log.write(f"[bold green]Assistant:[/] {content}")
                 else:
@@ -333,6 +345,9 @@ class ChannelManager:
                         
                         if role == "user":
                             log.write(f"[bold blue][{channel_label}] User:[/] {content}")
+                        elif role == "system":
+                            # Tool information (tool_use, tool_result)
+                            log.write(f"[dim][{channel_label}][/] {content}")  # Already formatted with Rich markup
                         else:
                             if channel.startswith("shadow-"):
                                 log.write(f"[bold yellow][{channel_label}] {agent_type.title()}:[/] {content}")
@@ -342,6 +357,8 @@ class ChannelManager:
                         # Fallback for unknown channel format
                         if role == "user":
                             log.write(f"[bold blue][{channel}] User:[/] {content}")
+                        elif role == "system":
+                            log.write(f"[dim][{channel}][/] {content}")
                         else:
                             log.write(f"[bold green][{channel}] Assistant:[/] {content}")
                 

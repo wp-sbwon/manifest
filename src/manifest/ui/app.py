@@ -497,10 +497,17 @@ class ManifestApp(App):
         # Initialize task tree
         await self.update_task_tree()
         
+        # Initialize channel manager first (needed for agent_bridge)
+        self.channel_manager = ChannelManager(self, self.state_manager)
+        
         # Initialize agent bridge
         if self.agent_bridge is None:
             config_manager = get_config_manager()
-            self.agent_bridge = AgentBridge(self.state_manager, config_manager)
+            self.agent_bridge = AgentBridge(
+                self.state_manager, 
+                config_manager,
+                channel_manager=self.channel_manager  # Pass channel_manager for real-time UI updates
+            )
             await self.agent_bridge.start()
             if self.agent_bridge.is_connected:
                 self.query_one("#log-main", RichLog).write("[bold green]Agent bridge initialized.[/]")
@@ -521,9 +528,6 @@ class ManifestApp(App):
         
         # Initialize command handler
         self.command_handler = CommandHandler(self)
-        
-        # Initialize channel manager
-        self.channel_manager = ChannelManager(self, self.state_manager)
         
         # Load state
         state = self.state_manager.get_state()
@@ -1423,12 +1427,14 @@ class ManifestApp(App):
                             context=context,
                             model_config=model_config
                         ):
-                            if chunk.get("type") == "chunk":
+                            chunk_type = chunk.get("type")
+                            
+                            if chunk_type == "chunk":
                                 content = chunk.get("content", "")
                                 response_content += content
                                 # Stream to UI (RichLog doesn't support end parameter, so write each chunk)
                                 log.write(content)
-                            elif chunk.get("type") == "complete":
+                            elif chunk_type == "complete":
                                 content = chunk.get("content", "")
                                 if content and content != response_content:
                                     # Write remaining content if any
@@ -1436,7 +1442,38 @@ class ManifestApp(App):
                                     if remaining:
                                         log.write(remaining)
                                     response_content = content
-                            elif chunk.get("type") == "error":
+                            elif chunk_type == "tool_use" or chunk_type == "tool_use_start":
+                                # Display tool call
+                                tool_call = chunk.get("tool_call", {})
+                                tool_name = tool_call.get("name", "unknown")
+                                tool_id = tool_call.get("id", "unknown")
+                                tool_input = tool_call.get("input", {})
+                                
+                                import json
+                                tool_display = f"[cyan]🔧 Tool: {tool_name}[/] (id: {tool_id[:8]}...)\n"
+                                if tool_input:
+                                    tool_display += f"  Input: {json.dumps(tool_input, indent=2)[:200]}...\n"
+                                log.write(tool_display)
+                            elif chunk_type == "tool_result":
+                                # Display tool result
+                                tool_name = chunk.get("tool_name", "unknown")
+                                tool_call_id = chunk.get("tool_call_id", "unknown")
+                                result = chunk.get("result")
+                                error = chunk.get("error")
+                                
+                                if error:
+                                    result_display = f"[red]❌ Tool {tool_name} failed:[/] {error}\n"
+                                else:
+                                    import json
+                                    result_str = json.dumps(result, indent=2) if result else "null"
+                                    result_display = f"[green]✅ Tool {tool_name} completed[/] (id: {tool_call_id[:8]}...)\n"
+                                    if len(result_str) > 300:
+                                        result_display += f"  Result: {result_str[:300]}...\n"
+                                    else:
+                                        result_display += f"  Result: {result_str}\n"
+                                
+                                log.write(result_display)
+                            elif chunk_type == "error":
                                 error_msg = chunk.get("content", "Unknown error")
                                 log.write(f"[bold red]Error: {error_msg}[/]")
                         

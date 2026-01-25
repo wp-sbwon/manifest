@@ -57,7 +57,8 @@ class AgentBridge:
         self,
         state_manager: StateManager,
         config_manager: Optional[ConfigManager] = None,
-        working_dir: Optional[Path] = None
+        working_dir: Optional[Path] = None,
+        channel_manager: Optional[Any] = None
     ):
         """Initialize the agent bridge.
         
@@ -358,6 +359,71 @@ class AgentBridge:
         
         return success
     
+    async def _handle_agent_chunk(
+        self,
+        chunk: Dict[str, Any],
+        channel: str
+    ) -> None:
+        """Handle a single agent output chunk and display it.
+        
+        Common handler for all agent output chunks including text, tool_use,
+        tool_result, and errors. Updates state and UI in real-time.
+        
+        Args:
+            chunk: Chunk dictionary with 'type' and content.
+            channel: Channel name for this agent's output.
+        """
+        chunk_type = chunk.get("type")
+        
+        if chunk_type == "chunk":
+            content = chunk.get("content", "")
+            self.state_manager.add_chat_message(channel, "assistant", content)
+            if self.channel_manager:
+                await self.channel_manager.handle_agent_output(channel, content, "assistant")
+        elif chunk_type == "complete":
+            content = chunk.get("content", "")
+            self.state_manager.add_chat_message(channel, "assistant", content)
+            await self.state_manager.save_state()
+            if self.channel_manager:
+                await self.channel_manager.handle_agent_output(channel, content, "assistant")
+        elif chunk_type == "tool_use" or chunk_type == "tool_use_start":
+            # Display tool call
+            tool_call = chunk.get("tool_call", {})
+            tool_name = tool_call.get("name", "unknown")
+            tool_id = tool_call.get("id", "unknown")
+            tool_input = tool_call.get("input", {})
+            
+            tool_display = f"[cyan]🔧 Tool: {tool_name}[/] (id: {tool_id[:8]}...)\n"
+            if tool_input:
+                tool_display += f"  Input: {json.dumps(tool_input, indent=2)[:200]}...\n"
+            
+            self.state_manager.add_chat_message(channel, "system", tool_display)
+            if self.channel_manager:
+                await self.channel_manager.handle_agent_output(channel, tool_display, "system")
+        elif chunk_type == "tool_result":
+            # Display tool result
+            tool_name = chunk.get("tool_name", "unknown")
+            tool_call_id = chunk.get("tool_call_id", "unknown")
+            result = chunk.get("result")
+            error = chunk.get("error")
+            
+            if error:
+                result_display = f"[red]❌ Tool {tool_name} failed:[/] {error}\n"
+            else:
+                result_str = json.dumps(result, indent=2) if result else "null"
+                result_display = f"[green]✅ Tool {tool_name} completed[/] (id: {tool_call_id[:8]}...)\n"
+                result_display += f"  Result: {result_str[:300]}...\n" if len(result_str) > 300 else f"  Result: {result_str}\n"
+            
+            self.state_manager.add_chat_message(channel, "system", result_display)
+            if self.channel_manager:
+                await self.channel_manager.handle_agent_output(channel, result_display, "system")
+        elif chunk_type == "error":
+            error_msg = chunk.get("content", "Unknown error")
+            error_display = f"[red]Error: {error_msg}[/]"
+            self.state_manager.add_chat_message(channel, "system", error_display)
+            if self.channel_manager:
+                await self.channel_manager.handle_agent_output(channel, error_display, "system")
+    
     async def _execute_agent_method(
         self,
         agent_instance: Any,
@@ -374,31 +440,13 @@ class AgentBridge:
                 if stage == "tdd_test":
                     # TDD mode: write tests first
                     async for chunk in agent_instance.write_tdd_tests(task_id, context, model_config):
-                        # Save chunks to channel
                         channel = f"squad-{task_id}-test"
-                        if chunk.get("type") == "chunk":
-                            self.state_manager.add_chat_message(
-                                channel, "assistant", chunk.get("content", "")
-                            )
-                        elif chunk.get("type") == "complete":
-                            self.state_manager.add_chat_message(
-                                channel, "assistant", chunk.get("content", "")
-                            )
-                            await self.state_manager.save_state()
+                        await self._handle_agent_chunk(chunk, channel)
                 else:
                     # Test execution mode: run tests
                     async for chunk in agent_instance.run_tests(task_id, context, model_config):
-                        # Save chunks to channel
                         channel = f"squad-{task_id}-test"
-                        if chunk.get("type") == "chunk":
-                            self.state_manager.add_chat_message(
-                                channel, "assistant", chunk.get("content", "")
-                            )
-                        elif chunk.get("type") == "complete":
-                            self.state_manager.add_chat_message(
-                                channel, "assistant", chunk.get("content", "")
-                            )
-                            await self.state_manager.save_state()
+                        await self._handle_agent_chunk(chunk, channel)
             elif agent_type == "planner":
                 # Planner agent: call plan method
                 # Check if this is a conflict review
@@ -427,35 +475,22 @@ Review Question: {review_request.get('question', 'Is this change necessary or a 
                 
                 async for chunk in agent_instance.plan(task_description, context, model_config):
                     channel = f"squad-{task_id}-planner"
-                    if chunk.get("type") == "chunk":
-                        self.state_manager.add_chat_message(
-                            channel, "assistant", chunk.get("content", "")
-                        )
-                    elif chunk.get("type") == "complete":
-                        self.state_manager.add_chat_message(
-                            channel, "assistant", chunk.get("content", "")
-                        )
-                        # Parse planner decision if this is a conflict review
+                    await self._handle_agent_chunk(chunk, channel)
+                    
+                    # Special handling for planner complete (conflict review parsing)
+                    if chunk.get("type") == "complete":
+                        content = chunk.get("content", "")
                         if stage == "conflict_review" or context.get("conflict_review"):
                             await self._parse_planner_conflict_review(
-                                task_id, chunk.get("content", ""), context
+                                task_id, content, context
                             )
-                        await self.state_manager.save_state()
             elif agent_type == "coder":
                 # Coder agent: call implement method
                 task_description = context.get("task_description", "Implement the task")
                 task_scope = context.get("task_scope", {})
                 async for chunk in agent_instance.implement(task_description, context, task_scope, model_config):
                     channel = f"squad-{task_id}-coder"
-                    if chunk.get("type") == "chunk":
-                        self.state_manager.add_chat_message(
-                            channel, "assistant", chunk.get("content", "")
-                        )
-                    elif chunk.get("type") == "complete":
-                        self.state_manager.add_chat_message(
-                            channel, "assistant", chunk.get("content", "")
-                        )
-                        await self.state_manager.save_state()
+                    await self._handle_agent_chunk(chunk, channel)
             elif agent_type == "integration_test":
                 # Integration Test agent: call appropriate method based on stage
                 sprint_id = context.get("sprint_id")
@@ -494,15 +529,7 @@ Review Question: {review_request.get('question', 'Is this change necessary or a 
                     # TDD mode: write E2E tests first (Sprint scope)
                     async for chunk in agent_instance.write_tdd_tests(sprint_id, context, model_config):
                         channel = f"sprint-{sprint_id}-e2e_test"
-                        if chunk.get("type") == "chunk":
-                            self.state_manager.add_chat_message(
-                                channel, "assistant", chunk.get("content", "")
-                            )
-                        elif chunk.get("type") == "complete":
-                            self.state_manager.add_chat_message(
-                                channel, "assistant", chunk.get("content", "")
-                            )
-                            await self.state_manager.save_state()
+                        await self._handle_agent_chunk(chunk, channel)
                 else:
                     # Test execution mode: run E2E tests
                     sprint_id = context.get("sprint_id")
@@ -510,28 +537,12 @@ Review Question: {review_request.get('question', 'Is this change necessary or a 
                     if sprint_id and task_id_param:
                         async for chunk in agent_instance.run_e2e_tests(sprint_id=sprint_id, task_id=task_id_param, context=context, model_config=model_config):
                             channel = f"sprint-{sprint_id}-e2e_test"
-                            if chunk.get("type") == "chunk":
-                                self.state_manager.add_chat_message(
-                                    channel, "assistant", chunk.get("content", "")
-                                )
-                            elif chunk.get("type") == "complete":
-                                self.state_manager.add_chat_message(
-                                    channel, "assistant", chunk.get("content", "")
-                                )
-                                await self.state_manager.save_state()
+                            await self._handle_agent_chunk(chunk, channel)
                     elif task_id:
                         # Fallback to task-level E2E test (existing behavior)
                         async for chunk in agent_instance.run_e2e_tests(task_id, context, model_config):
                             channel = f"squad-{task_id}-e2e_test"
-                            if chunk.get("type") == "chunk":
-                                self.state_manager.add_chat_message(
-                                    channel, "assistant", chunk.get("content", "")
-                                )
-                            elif chunk.get("type") == "complete":
-                                self.state_manager.add_chat_message(
-                                    channel, "assistant", chunk.get("content", "")
-                                )
-                                await self.state_manager.save_state()
+                            await self._handle_agent_chunk(chunk, channel)
             # Other agent types can be added here as needed
             
             # Mark agent as completed after execution finishes
