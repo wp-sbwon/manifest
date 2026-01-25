@@ -9,9 +9,12 @@ and reports results.
 The agent extracts test information (files, cases, results) and saves it to
 task state for tracking throughout the Worker Squad workflow.
 """
+import json
 from typing import Dict, Any, Optional, List, AsyncIterator, TYPE_CHECKING
 from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.state_manager import StateManager
+from manifest.runtime.tools.tool_executor import ToolExecutor
+from manifest.runtime.tools.tool_definitions import get_tool_definitions
 
 if TYPE_CHECKING:
     from manifest.runtime.router.terminal_router import TerminalRouter
@@ -149,7 +152,8 @@ class TestAgent:
         agent_id: str,
         executor: AgentExecutor,
         state_manager: StateManager,
-        terminal_router: Optional["TerminalRouter"] = None
+        terminal_router: Optional["TerminalRouter"] = None,
+        tool_executor: Optional[ToolExecutor] = None
     ):
         """Initialize the test agent.
         
@@ -158,12 +162,24 @@ class TestAgent:
             executor: Executor instance for LLM API calls.
             state_manager: State manager for saving test results.
             terminal_router: Optional terminal router for command execution.
+            tool_executor: Optional tool executor for executing tool calls.
         """
         self.agent_id = agent_id
         self.executor = executor
         self.state_manager = state_manager
         self.terminal_router = terminal_router
+        self.tool_executor = tool_executor
         self.message_history: List[Dict[str, str]] = []
+        self.agent_type = "test"
+        
+        # Track tool execution results
+        self.tool_execution_summary: Dict[str, Any] = {
+            "modified_files": [],
+            "executed_commands": [],
+            "read_files": [],
+            "errors": [],
+            "total_tool_calls": 0
+        }
     
     async def write_tdd_tests(
         self,
@@ -231,25 +247,177 @@ class TestAgent:
         # Generate test execution prompt
         prompt = self._generate_test_execution_prompt(task_id, context)
         
-        # Execute agent
-        async for chunk in self.executor.execute_agent(
-            agent_id=self.agent_id,
-            agent_type="test",
-            prompt=prompt,
-            model_config=model_config,
-            context=context,
-            message_history=self.message_history
-        ):
-            # Save to message history
-            if chunk.get("type") == "chunk":
-                if not self.message_history or self.message_history[-1]["role"] != "assistant":
-                    self.message_history.append({"role": "assistant", "content": ""})
-                self.message_history[-1]["content"] += chunk.get("content", "")
-            elif chunk.get("type") == "complete":
-                # Save test results
-                await self._save_test_execution_results(task_id, chunk.get("content", ""))
+        # Get tool definitions
+        tools = get_tool_definitions()
+        
+        # Reset tool execution summary
+        self.tool_execution_summary = {
+            "modified_files": [],
+            "executed_commands": [],
+            "read_files": [],
+            "errors": [],
+            "total_tool_calls": 0
+        }
+        
+        # Tool execution loop
+        max_iterations = 10
+        iteration = 0
+        
+        while iteration < max_iterations:
+            iteration += 1
             
-            yield chunk
+            # Execute agent with tools
+            tool_calls_in_this_round = []
+            full_response = ""
+            
+            async for chunk in self.executor.execute_agent(
+                agent_id=self.agent_id,
+                agent_type="test",
+                prompt=prompt if iteration == 1 else None,
+                model_config=model_config,
+                context=context,
+                message_history=self.message_history,
+                tools=tools
+            ):
+                chunk_type = chunk.get("type")
+                
+                if chunk_type == "chunk":
+                    content = chunk.get("content", "")
+                    full_response += content
+                    yield chunk
+                elif chunk_type == "tool_use" or chunk_type == "tool_use_start":
+                    tool_call = chunk.get("tool_call")
+                    if tool_call:
+                        tool_calls_in_this_round.append(tool_call)
+                        yield chunk
+                elif chunk_type == "tool_use_complete":
+                    tool_calls = chunk.get("tool_calls", [])
+                    tool_calls_in_this_round.extend(tool_calls)
+                    yield chunk
+                elif chunk_type == "complete":
+                    full_response = chunk.get("content", full_response)
+                    if full_response:
+                        if not self.message_history or self.message_history[-1]["role"] != "assistant":
+                            self.message_history.append({"role": "assistant", "content": full_response})
+                        else:
+                            self.message_history[-1]["content"] = full_response
+                    yield chunk
+                elif chunk_type == "error":
+                    yield chunk
+                    return
+            
+            # Execute tool calls if any
+            if tool_calls_in_this_round and self.tool_executor:
+                self.tool_execution_summary["total_tool_calls"] += len(tool_calls_in_this_round)
+                
+                tool_results = await self.tool_executor.execute_tool_calls(tool_calls_in_this_round)
+                
+                # Parse tool results
+                for i, tool_call in enumerate(tool_calls_in_this_round):
+                    tool_name = tool_call.get("name", "unknown")
+                    tool_input = tool_call.get("input", {})
+                    tool_result = tool_results[i] if i < len(tool_results) else {}
+                    
+                    if tool_name == "bash":
+                        command = tool_input.get("command", "unknown")
+                        args = tool_input.get("args", [])
+                        full_command = f"{command} {' '.join(args) if args else ''}".strip()
+                        self.tool_execution_summary["executed_commands"].append(full_command)
+                    elif tool_name == "read":
+                        file_path = tool_input.get("file_path", "unknown")
+                        if file_path not in self.tool_execution_summary["read_files"]:
+                            self.tool_execution_summary["read_files"].append(file_path)
+                    
+                    if tool_result.get("error"):
+                        error_info = {
+                            "tool": tool_name,
+                            "error": tool_result.get("error"),
+                            "file_path": tool_input.get("file_path") if tool_name in ["edit", "write", "read"] else None
+                        }
+                        if tool_result.get("permission_denied"):
+                            error_info["permission_denied"] = True
+                        if tool_result.get("permission_required"):
+                            error_info["permission_required"] = True
+                        self.tool_execution_summary["errors"].append(error_info)
+                
+                # Format tool results for API
+                provider = model_config.get("provider", "anthropic")
+                
+                if provider == "anthropic":
+                    for result in tool_results:
+                        tool_id = result.get("tool_call_id", "unknown")
+                        tool_name = result.get("tool_name", "unknown")
+                        tool_result = result.get("result")
+                        error = result.get("error")
+                        
+                        if error:
+                            tool_result_content = f"Error: {error}"
+                        else:
+                            tool_result_content = json.dumps(tool_result, indent=2) if tool_result else "null"
+                        
+                        self.message_history.append({
+                            "role": "user",
+                            "content": [{
+                                "type": "tool_result",
+                                "tool_use_id": tool_id,
+                                "content": tool_result_content
+                            }]
+                        })
+                        
+                        yield {
+                            "type": "tool_result",
+                            "tool_call_id": tool_id,
+                            "tool_name": tool_name,
+                            "result": tool_result,
+                            "error": error
+                        }
+                else:
+                    # OpenAI format
+                    for result in tool_results:
+                        tool_id = result.get("tool_call_id", "unknown")
+                        tool_name = result.get("tool_name", "unknown")
+                        tool_result = result.get("result")
+                        error = result.get("error")
+                        
+                        if error:
+                            tool_result_content = f"Error: {error}"
+                        else:
+                            tool_result_content = json.dumps(tool_result, indent=2) if tool_result else "null"
+                        
+                        self.message_history.append({
+                            "role": "tool",
+                            "tool_call_id": tool_id,
+                            "name": tool_name,
+                            "content": tool_result_content
+                        })
+                        
+                        yield {
+                            "type": "tool_result",
+                            "tool_call_id": tool_id,
+                            "tool_name": tool_name,
+                            "result": tool_result,
+                            "error": error
+                        }
+                
+                prompt = None  # Continue conversation
+            else:
+                # No tool calls, we're done
+                if full_response:
+                    # Save test results
+                    await self._save_test_execution_results(task_id, full_response)
+                    yield {
+                        "type": "complete",
+                        "content": full_response,
+                        "tool_execution_summary": self.tool_execution_summary.copy()
+                    }
+                break
+        
+        if iteration >= max_iterations:
+            yield {
+                "type": "error",
+                "content": f"Maximum tool execution iterations ({max_iterations}) reached",
+                "tool_execution_summary": self.tool_execution_summary.copy()
+            }
     
     def _generate_tdd_test_prompt(self, task_id: str, context: Dict[str, Any]) -> str:
         """Generate a prompt for TDD test writing mode.

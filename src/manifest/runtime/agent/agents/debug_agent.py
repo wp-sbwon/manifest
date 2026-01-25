@@ -3,12 +3,15 @@ Debug agent for analyzing and fixing bugs.
 
 This module provides the DebugAgent class which analyzes test failures and
 error messages to identify root causes and propose fixes. The debug agent
-doesn't write code directly but provides clear instructions for the coder
-to implement fixes.
+can read files and analyze code to understand issues, then provide clear
+instructions for the coder to implement fixes.
 """
+import json
 from typing import Dict, Any, Optional, List, AsyncIterator, TYPE_CHECKING
 from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.state_manager import StateManager
+from manifest.runtime.tools.tool_executor import ToolExecutor
+from manifest.runtime.tools.tool_definitions import get_tool_definitions
 
 if TYPE_CHECKING:
     from manifest.runtime.router.terminal_router import TerminalRouter
@@ -56,7 +59,9 @@ class DebugAgent:
         self,
         agent_id: str,
         executor: AgentExecutor,
-        state_manager: StateManager
+        state_manager: StateManager,
+        terminal_router: Optional["TerminalRouter"] = None,
+        tool_executor: Optional[ToolExecutor] = None
     ):
         """Initialize the debug agent.
         
@@ -65,12 +70,24 @@ class DebugAgent:
             executor: Executor instance for LLM API calls.
             state_manager: State manager for saving debug analysis.
             terminal_router: Optional terminal router for command execution.
+            tool_executor: Optional tool executor for executing tool calls.
         """
         self.agent_id = agent_id
         self.executor = executor
         self.state_manager = state_manager
         self.terminal_router = terminal_router
+        self.tool_executor = tool_executor
         self.message_history: List[Dict[str, str]] = []
+        self.agent_type = "debug"
+        
+        # Track tool execution results
+        self.tool_execution_summary: Dict[str, Any] = {
+            "modified_files": [],
+            "executed_commands": [],
+            "read_files": [],
+            "errors": [],
+            "total_tool_calls": 0
+        }
     
     async def debug(
         self,
@@ -173,12 +190,12 @@ Focus on:
     async def _save_response(self, content: str) -> None:
         """Save debug analysis to state and chat history.
         
-        Writes the debug agent's analysis to the appropriate channel so it
-        can be displayed in the UI and used by the coder agent.
+        Note: State saving is handled by agent_bridge._handle_agent_chunk()
+        to avoid duplicate saves. This method is kept for backward compatibility.
         
         Args:
             content: The complete debug analysis content.
         """
-        channel = f"squad-{self.agent_id}-debug"
-        self.state_manager.add_chat_message(channel, "assistant", content)
-        await self.state_manager.save_state()
+        # State saving is handled by agent_bridge._handle_agent_chunk()
+        # This method is kept for backward compatibility but does nothing
+        pass
