@@ -461,7 +461,7 @@ class PermissionApprovalWidget(Container):
             f"[bold]Agent:[/] {agent_type}\n"
             f"[bold]Tool:[/] {tool_name}\n"
             f"[bold]Permission:[/] {permission_type}\n"
-            f"[bold]Resource:[/] {resource}"
+            f"[bold]Resource:[/] {resource}\n"
         )
     
     @on(Button.Pressed, "#permission-approve-btn")

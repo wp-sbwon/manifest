@@ -31,7 +31,11 @@ class ToolExecutor:
         self,
         terminal_router: Optional["TerminalRouter"] = None,
         file_manager: Optional[FileManager] = None,
-        approval_manager: Optional["PermissionApprovalManager"] = None
+        approval_manager: Optional["PermissionApprovalManager"] = None,
+        auditor: Optional["ToolExecutionAuditor"] = None,
+        agent_type: Optional[str] = None,
+        task_id: Optional[str] = None,
+        agent_id: Optional[str] = None
     ):
         """Initialize tool executor.
         
@@ -39,10 +43,18 @@ class ToolExecutor:
             terminal_router: TerminalRouter instance for bash commands.
             file_manager: FileManager instance for file operations.
             approval_manager: Optional PermissionApprovalManager for handling "ask" permissions.
+            auditor: Optional ToolExecutionAuditor for logging tool executions.
+            agent_type: Optional agent type for audit logging.
+            task_id: Optional task ID for audit logging.
+            agent_id: Optional agent ID for audit logging.
         """
         self.terminal_router = terminal_router
         self.file_manager = file_manager
         self.approval_manager = approval_manager
+        self.auditor = auditor
+        self.agent_type = agent_type
+        self.task_id = task_id
+        self.agent_id = agent_id
     
     async def execute_tool(
         self,
@@ -142,8 +154,8 @@ class ToolExecutor:
             # Add validation information
             result["validated"] = self._validate_tool_result(result, tool_name, tool_input)
             
-            # Log to auditor if available (for successful executions)
-            if self.auditor and not result.get("error"):
+            # Log to auditor if available (for all executions, success or error)
+            if self.auditor and result:
                 await self.auditor.log_tool_execution(
                     tool_name=tool_name,
                     tool_input=tool_input,
@@ -374,6 +386,45 @@ class ToolExecutor:
             }
         
         result = self.file_manager.edit(file_path, old_string, new_string)
+        
+        # Check for permission denied or required
+        if not result.get("success"):
+            error = result.get("error", "Unknown error")
+            permission_required = result.get("permission_required", False)
+            
+            # Create approval request if permission_required and approval_manager available
+            if permission_required and self.approval_manager:
+                request_id = self.approval_manager.create_approval_request(
+                    permission_type=result.get("permission_type", "edit"),
+                    resource=result.get("resource", tool_input.get("file_path", "unknown")),
+                    agent_type=self.file_manager.agent_type if self.file_manager else "unknown",
+                    tool_name="edit",
+                    tool_input=tool_input,
+                    approval_callback=None
+                )
+                
+                return {
+                    "tool_call_id": tool_input.get("id", "unknown"),
+                    "tool_name": "edit",
+                    "error": error,
+                    "result": None,
+                    "permission_denied": error == "Permission denied",
+                    "permission_required": True,
+                    "permission_details": {
+                        "permission_type": result.get("permission_type", "edit"),
+                        "resource": result.get("resource", tool_input.get("file_path", "unknown"))
+                    },
+                    "approval_request_id": request_id
+                }
+            
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "edit",
+                "error": error,
+                "result": None,
+                "permission_denied": error == "Permission denied",
+                "permission_required": permission_required
+            }
         
         return {
             "tool_call_id": tool_input.get("id", "unknown"),
