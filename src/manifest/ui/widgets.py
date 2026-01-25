@@ -420,6 +420,83 @@ class SprintApprovalWidget(Container):
         self.post_message(SprintApprovalWidget.Started(self.sprint_id))
 
 
+class PermissionApprovalWidget(Container):
+    """Approval widget for permission requests (permission="ask")."""
+    
+    def __init__(self, request_id: Optional[str] = None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.request_id = request_id
+        self.request_data: Optional[Dict[str, Any]] = None
+    
+    def compose(self):
+        """Compose the permission approval widget."""
+        with Vertical():
+            yield Label("Permission Approval Required", id="permission-label")
+            yield Static("", id="permission-details")
+            with Horizontal():
+                yield Button("✅ Approve", id="permission-approve-btn", variant="success")
+                yield Button("❌ Deny", id="permission-deny-btn", variant="error")
+    
+    def set_request(self, request_data: Dict[str, Any]):
+        """Set the permission request data to display.
+        
+        Args:
+            request_data: Dictionary with request details including:
+                - permission_type: Type of permission (edit, write, bash, etc.)
+                - resource: Resource being accessed
+                - agent_type: Type of agent requesting
+                - tool_name: Name of the tool
+        """
+        self.request_data = request_data
+        self.request_id = request_data.get("id")
+        
+        # Update display
+        details = self.query_one("#permission-details", Static)
+        permission_type = request_data.get("permission_type", "unknown")
+        resource = request_data.get("resource", "unknown")
+        agent_type = request_data.get("agent_type", "unknown")
+        tool_name = request_data.get("tool_name", "unknown")
+        
+        details.update(
+            f"[bold]Agent:[/] {agent_type}\n"
+            f"[bold]Tool:[/] {tool_name}\n"
+            f"[bold]Permission:[/] {permission_type}\n"
+            f"[bold]Resource:[/] {resource}"
+        )
+    
+    @on(Button.Pressed, "#permission-approve-btn")
+    def on_approve(self):
+        """Handle approve button press."""
+        if self.request_id:
+            self.post_message(PermissionApprovalWidget.Approved(self.request_id))
+    
+    @on(Button.Pressed, "#permission-deny-btn")
+    def on_deny(self):
+        """Handle deny button press."""
+        if self.request_id:
+            self.post_message(PermissionApprovalWidget.Denied(self.request_id))
+
+
+# Message classes for PermissionApprovalWidget
+class PermissionApproved(Message):
+    """Message sent when permission is approved."""
+    def __init__(self, request_id: str):
+        super().__init__()
+        self.request_id = request_id
+
+
+class PermissionDenied(Message):
+    """Message sent when permission is denied."""
+    def __init__(self, request_id: str):
+        super().__init__()
+        self.request_id = request_id
+
+
+# Attach message classes to PermissionApprovalWidget
+PermissionApprovalWidget.Approved = PermissionApproved
+PermissionApprovalWidget.Denied = PermissionDenied
+
+
 class SprintApproved(Message):
     """Message sent when sprint is approved."""
     def __init__(self, sprint_id: Optional[str]):
