@@ -466,8 +466,8 @@ class TestAgent:
         """Generate a prompt for test execution mode.
         
         Creates a prompt that instructs the agent to run tests and report
-        results. Includes implementation details and test file locations
-        from previous stages.
+        results. Includes implementation details, tool execution summary,
+        and test file locations from previous stages.
         
         Args:
             task_id: ID of the task whose tests should be executed.
@@ -485,16 +485,41 @@ class TestAgent:
         # Get implementation details from context
         coder_output = context.get("coder_output", "")
         files_modified = context.get("files_modified", [])
+        
+        # Get tool execution summary from task state (if available)
+        tool_execution = task.get("tool_execution", {}) if task else {}
+        tool_summary = tool_execution.get("last_summary", {})
+        modified_files = tool_summary.get("modified_files", files_modified)
+        executed_commands = tool_summary.get("executed_commands", [])
+        tool_errors = tool_summary.get("errors", [])
+        
+        # Build implementation details with tool execution info
         implementation_details = f"""
 Coder Output: {coder_output}
-Files Modified: {', '.join(files_modified) if files_modified else 'None'}
+Files Modified: {', '.join(modified_files) if modified_files else 'None'}
 """
+        
+        if executed_commands:
+            implementation_details += f"\nCommands Executed:\n"
+            for cmd in executed_commands:
+                implementation_details += f"  - {cmd}\n"
+        
+        if tool_errors:
+            implementation_details += f"\nTool Execution Errors:\n"
+            for error in tool_errors[:5]:  # Limit to first 5 errors
+                implementation_details += f"  - {error.get('tool', 'unknown')}: {error.get('error', 'Unknown error')}\n"
         
         # Get test files from TDD stage
         previous_stages = context.get("previous_stages", {})
         tdd_test_output = previous_stages.get("tdd_test", {})
         test_files = tdd_test_output.get("test_files", [])
         test_files_str = "\n".join(test_files) if test_files else "Test files from TDD stage"
+        
+        # Add instruction to test modified files
+        if modified_files:
+            implementation_details += f"\n\nIMPORTANT: Focus testing on modified files:\n"
+            for file_path in modified_files:
+                implementation_details += f"  - {file_path}\n"
         
         return TEST_EXECUTION_PROMPT_TEMPLATE.format(
             TEST_AGENT_IDENTITY=TEST_AGENT_IDENTITY,

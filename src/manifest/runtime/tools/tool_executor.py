@@ -106,7 +106,7 @@ class ToolExecutor:
             tool_calls: List of tool call dicts with 'id', 'name', 'input'.
             
         Returns:
-            List of execution results.
+            List of execution results with validation information.
         """
         results = []
         for tool_call in tool_calls:
@@ -116,9 +116,100 @@ class ToolExecutor:
             tool_input["id"] = tool_id  # Include ID in input for result tracking
             
             result = await self.execute_tool(tool_name, tool_input)
+            
+            # Add validation information
+            result["validated"] = self._validate_tool_result(result, tool_name, tool_input)
             results.append(result)
         
         return results
+    
+    def _validate_tool_result(
+        self,
+        result: Dict[str, Any],
+        tool_name: str,
+        tool_input: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Validate tool execution result.
+        
+        Checks if the tool execution was successful and provides
+        validation information for downstream processing.
+        
+        Args:
+            result: Tool execution result dictionary.
+            tool_name: Name of the tool that was executed.
+            tool_input: Input parameters for the tool.
+        
+        Returns:
+            Dictionary with validation information:
+            {
+                "success": bool,
+                "validation_errors": List[str],
+                "warnings": List[str]
+            }
+        """
+        validation = {
+            "success": True,
+            "validation_errors": [],
+            "warnings": []
+        }
+        
+        # Check for errors
+        if result.get("error"):
+            validation["success"] = False
+            validation["validation_errors"].append(result.get("error"))
+            return validation
+        
+        # Tool-specific validation
+        if tool_name == "edit":
+            tool_result = result.get("result", {})
+            if not tool_result.get("success"):
+                validation["success"] = False
+                validation["validation_errors"].append(
+                    tool_result.get("error", "Edit operation failed")
+                )
+            else:
+                # Validate that file was actually modified
+                file_path = tool_input.get("file_path")
+                if file_path:
+                    validation["warnings"].append(
+                        f"File '{file_path}' was modified. Run tests to verify changes."
+                    )
+        
+        elif tool_name == "write":
+            tool_result = result.get("result", {})
+            if not tool_result.get("success"):
+                validation["success"] = False
+                validation["validation_errors"].append(
+                    tool_result.get("error", "Write operation failed")
+                )
+            else:
+                file_path = tool_input.get("file_path")
+                if file_path:
+                    validation["warnings"].append(
+                        f"New file '{file_path}' was created. Run tests to verify."
+                    )
+        
+        elif tool_name == "bash":
+            tool_result = result.get("result", {})
+            returncode = tool_result.get("returncode", 0)
+            if returncode != 0:
+                validation["success"] = False
+                stderr = tool_result.get("stderr", "")
+                validation["validation_errors"].append(
+                    f"Command failed with return code {returncode}: {stderr[:200]}"
+                )
+            else:
+                # Check if command looks like a test command
+                command = tool_input.get("command", "")
+                if "test" in command.lower() or "pytest" in command.lower():
+                    stdout = tool_result.get("stdout", "")
+                    if "failed" in stdout.lower() or "error" in stdout.lower():
+                        validation["warnings"].append(
+                            "Test command executed but some tests may have failed. "
+                            "Check output for details."
+                        )
+        
+        return validation
     
     async def _execute_bash(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute bash command.
