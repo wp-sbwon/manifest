@@ -125,14 +125,25 @@ class TerminalRouter:
                     "backend": "internal"
                 }
             elif permission == "ask":
-                # TODO: Implement user approval request
-                # For now, log and allow (can be changed to deny for stricter control)
-                from manifest.core.logger import get_logger
-                logger = get_logger(__name__)
+                # Return permission_required flag for UI approval
+                # For now, deny to be safe (can be approved via UI later)
                 logger.warning(
                     f"Permission 'ask' for command '{' '.join(full_command)}' "
-                    f"by agent '{self.agent_type}' - allowing for now (approval not implemented)"
+                    f"by agent '{self.agent_type}' - approval required"
                 )
+                return {
+                    "stdout": "",
+                    "stderr": f"Permission approval required: Command '{' '.join(full_command)}' requires approval for agent type '{self.agent_type}'",
+                    "returncode": -1,
+                    "command_id": command_id,
+                    "permission_required": True,
+                    "permission_details": {
+                        "permission_type": "bash",
+                        "resource": ' '.join(full_command),
+                        "agent_type": self.agent_type
+                    },
+                    "backend": "internal"
+                }
         
         # Register with watchdog if available
         if self.watchdog:

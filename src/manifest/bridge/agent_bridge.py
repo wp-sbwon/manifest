@@ -367,25 +367,57 @@ class AgentBridge:
         """Handle a single agent output chunk and display it.
         
         Common handler for all agent output chunks including text, tool_use,
-        tool_result, and errors. Updates state and UI in real-time.
+        tool_result, and errors. Delegates to channel_manager for state and UI updates
+        to avoid duplicate state saving.
         
         Args:
             chunk: Chunk dictionary with 'type' and content.
             channel: Channel name for this agent's output.
         """
+        if not self.channel_manager:
+            # Fallback: if no channel_manager, save to state directly
+            chunk_type = chunk.get("type")
+            if chunk_type == "chunk":
+                content = chunk.get("content", "")
+                self.state_manager.add_chat_message(channel, "assistant", content)
+            elif chunk_type == "complete":
+                content = chunk.get("content", "")
+                self.state_manager.add_chat_message(channel, "assistant", content)
+                await self.state_manager.save_state()
+            elif chunk_type == "error":
+                error_msg = chunk.get("content", "Unknown error")
+                self.state_manager.add_chat_message(channel, "system", f"[red]Error: {error_msg}[/]")
+            return
+        
         chunk_type = chunk.get("type")
         
         if chunk_type == "chunk":
             content = chunk.get("content", "")
-            self.state_manager.add_chat_message(channel, "assistant", content)
-            if self.channel_manager:
-                await self.channel_manager.handle_agent_output(channel, content, "assistant")
+            # Delegate to channel_manager (handles state + UI)
+            # Don't save immediately for streaming chunks to reduce I/O
+            await self.channel_manager.handle_agent_output(channel, content, "assistant", save_immediately=False)
         elif chunk_type == "complete":
             content = chunk.get("content", "")
-            self.state_manager.add_chat_message(channel, "assistant", content)
-            await self.state_manager.save_state()
-            if self.channel_manager:
-                await self.channel_manager.handle_agent_output(channel, content, "assistant")
+            # Delegate to channel_manager (handles state + UI + save_state)
+            # Save immediately for complete messages to ensure persistence
+            await self.channel_manager.handle_agent_output(channel, content, "assistant", save_immediately=True)
+            
+            # Extract tool execution summary if available (for next stage)
+            tool_execution_summary = chunk.get("tool_execution_summary")
+            if tool_execution_summary:
+                # Store tool execution summary in task state for next stage
+                # This will be used by test/debug agents to know what was modified
+                task_id = channel.split("-")[1] if "-" in channel else None
+                if task_id:
+                    tasks = self.state_manager.get_task_checklist()
+                    for task in tasks:
+                        if task.get("id") == task_id:
+                            if "tool_execution" not in task:
+                                task["tool_execution"] = {}
+                            task["tool_execution"]["last_summary"] = tool_execution_summary
+                            task["tool_execution"]["modified_files"] = tool_execution_summary.get("modified_files", [])
+                            task["tool_execution"]["executed_commands"] = tool_execution_summary.get("executed_commands", [])
+                            break
         elif chunk_type == "tool_use" or chunk_type == "tool_use_start":
             # Display tool call
             tool_call = chunk.get("tool_call", {})
@@ -397,9 +429,8 @@ class AgentBridge:
             if tool_input:
                 tool_display += f"  Input: {json.dumps(tool_input, indent=2)[:200]}...\n"
             
-            self.state_manager.add_chat_message(channel, "system", tool_display)
-            if self.channel_manager:
-                await self.channel_manager.handle_agent_output(channel, tool_display, "system")
+            # Delegate to channel_manager (handles state + UI)
+            await self.channel_manager.handle_agent_output(channel, tool_display, "system")
         elif chunk_type == "tool_result":
             # Display tool result
             tool_name = chunk.get("tool_name", "unknown")
@@ -414,15 +445,13 @@ class AgentBridge:
                 result_display = f"[green]✅ Tool {tool_name} completed[/] (id: {tool_call_id[:8]}...)\n"
                 result_display += f"  Result: {result_str[:300]}...\n" if len(result_str) > 300 else f"  Result: {result_str}\n"
             
-            self.state_manager.add_chat_message(channel, "system", result_display)
-            if self.channel_manager:
-                await self.channel_manager.handle_agent_output(channel, result_display, "system")
+            # Delegate to channel_manager (handles state + UI)
+            await self.channel_manager.handle_agent_output(channel, result_display, "system")
         elif chunk_type == "error":
             error_msg = chunk.get("content", "Unknown error")
             error_display = f"[red]Error: {error_msg}[/]"
-            self.state_manager.add_chat_message(channel, "system", error_display)
-            if self.channel_manager:
-                await self.channel_manager.handle_agent_output(channel, error_display, "system")
+            # Delegate to channel_manager (handles state + UI)
+            await self.channel_manager.handle_agent_output(channel, error_display, "system")
     
     async def _execute_agent_method(
         self,
@@ -498,30 +527,14 @@ Review Question: {review_request.get('question', 'Is this change necessary or a 
                     # TDD mode: write integration tests first (Sprint scope)
                     async for chunk in agent_instance.write_tdd_tests(sprint_id, context, model_config):
                         channel = f"sprint-{sprint_id}-integration_test"
-                        if chunk.get("type") == "chunk":
-                            self.state_manager.add_chat_message(
-                                channel, "assistant", chunk.get("content", "")
-                            )
-                        elif chunk.get("type") == "complete":
-                            self.state_manager.add_chat_message(
-                                channel, "assistant", chunk.get("content", "")
-                            )
-                            await self.state_manager.save_state()
+                        await self._handle_agent_chunk(chunk, channel)
                 else:
                     # Test execution mode: run integration tests
                     sprint_id = context.get("sprint_id")
                     if sprint_id:
                         async for chunk in agent_instance.run_integration_tests(sprint_id, task_id, context, model_config):
                             channel = f"sprint-{sprint_id}-integration_test"
-                            if chunk.get("type") == "chunk":
-                                self.state_manager.add_chat_message(
-                                    channel, "assistant", chunk.get("content", "")
-                                )
-                            elif chunk.get("type") == "complete":
-                                self.state_manager.add_chat_message(
-                                    channel, "assistant", chunk.get("content", "")
-                                )
-                                await self.state_manager.save_state()
+                            await self._handle_agent_chunk(chunk, channel)
             elif agent_type == "e2e_test":
                 # E2E Test agent: call appropriate method based on stage
                 sprint_id = context.get("sprint_id")
