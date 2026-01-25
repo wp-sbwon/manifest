@@ -1782,6 +1782,89 @@ class ManifestApp(App):
                 log.write(f"[bold green]Sprint {sprint_id} started successfully.[/]")
             else:
                 log.write(f"[bold red]Failed to start sprint {sprint_id}.[/]")
+    
+    @on(PermissionApprovalWidget.Approved)
+    async def on_permission_approved(self, message: PermissionApprovalWidget.Approved):
+        """Handle permission approval."""
+        request_id = message.request_id
+        log = self.query_one("#log-main", RichLog)
+        
+        if self.approval_manager:
+            success = await self.approval_manager.approve_request(request_id)
+            if success:
+                log.write(f"[bold green]Permission request {request_id[:8]}... approved.[/]")
+                # Hide approval widget
+                try:
+                    widget = self.query_one("#permission-approval-widget", PermissionApprovalWidget)
+                    widget.styles.display = "none"
+                except Exception:
+                    pass
+                
+                # Check for more pending requests
+                await self.check_pending_permissions()
+            else:
+                log.write(f"[bold yellow]Permission request {request_id[:8]}... not found or already processed.[/]")
+    
+    @on(PermissionApprovalWidget.Denied)
+    async def on_permission_denied(self, message: PermissionApprovalWidget.Denied):
+        """Handle permission denial."""
+        request_id = message.request_id
+        log = self.query_one("#log-main", RichLog)
+        
+        if self.approval_manager:
+            success = await self.approval_manager.deny_request(request_id)
+            if success:
+                log.write(f"[bold red]Permission request {request_id[:8]}... denied.[/]")
+                # Hide approval widget
+                try:
+                    widget = self.query_one("#permission-approval-widget", PermissionApprovalWidget)
+                    widget.styles.display = "none"
+                except Exception:
+                    pass
+                
+                # Check for more pending requests
+                await self.check_pending_permissions()
+            else:
+                log.write(f"[bold yellow]Permission request {request_id[:8]}... not found or already processed.[/]")
+    
+    async def check_pending_permissions(self):
+        """Check for pending permission requests and display them in UI.
+        
+        This method is called when a permission request is created or when
+        a previous request is approved/denied. It displays the next pending
+        request in the PermissionApprovalWidget.
+        """
+        if not self.approval_manager:
+            return
+        
+        pending_requests = self.approval_manager.get_pending_requests()
+        
+        if pending_requests:
+            # Show the first pending request
+            request = pending_requests[0]
+            try:
+                widget = self.query_one("#permission-approval-widget", PermissionApprovalWidget)
+                widget.set_request(request)
+                widget.styles.display = "block"
+                
+                # Log to main log
+                log = self.query_one("#log-main", RichLog)
+                log.write(
+                    f"[yellow]⏸ Permission approval required: "
+                    f"{request.get('agent_type', 'unknown')} wants to "
+                    f"{request.get('permission_type', 'unknown')} "
+                    f"{request.get('resource', 'unknown')}[/]"
+                )
+            except Exception as e:
+                logger.error(f"Error displaying permission request: {e}")
+        else:
+            # No pending requests, hide widget
+            try:
+                widget = self.query_one("#permission-approval-widget", PermissionApprovalWidget)
+                widget.styles.display = "none"
+            except Exception:
+                pass
+                log.write(f"[bold red]Failed to start sprint {sprint_id}.[/]")
         
         self.query_one("#sprint-approval-widget").styles.display = "none"
     
