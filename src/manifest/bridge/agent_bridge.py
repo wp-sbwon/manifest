@@ -58,7 +58,8 @@ class AgentBridge:
         state_manager: StateManager,
         config_manager: Optional[ConfigManager] = None,
         working_dir: Optional[Path] = None,
-        channel_manager: Optional[Any] = None
+        channel_manager: Optional[Any] = None,
+        approval_manager: Optional[Any] = None
     ):
         """Initialize the agent bridge.
         
@@ -70,10 +71,14 @@ class AgentBridge:
             state_manager: State manager for persistence.
             config_manager: Optional config manager. If not provided, creates one.
             working_dir: Optional working directory. Defaults to current directory.
+            channel_manager: Optional channel manager for UI updates.
+            approval_manager: Optional permission approval manager for "ask" permissions.
         """
         self.state_manager = state_manager
         self.config_manager = config_manager
         self.working_dir = working_dir or Path.cwd()
+        self.channel_manager = channel_manager
+        self.approval_manager = approval_manager
         
         # Lazy import to avoid circular dependencies
         from manifest.agents.resource_monitor import ResourceMonitor
@@ -475,7 +480,23 @@ class AgentBridge:
             result = chunk.get("result")
             error = chunk.get("error")
             
-            if error:
+            # Check for permission approval request
+            if chunk.get("permission_required"):
+                approval_request_id = chunk.get("approval_request_id")
+                permission_details = chunk.get("permission_details", {})
+                
+                result_display = (
+                    f"[yellow]⏸ Permission approval required for {tool_name}[/]\n"
+                    f"  Resource: {permission_details.get('resource', 'unknown')}\n"
+                    f"  Request ID: {approval_request_id[:8] if approval_request_id else 'unknown'}...\n"
+                    f"  [dim]Waiting for user approval...[/]\n"
+                )
+                
+                # Notify UI about pending permission request
+                if self.channel_manager and hasattr(self.channel_manager.app, 'check_pending_permissions'):
+                    # Trigger permission check in UI
+                    asyncio.create_task(self.channel_manager.app.check_pending_permissions())
+            elif error:
                 result_display = f"[red]❌ Tool {tool_name} failed:[/] {error}\n"
             else:
                 result_str = json.dumps(result, indent=2) if result else "null"

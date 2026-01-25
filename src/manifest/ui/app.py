@@ -39,7 +39,8 @@ from manifest.bridge.agent_bridge import AgentBridge
 from manifest.audit.code.drift_auditor import DriftAuditor
 from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator
-from manifest.ui.widgets import RequirementMap, ArchitectureGraph, FeatureTree, TaskTree, GateController, SprintApprovalWidget
+from manifest.ui.widgets import RequirementMap, ArchitectureGraph, FeatureTree, TaskTree, GateController, SprintApprovalWidget, PermissionApprovalWidget
+from manifest.runtime.permissions.permission_approval_manager import PermissionApprovalManager
 from manifest.audit.metadata.architecture_metadata import load_architecture_with_metadata
 from manifest.ui.settings_screen import SettingsScreen
 from manifest.ui.task_edit_screen import TaskEditScreen
@@ -382,6 +383,7 @@ class ManifestApp(App):
                 yield TaskTree("Active Missions", id="task-tree")
                 yield GateController(id="gate-controller")
                 yield SprintApprovalWidget(id="sprint-approval-widget")
+                yield PermissionApprovalWidget(id="permission-approval-widget")
 
             # 2. Unified Workspace (Split Side-by-Side)
             with Container(id="main-workspace"):
@@ -497,8 +499,17 @@ class ManifestApp(App):
         # Initialize task tree
         await self.update_task_tree()
         
+        # Initialize permission approval manager
+        self.approval_manager = PermissionApprovalManager()
+        
         # Initialize channel manager first (needed for agent_bridge)
         self.channel_manager = ChannelManager(self, self.state_manager)
+        
+        # Hide permission approval widget initially
+        try:
+            self.query_one("#permission-approval-widget").styles.display = "none"
+        except Exception:
+            pass  # Widget might not be mounted yet
         
         # Initialize agent bridge
         if self.agent_bridge is None:
@@ -506,7 +517,8 @@ class ManifestApp(App):
             self.agent_bridge = AgentBridge(
                 self.state_manager, 
                 config_manager,
-                channel_manager=self.channel_manager  # Pass channel_manager for real-time UI updates
+                channel_manager=self.channel_manager,  # Pass channel_manager for real-time UI updates
+                approval_manager=self.approval_manager  # Pass approval_manager for permission requests
             )
             await self.agent_bridge.start()
             if self.agent_bridge.is_connected:

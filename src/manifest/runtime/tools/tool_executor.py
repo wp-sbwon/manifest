@@ -3,6 +3,9 @@ Tool Executor for executing tool calls.
 
 This module provides the ToolExecutor class which takes tool calls from LLMs
 and executes them using the appropriate handlers (TerminalRouter, FileManager).
+
+Supports permission approval requests for "ask" permissions through the
+PermissionApprovalManager.
 """
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from manifest.runtime.tools.file_manager import FileManager
@@ -10,6 +13,7 @@ from manifest.core.logger import get_logger
 
 if TYPE_CHECKING:
     from manifest.runtime.router.terminal_router import TerminalRouter
+    from manifest.runtime.permissions.permission_approval_manager import PermissionApprovalManager
 
 logger = get_logger(__name__)
 
@@ -25,16 +29,19 @@ class ToolExecutor:
     def __init__(
         self,
         terminal_router: Optional["TerminalRouter"] = None,
-        file_manager: Optional[FileManager] = None
+        file_manager: Optional[FileManager] = None,
+        approval_manager: Optional["PermissionApprovalManager"] = None
     ):
         """Initialize tool executor.
         
         Args:
             terminal_router: TerminalRouter instance for bash commands.
             file_manager: FileManager instance for file operations.
+            approval_manager: Optional PermissionApprovalManager for handling "ask" permissions.
         """
         self.terminal_router = terminal_router
         self.file_manager = file_manager
+        self.approval_manager = approval_manager
     
     async def execute_tool(
         self,
@@ -258,14 +265,38 @@ class ToolExecutor:
             
             # Check for permission required (ask)
             if result.get("permission_required"):
-                return {
-                    "tool_call_id": tool_input.get("id", "unknown"),
-                    "tool_name": "bash",
-                    "error": "Permission approval required",
-                    "result": None,
-                    "permission_required": True,
-                    "permission_details": result.get("permission_details", {})
-                }
+                permission_details = result.get("permission_details", {})
+                
+                # Create approval request if approval_manager is available
+                if self.approval_manager:
+                    request_id = self.approval_manager.create_approval_request(
+                        permission_type="bash",
+                        resource=permission_details.get("resource", "unknown command"),
+                        agent_type=permission_details.get("agent_type", "unknown"),
+                        tool_name="bash",
+                        tool_input=tool_input,
+                        approval_callback=None  # Will be handled by retry mechanism
+                    )
+                    
+                    return {
+                        "tool_call_id": tool_input.get("id", "unknown"),
+                        "tool_name": "bash",
+                        "error": "Permission approval required",
+                        "result": None,
+                        "permission_required": True,
+                        "permission_details": permission_details,
+                        "approval_request_id": request_id
+                    }
+                else:
+                    # No approval manager, return error
+                    return {
+                        "tool_call_id": tool_input.get("id", "unknown"),
+                        "tool_name": "bash",
+                        "error": "Permission approval required but no approval manager available",
+                        "result": None,
+                        "permission_required": True,
+                        "permission_details": permission_details
+                    }
             
             return {
                 "tool_call_id": tool_input.get("id", "unknown"),
@@ -356,13 +387,40 @@ class ToolExecutor:
         # Check for permission denied or required
         if not result.get("success"):
             error = result.get("error", "Unknown error")
+            permission_required = result.get("permission_required", False)
+            
+            # Create approval request if permission_required and approval_manager available
+            if permission_required and self.approval_manager:
+                request_id = self.approval_manager.create_approval_request(
+                    permission_type=result.get("permission_type", "write"),
+                    resource=result.get("resource", tool_input.get("file_path", "unknown")),
+                    agent_type=self.file_manager.agent_type if self.file_manager else "unknown",
+                    tool_name="write",
+                    tool_input=tool_input,
+                    approval_callback=None
+                )
+                
+                return {
+                    "tool_call_id": tool_input.get("id", "unknown"),
+                    "tool_name": "write",
+                    "error": error,
+                    "result": None,
+                    "permission_denied": error == "Permission denied",
+                    "permission_required": True,
+                    "permission_details": {
+                        "permission_type": result.get("permission_type", "write"),
+                        "resource": result.get("resource", tool_input.get("file_path", "unknown"))
+                    },
+                    "approval_request_id": request_id
+                }
+            
             return {
                 "tool_call_id": tool_input.get("id", "unknown"),
                 "tool_name": "write",
                 "error": error,
                 "result": None,
                 "permission_denied": error == "Permission denied",
-                "permission_required": result.get("permission_required", False)
+                "permission_required": permission_required
             }
         
         return {
