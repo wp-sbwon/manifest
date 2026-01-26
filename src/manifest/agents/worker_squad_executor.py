@@ -225,8 +225,15 @@ class WorkerSquadExecutor:
                 return {"success": False, "stages": stages, "error": error_msg}
 
         # 4. Test (run tests)
+        # Pass coder's modified files to test stage for better context
+        coder_modified_files = coder_result.get("files_modified") or coder_result.get("parsed_data", {}).get("files_modified", [])
         test_result = await self._execute_test_stage(task_id, previous_stages)
         test_result["status"] = "completed" if test_result.get("success") else "failed"
+        # Add coder's modified files to test result for debugging
+        if coder_modified_files:
+            if "parsed_data" not in test_result:
+                test_result["parsed_data"] = {}
+            test_result["parsed_data"]["coder_modified_files"] = coder_modified_files
         stages["test"] = test_result
         previous_stages["test"] = test_result
         # Save stage result
@@ -392,19 +399,43 @@ class WorkerSquadExecutor:
             task_id, "planner", stage="planner", previous_stages=previous_stages or {}, timeout=timeout
         )
 
-        # Extract plan from parsed data
-        plan = result.get("parsed_data", {}).get("plan", {})
-        if not plan:
+        # Extract plan from parsed data (improved extraction)
+        parsed_data = result.get("parsed_data", {})
+        plan = parsed_data.get("plan", {})
+
+        # If plan is a dict, use it directly; if it's a string, wrap it
+        if isinstance(plan, str):
+            plan = {"description": plan}
+        elif not plan:
             # Try to extract plan from output
             output = result.get("output", "")
             if output:
-                plan = {"description": output[:500]}  # Use first 500 chars as plan description
+                # Try to extract structured plan from output
+                import json
+                import re
+                # Look for JSON plan
+                json_match = re.search(r'\{[^{}]*"plan"[^{}]*\}', output, re.DOTALL)
+                if json_match:
+                    try:
+                        plan = json.loads(json_match.group(0))
+                    except:
+                        pass
+
+                # If still no plan, use first 500 chars as description
+                if not plan:
+                    plan = {"description": output[:500]}
+
+        # Extract tasks breakdown if available
+        tasks = parsed_data.get("tasks", [])
+        estimated_hours = parsed_data.get("estimated_hours")
 
         return {
             "success": result.get("success", False),
             "output": result.get("output", ""),
             "plan": plan,
-            "parsed_data": result.get("parsed_data", {}),
+            "tasks": tasks,  # Task breakdown for reference
+            "estimated_hours": estimated_hours,  # Time estimate
+            "parsed_data": parsed_data,
             "error": result.get("error")
         }
 
@@ -486,18 +517,31 @@ class WorkerSquadExecutor:
             task_id, "test", stage="tdd_test", previous_stages=previous_stages or {}, timeout=timeout
         )
 
-        # Extract test skeleton and plan from parsed data
+        # Extract test skeleton and plan from parsed data (improved)
         parsed_data = result.get("parsed_data", {})
         test_skeleton = parsed_data.get("test_skeleton", "")
         test_plan = parsed_data.get("test_plan", "")
+        code_blocks = parsed_data.get("code_blocks", [])
+
+        # If test_skeleton not in parsed_data, try to extract from output
+        if not test_skeleton:
+            output = result.get("output", "")
+            if output:
+                import re
+                # Look for code blocks in output
+                code_block_match = re.search(r'```(?:python|py|test)?\n(.*?)```', output, re.DOTALL)
+                if code_block_match:
+                    test_skeleton = code_block_match.group(1)
 
         return {
             "success": result.get("success", False),
             "status": "completed" if result.get("success") else "failed",
             "test_skeleton": test_skeleton,
             "test_plan": test_plan,
+            "code_blocks": code_blocks,  # All code blocks found
             "tdd_mode": True,
             "output": result.get("output", ""),
+            "parsed_data": parsed_data,  # Include full parsed data
             "error": result.get("error")
         }
 

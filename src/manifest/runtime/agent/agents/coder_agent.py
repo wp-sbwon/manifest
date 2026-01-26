@@ -162,9 +162,11 @@ class CoderAgent:
                             self.message_history.append({"role": "assistant", "content": full_response})
                         else:
                             self.message_history[-1]["content"] = full_response
-                    # Yield complete chunk for UI display
-                    # We'll check for tool calls after this and yield final completion with summary
-                    yield chunk
+                    # Yield complete chunk for UI display with tool_execution_summary
+                    # This summary will be used by next stages (test, debug) to know what was modified
+                    complete_chunk = chunk.copy()
+                    complete_chunk["tool_execution_summary"] = self.tool_execution_summary.copy()
+                    yield complete_chunk
                 elif chunk_type == "error":
                     # Include tool execution summary in error
                     error_chunk = chunk.copy()
@@ -312,6 +314,12 @@ class CoderAgent:
                 # No tool calls, we're done
                 if full_response:
                     await self._save_response(full_response)
+                    # Yield final complete chunk with tool_execution_summary
+                    yield {
+                        "type": "complete",
+                        "content": full_response,
+                        "tool_execution_summary": self.tool_execution_summary.copy()
+                    }
                 break
 
         if iteration >= max_iterations:

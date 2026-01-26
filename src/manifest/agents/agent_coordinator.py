@@ -404,35 +404,78 @@ class AgentCoordinator:
             # Check if agent is still active
             if task_id not in self.active_agents:
                 # Agent completed (removed from active agents)
+                logger.debug(f"Agent {task_id} completed (removed from active_agents)")
                 break
 
-            # Check agent status via bridge (for direct execution)
+            # Check agent status via bridge (for direct execution) - PRIMARY CHECK
             if self.agent_bridge and task_id in self.agent_bridge._active_agents:
                 agent_info = self.agent_bridge._active_agents[task_id]
                 if agent_info.get("completed") or agent_info.get("status") in ["completed", "stopped", "failed"]:
+                    logger.debug(f"Agent {task_id} completed (bridge status: {agent_info.get('status')})")
                     break
 
-            # Check agent status
+            # Check AgentExecutor's active_sessions (if available)
+            if self.agent_bridge and hasattr(self.agent_bridge, 'executor'):
+                executor = self.agent_bridge.executor
+                if executor and hasattr(executor, 'active_sessions'):
+                    # Use agent_id format: task_id or f"{task_id}-{agent_type}"
+                    session_id = task_id
+                    if session_id in executor.active_sessions:
+                        session_status = executor.active_sessions[session_id].get("status")
+                        if session_status == "completed":
+                            logger.debug(f"Agent {task_id} completed (executor session status: completed)")
+                            break
+
+            # Check agent status via get_agent_status
             agent_status = await self.get_agent_status(task_id)
             if agent_status.get("status") in ["completed", "stopped", "failed"]:
+                logger.debug(f"Agent {task_id} completed (agent_status: {agent_status.get('status')})")
                 break
 
-            # Check channel for "complete" message or new messages
+            # Check channel for "complete" chunk or completion indicators
             history = self.state_manager.get_chat_history(channel)
             current_message_count = len(history)
 
-            # If new messages appeared, check if last message indicates completion
+            # If new messages appeared, check for completion
             if current_message_count > last_message_count and history:
-                last_message = history[-1]
-                content = last_message.get("content", "")
+                # Check last few messages for completion indicators
+                # Look for explicit completion markers or check if agent stopped producing output
+                recent_messages = history[-min(5, len(history)):]  # Check last 5 messages
 
-                # Check for completion indicators
-                if any(indicator in content.lower() for indicator in [
-                    "[complete]", "[finished]", "[done]", "task completed"
-                ]):
-                    break
+                for msg in reversed(recent_messages):
+                    content = msg.get("content", "")
+                    role = msg.get("role", "")
+
+                    # Check for explicit completion indicators in message content
+                    if any(indicator in content.lower() for indicator in [
+                        "[complete]", "[finished]", "[done]", "task completed",
+                        "agent completed", "execution completed"
+                    ]):
+                        logger.debug(f"Agent {task_id} completed (completion indicator found in message)")
+                        break
+
+                    # Check if message has completion metadata (if we add it in the future)
+                    if msg.get("completed") or msg.get("type") == "complete":
+                        logger.debug(f"Agent {task_id} completed (completion metadata in message)")
+                        break
+                else:
+                    # If we didn't break, continue to next iteration
+                    pass
 
             last_message_count = current_message_count
+
+            # Additional check: If no new messages for a while and agent seems idle, check more carefully
+            if wait_iteration > 10 and current_message_count == last_message_count:
+                # After 10 seconds of no new messages, do a more thorough check
+                # This helps catch cases where agent completed but didn't send explicit signal
+                if self.agent_bridge and task_id in self.agent_bridge._active_agents:
+                    agent_info = self.agent_bridge._active_agents[task_id]
+                    # If agent has been running for a while and no new messages, check if it's actually done
+                    completed_at = agent_info.get("completed_at")
+                    if completed_at:
+                        # Agent was marked as completed
+                        logger.debug(f"Agent {task_id} completed (completed_at timestamp found)")
+                        break
 
             # Wait a bit before checking again
             await asyncio.sleep(1.0)
@@ -446,20 +489,54 @@ class AgentCoordinator:
             if msg.get("role") == "assistant"
         ])
 
-        # Parse output based on agent type and stage
-        parsed_data = self._parse_agent_output(agent_type, stage, output)
+        # Try to get tool_execution_summary from task state (if available)
+        # This is more reliable than parsing from output text
+        tool_execution_summary = None
+        tasks = self.state_manager.get_task_checklist()
+        task = next((t for t in tasks if t.get("id") == task_id), None)
+        if task and "tool_execution" in task:
+            tool_execution = task.get("tool_execution", {})
+            tool_execution_summary = tool_execution.get("last_summary")
 
-        # Determine final status
+        # Parse output based on agent type and stage
+        parsed_data = self._parse_agent_output(agent_type, stage, output, tool_execution_summary)
+
+        # Determine final status - check multiple sources for reliability
         if wait_iteration >= max_wait_iterations:
             status = "timeout"
             success = False
+            logger.warning(f"Agent {task_id} timed out after {timeout or 'default'} seconds")
         elif task_id not in self.active_agents:
+            # Agent was removed from active_agents (completed)
             status = "completed"
             success = True
+            logger.debug(f"Agent {task_id} completed (removed from active_agents)")
+        elif self.agent_bridge and task_id in self.agent_bridge._active_agents:
+            # Check bridge's active_agents status (most reliable)
+            agent_info = self.agent_bridge._active_agents[task_id]
+            bridge_status = agent_info.get("status", "unknown")
+            bridge_completed = agent_info.get("completed", False)
+
+            if bridge_completed or bridge_status in ["completed", "stopped"]:
+                status = "completed"
+                success = bridge_status != "failed"
+                logger.debug(f"Agent {task_id} completed (bridge status: {bridge_status}, completed: {bridge_completed})")
+            elif bridge_status == "failed":
+                status = "failed"
+                success = False
+                logger.debug(f"Agent {task_id} failed (bridge status: failed)")
+            else:
+                # Fallback to agent_status check
+                agent_status = await self.get_agent_status(task_id)
+                status = agent_status.get("status", "unknown")
+                success = status == "completed"
+                logger.debug(f"Agent {task_id} status from get_agent_status: {status}")
         else:
+            # Fallback: check via get_agent_status
             agent_status = await self.get_agent_status(task_id)
             status = agent_status.get("status", "unknown")
             success = status == "completed"
+            logger.debug(f"Agent {task_id} status from get_agent_status (fallback): {status}")
 
         # Publish agent completion event
         if success:
@@ -547,7 +624,8 @@ class AgentCoordinator:
         self,
         agent_type: str,
         stage: Optional[str],
-        output: str
+        output: str,
+        tool_execution_summary: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Parse agent output to extract structured data.
 
@@ -591,39 +669,73 @@ class AgentCoordinator:
                 parsed["estimated_hours"] = int(time_match.group(1))
 
         elif agent_type == "test" and stage == "tdd_test":
-            # Extract test skeleton
-            test_skeleton_match = re.search(r'```(?:python|py)?\n(.*?)```', output, re.DOTALL)
-            if test_skeleton_match:
-                parsed["test_skeleton"] = test_skeleton_match.group(1)
+            # Extract test skeleton (improved - look for all code blocks)
+            code_block_pattern = r'```(?:python|py|test)?\n(.*?)```'
+            code_blocks = re.findall(code_block_pattern, output, re.DOTALL)
+            if code_blocks:
+                # Use the largest code block as test skeleton (likely the main test file)
+                test_skeleton = max(code_blocks, key=len)
+                parsed["test_skeleton"] = test_skeleton
+                # Also include all code blocks
+                parsed["code_blocks"] = code_blocks
 
-            # Extract test plan
-            plan_match = re.search(r'(?:test\s+plan|plan)[:\s]+(.+?)(?:\n\n|\Z)', output, re.IGNORECASE | re.DOTALL)
-            if plan_match:
-                parsed["test_plan"] = plan_match.group(1).strip()
+            # Extract test plan (improved pattern)
+            plan_patterns = [
+                r'(?:test\s+plan|plan|test\s+strategy)[:\s]+(.+?)(?:\n\n|\Z)',  # After "test plan:"
+                r'##\s*(?:Test\s+)?Plan\s*\n(.+?)(?:\n##|\Z)',  # Markdown section
+                r'Plan:\s*\n(.+?)(?:\n\n|\Z)',  # Simple "Plan:"
+            ]
+            for pattern in plan_patterns:
+                plan_match = re.search(pattern, output, re.IGNORECASE | re.DOTALL)
+                if plan_match:
+                    parsed["test_plan"] = plan_match.group(1).strip()
+                    break
 
         elif agent_type == "test" and stage == "test":
-            # Extract test results
-            # Look for test result patterns
-            passed_match = re.search(r'(?:passed|PASSED)[:\s]+(\d+)', output, re.IGNORECASE)
-            failed_match = re.search(r'(?:failed|FAILED)[:\s]+(\d+)', output, re.IGNORECASE)
+            # Use tool_execution_summary if available (for test execution results)
+            if tool_execution_summary:
+                # Test agent might store test results in tool_execution_summary
+                if "test_results" in tool_execution_summary:
+                    parsed["test_results"] = tool_execution_summary["test_results"]
+                if "tests_passed" in tool_execution_summary:
+                    parsed["tests_passed"] = tool_execution_summary["tests_passed"]
+                if "tests_failed" in tool_execution_summary:
+                    parsed["tests_failed"] = tool_execution_summary["tests_failed"]
+                if "errors" in tool_execution_summary:
+                    parsed["errors"] = tool_execution_summary["errors"]
 
-            if passed_match:
-                parsed["tests_passed"] = int(passed_match.group(1))
-            if failed_match:
-                parsed["tests_failed"] = int(failed_match.group(1))
+            # Fallback: Extract test results from output text
+            if "tests_passed" not in parsed:
+                passed_match = re.search(r'(?:passed|PASSED)[:\s]+(\d+)', output, re.IGNORECASE)
+                if passed_match:
+                    parsed["tests_passed"] = int(passed_match.group(1))
 
-            # Extract error messages
-            error_pattern = r'(?:error|ERROR|failure|FAILURE)[:\s]+(.+?)(?:\n|$)'
-            errors = re.findall(error_pattern, output, re.IGNORECASE | re.MULTILINE)
-            if errors:
-                parsed["errors"] = [e.strip() for e in errors]
+            if "tests_failed" not in parsed:
+                failed_match = re.search(r'(?:failed|FAILED)[:\s]+(\d+)', output, re.IGNORECASE)
+                if failed_match:
+                    parsed["tests_failed"] = int(failed_match.group(1))
+
+            # Extract error messages (if not already parsed)
+            if "errors" not in parsed or not parsed["errors"]:
+                error_pattern = r'(?:error|ERROR|failure|FAILURE)[:\s]+(.+?)(?:\n|$)'
+                errors = re.findall(error_pattern, output, re.IGNORECASE | re.MULTILINE)
+                if errors:
+                    parsed["errors"] = [e.strip() for e in errors]
 
         elif agent_type == "coder":
-            # Extract modified files
-            file_pattern = r'(?:modified|changed|updated)\s+file[:\s]+(.+?)(?:\n|$)'
-            files = re.findall(file_pattern, output, re.IGNORECASE | re.MULTILINE)
-            if files:
-                parsed["files_modified"] = [f.strip() for f in files]
+            # Use tool_execution_summary if available (most reliable)
+            if tool_execution_summary:
+                parsed["files_modified"] = tool_execution_summary.get("modified_files", [])
+                parsed["executed_commands"] = tool_execution_summary.get("executed_commands", [])
+                parsed["read_files"] = tool_execution_summary.get("read_files", [])
+                parsed["errors"] = tool_execution_summary.get("errors", [])
+                parsed["total_tool_calls"] = tool_execution_summary.get("total_tool_calls", 0)
+            else:
+                # Fallback: Extract from output text using regex
+                file_pattern = r'(?:modified|changed|updated)\s+file[:\s]+(.+?)(?:\n|$)'
+                files = re.findall(file_pattern, output, re.IGNORECASE | re.MULTILINE)
+                if files:
+                    parsed["files_modified"] = [f.strip() for f in files]
 
             # Extract code blocks
             code_blocks = re.findall(r'```(?:python|py|javascript|js|typescript|ts)?\n(.*?)```', output, re.DOTALL)
@@ -631,22 +743,63 @@ class AgentCoordinator:
                 parsed["code_blocks"] = code_blocks
 
         elif agent_type == "approver":
-            # Extract decision
-            decision_match = re.search(r'(?:decision|result)[:\s]+(approved|rejected|pending)', output, re.IGNORECASE)
-            if decision_match:
-                parsed["decision"] = decision_match.group(1).lower()
+            # Extract decision (improved patterns)
+            decision_patterns = [
+                r'(?:decision|result|verdict|status)[:\s]+(approved|rejected|pending|accept|deny)',
+                r'(?:I\s+)?(?:approve|reject|accept|deny|pending)',
+                r'\[(?:APPROVED|REJECTED|PENDING)\]',
+            ]
+            for pattern in decision_patterns:
+                decision_match = re.search(pattern, output, re.IGNORECASE)
+                if decision_match:
+                    decision = decision_match.group(1) if decision_match.lastindex else decision_match.group(0)
+                    # Normalize decision values
+                    decision_lower = decision.lower()
+                    if "approve" in decision_lower or "accept" in decision_lower:
+                        parsed["decision"] = "approved"
+                    elif "reject" in decision_lower or "deny" in decision_lower:
+                        parsed["decision"] = "rejected"
+                    else:
+                        parsed["decision"] = "pending"
+                    break
 
-            # Extract feedback
-            feedback_match = re.search(r'(?:feedback|comment)[:\s]+(.+?)(?:\n\n|\Z)', output, re.IGNORECASE | re.DOTALL)
-            if feedback_match:
-                parsed["feedback"] = feedback_match.group(1).strip()
+            # Extract feedback (improved patterns)
+            feedback_patterns = [
+                r'(?:feedback|comment|notes|remarks)[:\s]+(.+?)(?:\n\n|\Z)',
+                r'##\s*Feedback\s*\n(.+?)(?:\n##|\Z)',  # Markdown section
+                r'Feedback:\s*\n(.+?)(?:\n\n|\Z)',
+            ]
+            for pattern in feedback_patterns:
+                feedback_match = re.search(pattern, output, re.IGNORECASE | re.DOTALL)
+                if feedback_match:
+                    parsed["feedback"] = feedback_match.group(1).strip()
+                    break
 
         elif agent_type == "debug":
-            # Extract issues fixed
-            issue_pattern = r'(?:fixed|resolved|issue)[:\s]+(.+?)(?:\n|$)'
-            issues = re.findall(issue_pattern, output, re.IGNORECASE | re.MULTILINE)
-            if issues:
-                parsed["issues_fixed"] = [i.strip() for i in issues]
+            # Use tool_execution_summary if available
+            if tool_execution_summary:
+                if "issues_fixed" in tool_execution_summary:
+                    parsed["issues_fixed"] = tool_execution_summary["issues_fixed"]
+                if "fixes_applied" in tool_execution_summary:
+                    parsed["fixes_applied"] = tool_execution_summary["fixes_applied"]
+                if "errors" in tool_execution_summary:
+                    parsed["errors"] = tool_execution_summary["errors"]
+
+            # Fallback: Extract issues fixed from output
+            if "issues_fixed" not in parsed:
+                issue_patterns = [
+                    r'(?:fixed|resolved|issue|bug)[:\s]+(.+?)(?:\n|$)',
+                    r'[-*]\s*(?:Fixed|Resolved)[:\s]+(.+?)(?:\n|$)',
+                ]
+                all_issues = []
+                for pattern in issue_patterns:
+                    issues = re.findall(pattern, output, re.IGNORECASE | re.MULTILINE)
+                    for issue in issues:
+                        issue_clean = issue.strip()
+                        if issue_clean and issue_clean not in all_issues:
+                            all_issues.append(issue_clean)
+                if all_issues:
+                    parsed["issues_fixed"] = all_issues
 
         return parsed
 
