@@ -100,21 +100,33 @@ self.executor = ExecutorFactory.create_executor(
 ## 변경이 필요한 부분
 
 ### 1. 문서 업데이트 필요
-- [ ] ARCHITECTURE.md: LLM execution backend 구조 설명
-- [ ] API.md: ExecutorFactory, OpenCodeLLMAdapter API 문서
-- [ ] USER_GUIDE.md: OpenCode 설정 방법
-- [ ] MODULES.md: 새로운 모듈 구조 반영
-- [ ] PROJECT_STATUS.md: 최신 구조 반영
+- [x] ARCHITECTURE.md: LLM execution backend 구조 설명 (완료)
+- [x] API.md: ExecutorFactory, OpenCodeLLMAdapter API 문서 (완료)
+- [x] USER_GUIDE.md: OpenCode 설정 방법 (완료)
+- [x] MODULES.md: 새로운 모듈 구조 반영 (완료)
+- [x] PROJECT_STATUS.md: 최신 구조 반영 (완료)
 
 ### 2. 코드 정리 필요
 - [x] ExecutorFactory에서 Claude Code fallback 제거 (완료)
 - [ ] OpenCode 서버 연결 에러 처리 개선
+  - 재시도 로직 추가
+  - 서버 자동 시작 실패 처리
+  - 연결 타임아웃 설정
 - [ ] 세션 관리 최적화
+  - 세션 재사용 로직 개선
+  - 세션 타임아웃 처리
+  - 리소스 해제 개선
 
 ### 3. 테스트 강화 필요
-- [x] OpenCodeLLMAdapter 단위 테스트 (완료)
+- [x] OpenCodeLLMAdapter 단위 테스트 (완료, 13개 테스트 모두 통과)
 - [ ] ExecutorFactory 통합 테스트
+  - Backend 선택 로직 테스트
+  - 설정 기반 백엔드 생성 테스트
+  - 에러 처리 테스트
 - [ ] 실제 OpenCode 서버와의 통합 테스트
+  - 실제 서버 연결 테스트
+  - End-to-end agent 실행 테스트
+  - 네트워크 오류 시나리오 테스트
 
 ---
 
