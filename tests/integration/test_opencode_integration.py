@@ -17,9 +17,10 @@ OPencode_AVAILABLE = True
 try:
     import subprocess
     import os
-    # Check common installation paths
+    # Check common installation paths (including ~/.opencode/bin where install script puts it)
     env = os.environ.copy()
-    env["PATH"] = f"{os.path.expanduser('~/.local/bin')}:{os.path.expanduser('~/bin')}:/usr/local/bin:{env.get('PATH', '')}"
+    opencode_path = os.path.expanduser("~/.opencode/bin")
+    env["PATH"] = f"{opencode_path}:{os.path.expanduser('~/.local/bin')}:{os.path.expanduser('~/bin')}:/usr/local/bin:{env.get('PATH', '')}"
     result = subprocess.run(
         ["opencode", "--version"],
         capture_output=True,
@@ -143,8 +144,9 @@ async def test_retry_logic(adapter):
     adapter.server_port = 9999  # Unlikely to be in use
 
     try:
-        # Should retry and eventually fail
+        # Should retry and eventually fail (server won't be accessible on wrong port)
         result = await adapter._check_server_health(timeout=1.0)
+        # Result should be False (server not accessible on wrong port)
         assert result is False
     finally:
         adapter.server_port = original_port
@@ -154,17 +156,20 @@ async def test_retry_logic(adapter):
 @pytest.mark.integration
 async def test_session_cleanup(adapter):
     """Test session cleanup functionality."""
+    import time
+    current_time = time.time()
+
     # Add some mock sessions
     adapter.active_sessions = {
         "old-session-1": {
             "session_id": "sess-1",
             "status": "completed",
-            "completed_at": 0.0  # Very old
+            "completed_at": current_time - 7200.0  # 2 hours ago (very old)
         },
         "old-session-2": {
             "session_id": "sess-2",
             "status": "stopped",
-            "stopped_at": 0.0  # Very old
+            "stopped_at": current_time - 7200.0  # 2 hours ago (very old)
         },
         "active-session": {
             "session_id": "sess-3",
