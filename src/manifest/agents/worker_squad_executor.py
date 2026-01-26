@@ -19,6 +19,9 @@ from typing import Dict, Any, Optional, List
 from manifest.core.logger import get_logger
 from manifest.agents.workflow_event_bus import WorkflowEvent, WorkflowEventType
 from manifest.agents.failure_recovery import FailureRecoveryManager
+from manifest.agents.workflow_definition import (
+    WorkflowDefinition, WorkflowRegistry, StageDefinition, StageCondition
+)
 
 logger = get_logger(__name__)
 
@@ -66,6 +69,10 @@ class WorkerSquadExecutor:
         self._use_event_driven = False  # Can be enabled per workflow
         self._enable_parallel_execution = False  # Enable parallel execution of independent stages
 
+        # Workflow registry for dynamic workflows
+        self.workflow_registry = WorkflowRegistry()
+        self._current_workflow_definition: Optional[WorkflowDefinition] = None
+
     def set_timeout(self, stage: str, timeout: float):
         """Set timeout for a specific stage."""
         self.timeouts[stage] = timeout
@@ -101,12 +108,81 @@ class WorkerSquadExecutor:
         else:
             logger.info("Parallel stage execution disabled")
 
+    def set_workflow_definition(self, workflow_name: str) -> bool:
+        """Set workflow definition by name.
+
+        Args:
+            workflow_name: Name of the workflow to use.
+
+        Returns:
+            True if workflow found and set, False otherwise.
+        """
+        workflow = self.workflow_registry.get(workflow_name)
+        if workflow:
+            self._current_workflow_definition = workflow
+            logger.info(f"Workflow definition set to: {workflow_name}")
+            return True
+        else:
+            logger.error(f"Workflow {workflow_name} not found")
+            return False
+
+    def set_custom_workflow(self, workflow: WorkflowDefinition) -> bool:
+        """Set a custom workflow definition.
+
+        Args:
+            workflow: WorkflowDefinition instance.
+
+        Returns:
+            True if workflow is valid and set, False otherwise.
+        """
+        is_valid, errors = workflow.validate()
+        if not is_valid:
+            logger.error(f"Custom workflow validation failed: {errors}")
+            return False
+
+        self._current_workflow_definition = workflow
+        logger.info(f"Custom workflow set: {workflow.name}")
+        return True
+
+    def get_workflow_definition(self) -> Optional[WorkflowDefinition]:
+        """Get current workflow definition.
+
+        Returns:
+            Current workflow definition or None.
+        """
+        return self._current_workflow_definition
+
+    def load_workflow_from_file(self, file_path: str) -> bool:
+        """Load workflow definition from file.
+
+        Args:
+            file_path: Path to workflow definition file (JSON/YAML).
+
+        Returns:
+            True if loaded successfully.
+        """
+        success = self.workflow_registry.load_from_file(file_path)
+        if success:
+            # Auto-set the loaded workflow
+            from pathlib import Path
+            workflow_name = Path(file_path).stem
+            return self.set_workflow_definition(workflow_name)
+        return False
+
     def _get_stage_dependencies(self) -> Dict[str, List[str]]:
         """Get dependency graph for workflow stages.
 
         Returns:
             Dictionary mapping stage names to lists of prerequisite stages.
         """
+        # Use workflow definition if available
+        if self._current_workflow_definition:
+            deps = {}
+            for stage in self._current_workflow_definition.stages:
+                deps[stage.name] = stage.dependencies
+            return deps
+
+        # Fallback to hardcoded dependencies
         return {
             "planner": [],  # No dependencies
             "tdd_test": ["planner"],  # Depends on planner
@@ -133,6 +209,13 @@ class WorkerSquadExecutor:
         Returns:
             List of stage names ready to execute.
         """
+        # Use workflow definition if available
+        if self._current_workflow_definition:
+            return self._get_ready_stages_from_definition(
+                completed_stages, failed_stages, workflow_state
+            )
+
+        # Fallback to hardcoded logic
         dependencies = self._get_stage_dependencies()
         ready = []
 
@@ -156,6 +239,63 @@ class WorkerSquadExecutor:
                         ready.append(stage)
                 else:
                     ready.append(stage)
+
+        return ready
+
+    def _get_ready_stages_from_definition(
+        self,
+        completed_stages: set,
+        failed_stages: set,
+        workflow_state: Dict[str, Any]
+    ) -> List[str]:
+        """Get ready stages using workflow definition.
+
+        Args:
+            completed_stages: Set of completed stage names.
+            failed_stages: Set of failed stage names.
+            workflow_state: Current workflow state.
+
+        Returns:
+            List of stage names ready to execute.
+        """
+        workflow_def = self._current_workflow_definition
+        if not workflow_def:
+            return []
+
+        ready = []
+        for stage_def in workflow_def.stages:
+            stage_name = stage_def.name
+
+            # Skip if already completed or failed
+            if stage_name in completed_stages or stage_name in failed_stages:
+                continue
+
+            # Check if all dependencies are met
+            if all(dep in completed_stages for dep in stage_def.dependencies):
+                # Check condition
+                if stage_def.condition == StageCondition.ALWAYS:
+                    ready.append(stage_name)
+                elif stage_def.condition == StageCondition.ON_SUCCESS:
+                    # Check if all dependencies succeeded
+                    deps_succeeded = all(
+                        workflow_state.get("stages", {}).get(dep, {}).get("success", False)
+                        for dep in stage_def.dependencies
+                    )
+                    if deps_succeeded:
+                        ready.append(stage_name)
+                elif stage_def.condition == StageCondition.ON_FAILURE:
+                    # Check if any dependency failed
+                    deps_failed = any(
+                        dep in failed_stages or
+                        not workflow_state.get("stages", {}).get(dep, {}).get("success", True)
+                        for dep in stage_def.dependencies
+                    )
+                    if deps_failed:
+                        ready.append(stage_name)
+                elif stage_def.condition == StageCondition.CONDITIONAL:
+                    # Evaluate custom condition
+                    if self._evaluate_custom_condition(stage_def, workflow_state, {}):
+                        ready.append(stage_name)
 
         return ready
 
@@ -349,6 +489,122 @@ class WorkerSquadExecutor:
                 await self._cleanup_event_subscriptions(task_id)
 
     def _determine_next_stage(
+        self,
+        completed_stage: str,
+        workflow_state: Dict[str, Any],
+        stage_data: Dict[str, Any]
+    ) -> Optional[str]:
+        """Determine the next stage to execute.
+
+        Uses workflow definition if available, otherwise falls back to
+        hardcoded logic.
+        """
+        # Use workflow definition if available
+        if self._current_workflow_definition:
+            return self._determine_next_stage_from_definition(
+                completed_stage, workflow_state, stage_data
+            )
+
+        # Fallback to hardcoded logic
+        return self._determine_next_stage_legacy(
+            completed_stage, workflow_state, stage_data
+        )
+
+    def _determine_next_stage_from_definition(
+        self,
+        completed_stage: str,
+        workflow_state: Dict[str, Any],
+        stage_data: Dict[str, Any]
+    ) -> Optional[str]:
+        """Determine next stage using workflow definition.
+
+        Args:
+            completed_stage: Name of the completed stage.
+            workflow_state: Current workflow state.
+            stage_data: Data from the completed stage.
+
+        Returns:
+            Name of next stage to execute, or None if workflow is complete.
+        """
+        workflow_def = self._current_workflow_definition
+        if not workflow_def:
+            return None
+
+        # Get dependents (stages that depend on this one)
+        dependents = workflow_def.get_dependents(completed_stage)
+
+        if not dependents:
+            # No dependents, check if this is an exit point
+            if completed_stage in workflow_def.exit_points:
+                return None  # Workflow complete
+            return None
+
+        # Filter dependents based on conditions
+        ready_stages = []
+        for stage_name in dependents:
+            stage_def = workflow_def.get_stage(stage_name)
+            if not stage_def:
+                continue
+
+            # Check condition
+            if stage_def.condition == StageCondition.ALWAYS:
+                ready_stages.append(stage_name)
+            elif stage_def.condition == StageCondition.ON_SUCCESS:
+                if stage_data.get("success", False):
+                    ready_stages.append(stage_name)
+            elif stage_def.condition == StageCondition.ON_FAILURE:
+                if not stage_data.get("success", True):
+                    ready_stages.append(stage_name)
+            elif stage_def.condition == StageCondition.CONDITIONAL:
+                # Custom condition evaluation (can be extended)
+                if self._evaluate_custom_condition(stage_def, workflow_state, stage_data):
+                    ready_stages.append(stage_name)
+
+        # Check if all dependencies are met for ready stages
+        valid_stages = []
+        for stage_name in ready_stages:
+            stage_def = workflow_def.get_stage(stage_name)
+            if stage_def:
+                deps = stage_def.dependencies
+                completed = workflow_state.get("completed_stages", set())
+                if all(dep in completed for dep in deps):
+                    valid_stages.append(stage_name)
+
+        # Return first valid stage (or all if parallel execution enabled)
+        if valid_stages:
+            return valid_stages[0]  # For sequential mode
+        return None
+
+    def _evaluate_custom_condition(
+        self,
+        stage_def: StageDefinition,
+        workflow_state: Dict[str, Any],
+        stage_data: Dict[str, Any]
+    ) -> bool:
+        """Evaluate custom condition for stage execution.
+
+        Args:
+            stage_def: Stage definition with condition.
+            workflow_state: Current workflow state.
+            stage_data: Data from previous stage.
+
+        Returns:
+            True if condition is met.
+        """
+        # Default: evaluate metadata condition if present
+        condition_expr = stage_def.metadata.get("condition_expr")
+        if condition_expr:
+            # Simple expression evaluation (can be extended with full expression parser)
+            # For now, just check for simple conditions
+            try:
+                # Example: "tests_passed > 0"
+                # This is a simplified version - can be extended
+                return True  # Default to True for now
+            except:
+                return False
+        return True
+
+    def _determine_next_stage_legacy(
         self,
         completed_stage: str,
         workflow_state: Dict[str, Any],
@@ -665,8 +921,16 @@ class WorkerSquadExecutor:
         # If event-driven mode, start first stage and let events handle the rest
         if self._use_event_driven and self.event_bus:
             workflow_state = self._active_workflows.get(task_id, {})
-            # Start with planner stage
-            await self._execute_stage_async(task_id, "planner", workflow_state)
+
+            # Determine entry point from workflow definition or default
+            entry_point = "planner"  # Default
+            if self._current_workflow_definition:
+                entry_points = self._current_workflow_definition.entry_points
+                if entry_points:
+                    entry_point = entry_points[0]
+
+            # Start with entry point stage
+            await self._execute_stage_async(task_id, entry_point, workflow_state)
             # Wait for workflow completion (events will handle the rest)
             # We'll need to wait for workflow to complete
             max_wait_time = 3600  # 1 hour max
