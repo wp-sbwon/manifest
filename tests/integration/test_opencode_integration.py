@@ -16,10 +16,15 @@ from pathlib import Path
 OPencode_AVAILABLE = True
 try:
     import subprocess
+    import os
+    # Check common installation paths
+    env = os.environ.copy()
+    env["PATH"] = f"{os.path.expanduser('~/.local/bin')}:{os.path.expanduser('~/bin')}:/usr/local/bin:{env.get('PATH', '')}"
     result = subprocess.run(
         ["opencode", "--version"],
         capture_output=True,
-        timeout=2
+        timeout=2,
+        env=env
     )
     if result.returncode != 0:
         OPencode_AVAILABLE = False
