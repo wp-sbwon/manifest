@@ -8,6 +8,7 @@ This module provides an adapter that uses OpenCode for LLM interactions instead
 import asyncio
 import json
 import subprocess
+import time
 from typing import Dict, Any, Optional, List, AsyncIterator
 from pathlib import Path
 import httpx
@@ -64,18 +65,25 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
         self.base_url = f"http://{server_host}:{server_port}"
         self.active_sessions: Dict[str, Dict[str, Any]] = {}
 
-    async def _ensure_server_running(self) -> bool:
-        """Ensure OpenCode server is running.
+        # Retry configuration
+        self.max_retries = config_manager.get_setting("opencode.max_retries", 3)
+        self.retry_delay = config_manager.get_setting("opencode.retry_delay", 1.0)
+        self.connection_timeout = config_manager.get_setting("opencode.connection_timeout", 5.0)
+        self.request_timeout = config_manager.get_setting("opencode.request_timeout", 300.0)
+        self.server_start_timeout = config_manager.get_setting("opencode.server_start_timeout", 10.0)
 
-        Checks if server is accessible, and if not and auto_start is enabled,
-        attempts to start the server.
+    async def _check_server_health(self, timeout: float = None) -> bool:
+        """Check if OpenCode server is accessible.
+
+        Args:
+            timeout: Connection timeout in seconds. Defaults to connection_timeout.
 
         Returns:
-            True if server is running, False otherwise.
+            True if server is accessible, False otherwise.
         """
-        # Check if server is already running
+        timeout = timeout or self.connection_timeout
         try:
-            async with httpx.AsyncClient(timeout=2.0) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 # Try health endpoint first
                 try:
                     response = await client.get(f"{self.base_url}/global/health")
@@ -96,43 +104,114 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
         except Exception as e:
             logger.debug(f"OpenCode server not accessible: {e}")
 
+        return False
+
+    async def _ensure_server_running(self) -> bool:
+        """Ensure OpenCode server is running with retry logic.
+
+        Checks if server is accessible, and if not and auto_start is enabled,
+        attempts to start the server with retries.
+
+        Returns:
+            True if server is running, False otherwise.
+        """
+        # Check if server is already running (with retry)
+        for attempt in range(self.max_retries):
+            if await self._check_server_health():
+                return True
+
+            if attempt < self.max_retries - 1:
+                logger.debug(f"Server check attempt {attempt + 1}/{self.max_retries} failed, retrying...")
+                await asyncio.sleep(self.retry_delay * (attempt + 1))  # Exponential backoff
+
         # If auto_start is enabled, try to start the server
         if self.auto_start and not self.server_process:
-            logger.info(f"Attempting to start OpenCode server on port {self.server_port}")
-            try:
-                # Try to start OpenCode server
-                self.server_process = subprocess.Popen(
-                    ["opencode", "serve", "--port", str(self.server_port)],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
-                )
-                # Wait a bit for server to start
-                await asyncio.sleep(2)
-                # Check if it's running
-                try:
-                    async with httpx.AsyncClient(timeout=5.0) as client:
-                        response = await client.get(f"{self.base_url}/global/health")
-                        if response.status_code == 200:
-                            logger.info(f"OpenCode server started successfully at {self.base_url}")
-                            return True
-                except Exception:
-                    # Try root endpoint
-                    try:
-                        async with httpx.AsyncClient(timeout=5.0) as client:
-                            response = await client.get(f"{self.base_url}/")
-                            if response.status_code in [200, 404]:
-                                logger.info(f"OpenCode server started successfully at {self.base_url}")
-                                return True
-                    except Exception:
-                        pass
-            except FileNotFoundError:
-                logger.warning("OpenCode command not found. Please install OpenCode or start server manually.")
-                return False
-            except Exception as e:
-                logger.error(f"Failed to start OpenCode server: {e}")
-                return False
+            return await self._start_server_with_retry()
 
         logger.warning(f"OpenCode server is not running at {self.base_url}")
+        return False
+
+    async def _start_server_with_retry(self) -> bool:
+        """Start OpenCode server with retry logic.
+
+        Returns:
+            True if server started successfully, False otherwise.
+        """
+        logger.info(f"Attempting to start OpenCode server on port {self.server_port}")
+
+        for attempt in range(self.max_retries):
+            try:
+                # Check if server is already running (maybe started externally)
+                if await self._check_server_health(timeout=2.0):
+                    logger.info(f"OpenCode server is already running at {self.base_url}")
+                    return True
+
+                # Try to start OpenCode server
+                if self.server_process is None or self.server_process.poll() is not None:
+                    try:
+                        self.server_process = subprocess.Popen(
+                            ["opencode", "serve", "--port", str(self.server_port)],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE
+                        )
+                    except FileNotFoundError:
+                        logger.warning("OpenCode command not found. Please install OpenCode or start server manually.")
+                        return False
+                    except Exception as e:
+                        logger.error(f"Failed to start OpenCode server process: {e}")
+                        if attempt < self.max_retries - 1:
+                            await asyncio.sleep(self.retry_delay * (attempt + 1))
+                            continue
+                        return False
+
+                # Wait for server to start (with timeout)
+                max_wait_time = self.server_start_timeout
+                check_interval = 0.5
+                waited = 0.0
+
+                while waited < max_wait_time:
+                    await asyncio.sleep(check_interval)
+                    waited += check_interval
+
+                    if await self._check_server_health(timeout=2.0):
+                        logger.info(f"OpenCode server started successfully at {self.base_url}")
+                        return True
+
+                    # Check if process died
+                    if self.server_process.poll() is not None:
+                        logger.warning(f"OpenCode server process exited with code {self.server_process.returncode}")
+                        self.server_process = None
+                        break
+
+                # If we get here, server didn't start in time
+                if attempt < self.max_retries - 1:
+                    logger.warning(f"Server start attempt {attempt + 1}/{self.max_retries} timed out, retrying...")
+                    if self.server_process:
+                        try:
+                            self.server_process.terminate()
+                            self.server_process.wait(timeout=2)
+                        except Exception:
+                            pass
+                        self.server_process = None
+                    await asyncio.sleep(self.retry_delay * (attempt + 1))
+                else:
+                    logger.error(f"Failed to start OpenCode server after {self.max_retries} attempts")
+                    if self.server_process:
+                        try:
+                            self.server_process.terminate()
+                            self.server_process.wait(timeout=2)
+                        except Exception:
+                            pass
+                        self.server_process = None
+                    return False
+
+            except Exception as e:
+                logger.error(f"Error starting OpenCode server (attempt {attempt + 1}/{self.max_retries}): {e}")
+                if attempt < self.max_retries - 1:
+                    await asyncio.sleep(self.retry_delay * (attempt + 1))
+                else:
+                    return False
+
         return False
 
     async def _create_session(
@@ -140,7 +219,7 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
         model: str,
         provider: str
     ) -> Optional[str]:
-        """Create a new OpenCode session.
+        """Create a new OpenCode session with retry logic.
 
         Args:
             model: Model name (e.g., "claude-3-5-sonnet-20241022").
@@ -152,30 +231,52 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
         if not await self._ensure_server_running():
             return None
 
-        try:
-            # Convert provider/model to OpenCode format
-            # OpenCode uses format like "anthropic/claude-3-5-sonnet"
-            opencode_model = f"{provider}/{model}" if "/" not in model else model
+        # Convert provider/model to OpenCode format
+        # OpenCode uses format like "anthropic/claude-3-5-sonnet"
+        opencode_model = f"{provider}/{model}" if "/" not in model else model
 
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    f"{self.base_url}/session/create",
-                    json={
-                        "model": opencode_model,
-                        "config": {}
-                    }
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    session_id = data.get("id") or data.get("sessionId")
-                    logger.debug(f"Created OpenCode session: {session_id}")
-                    return session_id
-                else:
-                    logger.error(f"Failed to create OpenCode session: {response.status_code} {response.text}")
-                    return None
-        except Exception as e:
-            logger.error(f"Error creating OpenCode session: {e}", exc_info=True)
-            return None
+        # Retry session creation
+        for attempt in range(self.max_retries):
+            try:
+                async with httpx.AsyncClient(timeout=self.connection_timeout) as client:
+                    response = await client.post(
+                        f"{self.base_url}/session/create",
+                        json={
+                            "model": opencode_model,
+                            "config": {}
+                        }
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        session_id = data.get("id") or data.get("sessionId")
+                        logger.debug(f"Created OpenCode session: {session_id}")
+                        return session_id
+                    elif response.status_code in [429, 503]:  # Rate limit or service unavailable
+                        if attempt < self.max_retries - 1:
+                            wait_time = self.retry_delay * (2 ** attempt)  # Exponential backoff
+                            logger.warning(f"Rate limited or service unavailable, retrying in {wait_time}s...")
+                            await asyncio.sleep(wait_time)
+                            continue
+                    else:
+                        logger.error(f"Failed to create OpenCode session: {response.status_code} {response.text}")
+                        if attempt < self.max_retries - 1:
+                            await asyncio.sleep(self.retry_delay * (attempt + 1))
+                            continue
+                        return None
+            except httpx.TimeoutException:
+                logger.warning(f"Session creation timed out (attempt {attempt + 1}/{self.max_retries})")
+                if attempt < self.max_retries - 1:
+                    await asyncio.sleep(self.retry_delay * (attempt + 1))
+                    continue
+                return None
+            except Exception as e:
+                logger.error(f"Error creating OpenCode session (attempt {attempt + 1}/{self.max_retries}): {e}")
+                if attempt < self.max_retries - 1:
+                    await asyncio.sleep(self.retry_delay * (attempt + 1))
+                    continue
+                return None
+
+        return None
 
     async def _send_prompt(
         self,
@@ -209,7 +310,7 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
             if tools:
                 payload["tools"] = tools
 
-            async with httpx.AsyncClient(timeout=300.0) as client:
+            async with httpx.AsyncClient(timeout=self.request_timeout) as client:
                 async with client.stream(
                     "POST",
                     f"{self.base_url}/session/{session_id}/prompt",
@@ -382,7 +483,6 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
         # Update session status
         if agent_id in self.active_sessions:
             self.active_sessions[agent_id]["status"] = "completed"
-            import time
             self.active_sessions[agent_id]["completed_at"] = time.time()
 
     def get_session_status(self, agent_id: str) -> Optional[Dict[str, Any]]:
@@ -407,8 +507,38 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
         """
         if agent_id in self.active_sessions:
             self.active_sessions[agent_id]["status"] = "stopped"
+            self.active_sessions[agent_id]["stopped_at"] = time.time()
             return True
         return False
+
+    async def cleanup_old_sessions(self, max_age_seconds: float = 3600.0) -> int:
+        """Clean up old completed/stopped sessions.
+
+        Args:
+            max_age_seconds: Maximum age in seconds for sessions to keep.
+
+        Returns:
+            Number of sessions cleaned up.
+        """
+        current_time = time.time()
+        cleaned = 0
+
+        sessions_to_remove = []
+        for agent_id, session_data in self.active_sessions.items():
+            status = session_data.get("status")
+            if status in ["completed", "stopped"]:
+                completed_at = session_data.get("completed_at") or session_data.get("stopped_at")
+                if completed_at and (current_time - completed_at) > max_age_seconds:
+                    sessions_to_remove.append(agent_id)
+
+        for agent_id in sessions_to_remove:
+            del self.active_sessions[agent_id]
+            cleaned += 1
+
+        if cleaned > 0:
+            logger.debug(f"Cleaned up {cleaned} old OpenCode sessions")
+
+        return cleaned
 
     def __del__(self):
         """Cleanup: stop server process if we started it."""
