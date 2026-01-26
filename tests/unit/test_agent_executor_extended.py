@@ -176,9 +176,8 @@ async def test_execute_agent_with_context(executor):
         mock_calc.estimate_tokens = Mock(return_value=100)
         mock_calc.estimate_context_tokens = Mock(return_value=50)
         mock_calc.get_model_token_limit = Mock(return_value=200000)
-        # Mock RESPONSE_TOKEN_RESERVE if it doesn't exist
-        if not hasattr(mock_calc, "RESPONSE_TOKEN_RESERVE"):
-            mock_calc.RESPONSE_TOKEN_RESERVE = 4096
+        # Mock RESPONSE_TOKEN_RESERVE as a class attribute
+        type(mock_calc).RESPONSE_TOKEN_RESERVE = 4096
 
         async def mock_aiter_lines():
             yield 'data: {"type": "content_block_delta", "delta": {"text": "Response"}}'
