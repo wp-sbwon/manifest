@@ -437,6 +437,27 @@ class AgentBridge:
                 "completed": False  # Track completion status
             }
 
+            # Register agent with message bus if available
+            if hasattr(self, 'message_bus') and self.message_bus:
+                message_bus = self.message_bus
+                agent_instance = agent.get("instance")
+
+                # Create message handler for this agent
+                async def message_handler(message):
+                    """Handle incoming messages for this agent."""
+                    if agent_instance and hasattr(agent_instance, 'handle_message'):
+                        try:
+                            await agent_instance.handle_message(message)
+                        except Exception as e:
+                            logger.error(f"Error handling message in agent {task_id}: {e}", exc_info=True)
+
+                message_bus.register_agent(
+                    agent_id=task_id,
+                    agent_type=agent_type,
+                    message_handler=message_handler
+                )
+                logger.debug(f"Agent {task_id} ({agent_type}) registered with message bus")
+
             await self.state_manager.save_state()
 
         return success
@@ -693,6 +714,12 @@ Review Question: {review_request.get('question', 'Is this change necessary or a 
             if task_id in self._active_agents:
                 self._active_agents[task_id]["completed"] = True
                 self._active_agents[task_id]["status"] = "failed"
+
+            # Unregister agent from message bus
+            if hasattr(self, 'message_bus') and self.message_bus:
+                self.message_bus.unregister_agent(task_id)
+                logger.debug(f"Agent {task_id} unregistered from message bus")
+
             await self.state_manager.save_state()
 
     async def get_agent_status(self, task_id: str) -> Dict[str, Any]:
@@ -743,6 +770,10 @@ Review Question: {review_request.get('question', 'Is this change necessary or a 
             )
 
             if task_id in self._active_agents:
+                # Unregister from message bus before removing
+                if hasattr(self, 'message_bus') and self.message_bus:
+                    self.message_bus.unregister_agent(task_id)
+                    logger.debug(f"Agent {task_id} unregistered from message bus")
                 del self._active_agents[task_id]
 
             await self.state_manager.save_state()
