@@ -2,7 +2,7 @@
 Unit tests for agent_coordinator.py
 """
 import pytest
-from unittest.mock import Mock, AsyncMock, MagicMock
+from unittest.mock import Mock, AsyncMock, MagicMock, patch
 from manifest.agents.agent_coordinator import AgentCoordinator
 from manifest.bridge.agent_bridge import AgentBridge
 from manifest.agents.context_provider import ContextProvider
@@ -19,9 +19,10 @@ def mock_components():
     terminal_router.active_commands = {}
     terminal_router.execute_command = AsyncMock(return_value={"returncode": 0, "stdout": "", "stderr": ""})
 
-    # Mock container manager
+    # Mock container manager - avoid Docker initialization
+    # We'll patch ContainerManager to avoid Docker client initialization
     container_manager = Mock()
-    container_manager.is_docker_available = Mock(return_value=False)
+    container_manager.is_docker_available = Mock(return_value=False)  # Force direct execution
     container_manager.start_agent_container = AsyncMock(return_value=None)
     container_manager.stop_agent_container = AsyncMock(return_value=False)
     container_manager.get_container_status = AsyncMock(return_value=None)
@@ -49,11 +50,17 @@ def mock_components():
     context_provider.get_worker_context = Mock(return_value={
         "tier": "worker",
         "task_id": "task-1",
-        "task_scope": {"components": [], "allowed_files": []}
+        "task_scope": {"components": [], "allowed_files": []},
+        "context_size_validation": {"valid": True}
     })
 
     task_scoper = Mock(spec=TaskScoper)
     task_scoper.get_task_context = Mock(return_value={"components": [], "files": []})
+    task_scoper.validate_task_granularity = Mock(return_value={
+        "valid": True,
+        "warnings": [],  # Empty list, not Mock
+        "errors": []
+    })
 
     config_manager = Mock(spec=ConfigManager)
     config_manager.get_agent_model_config = Mock(return_value={"provider": "anthropic", "model": "claude-3-5-sonnet", "api_key": "test-key"})
@@ -108,8 +115,14 @@ async def test_start_orchestrator(mock_components):
 
 
 @pytest.mark.asyncio
-async def test_start_worker_agent(mock_components):
+@patch('manifest.agents.agent_coordinator.ContainerManager')
+async def test_start_worker_agent(mock_container_manager_class, mock_components):
     """Test starting worker agent."""
+    # Mock ContainerManager to avoid Docker initialization
+    mock_container_manager = Mock()
+    mock_container_manager.is_docker_available = Mock(return_value=False)
+    mock_container_manager_class.return_value = mock_container_manager
+
     coordinator = AgentCoordinator(
         mock_components["agent_bridge"],
         mock_components["context_provider"],
@@ -126,8 +139,14 @@ async def test_start_worker_agent(mock_components):
 
 
 @pytest.mark.asyncio
-async def test_stop_agent(mock_components):
+@patch('manifest.agents.agent_coordinator.ContainerManager')
+async def test_stop_agent(mock_container_manager_class, mock_components):
     """Test stopping agent."""
+    # Mock ContainerManager to avoid Docker initialization
+    mock_container_manager = Mock()
+    mock_container_manager.is_docker_available = Mock(return_value=False)
+    mock_container_manager_class.return_value = mock_container_manager
+
     coordinator = AgentCoordinator(
         mock_components["agent_bridge"],
         mock_components["context_provider"],

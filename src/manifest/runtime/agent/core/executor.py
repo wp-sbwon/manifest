@@ -200,7 +200,8 @@ class AgentExecutor:
         self,
         api_key: str,
         model: str,
-        messages: List[Dict[str, str]]
+        messages: List[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """Make API call to Anthropic Claude and stream responses.
 

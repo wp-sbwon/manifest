@@ -3,6 +3,7 @@ Structure Hierarchy View - Tree-based hierarchical display of Features, Requirem
 """
 from textual.widgets import Tree
 from textual import on
+from textual.message import Message
 from typing import Dict, Any, List, Optional
 from pathlib import Path
 
