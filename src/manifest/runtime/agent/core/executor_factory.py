@@ -89,13 +89,11 @@ class ExecutorFactory:
                 auto_start=auto_start
             )
 
-        elif backend == "claude_code":
-            # Future implementation
-            logger.warning("Claude Code backend not yet implemented, falling back to direct")
-            return ExecutorFactory.create_executor(config_manager, state_manager, "direct")
-
         else:
-            raise ValueError(f"Unsupported execution backend: {backend}")
+            raise ValueError(
+                f"Unsupported execution backend: {backend}. "
+                f"Supported backends: 'direct', 'opencode'"
+            )
 
     @staticmethod
     def get_available_backends() -> List[str]:

@@ -54,7 +54,11 @@
   - OrchestratorAgent
   - PlannerAgent
   - CoderAgent
-- ✅ AgentExecutor (LLM API 호출 완전 구현)
+- ✅ LLM Execution Backend System
+  - ✅ BaseAgentExecutor (공통 인터페이스)
+  - ✅ AgentExecutor (Direct LLM API 호출)
+  - ✅ OpenCodeLLMAdapter (OpenCode HTTP API)
+  - ✅ ExecutorFactory (백엔드 선택 및 생성)
   - Anthropic API 통합
   - OpenAI API 통합
   - Streaming 응답 처리
@@ -225,7 +229,10 @@
 │    Business Logic Layer             │
 │  ✅ AgentBridge                     │
 │  ✅ AgentCoordinator                │
-│  ✅ AgentExecutor                   │
+│  ✅ BaseAgentExecutor               │
+│  ├── AgentExecutor (Direct API)     │
+│  └── OpenCodeLLMAdapter (OpenCode)  │
+│  ✅ ExecutorFactory                 │
 │  ✅ DriftAuditor                    │
 │  ✅ ContextProvider                 │
 └──────────────┬──────────────────────┘
@@ -288,7 +295,9 @@ ManifestApp
 
 5. **Agent System (부분)**
    - `/start_agent <task_id> <agent_type>` 명령어로 Agent 시작
-   - AgentExecutor를 통한 LLM API 호출
+   - ExecutorFactory를 통한 LLM execution backend 선택
+   - BaseAgentExecutor 인터페이스로 통일된 실행
+   - OpenCode 또는 Direct API 백엔드 지원
    - Agent 출력을 State에 저장
    - Agent 상태 확인
 
@@ -461,7 +470,9 @@ ManifestApp
 
 1. **Agent 시스템은 완전히 구현되어 있음**
    - AgentExecutor, AgentManager, AgentBridge 모두 작동
-   - LLM API 호출 완전 구현
+   - LLM execution backend 시스템 완전 구현
+   - OpenCode 및 Direct API 백엔드 지원
+   - ExecutorFactory를 통한 백엔드 선택
 
 2. **UI와의 통합도 완전히 구현되어 있음** ✅
    - 사용자 입력이 Orchestrator Agent로 전달됨
