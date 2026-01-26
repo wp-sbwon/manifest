@@ -103,6 +103,17 @@ class AgentCoordinator:
         # Create workflow event bus for automation
         self.event_bus = WorkflowEventBus()
 
+        # Agent-to-agent message bus for direct communication
+        from manifest.agents.agent_message_bus import AgentMessageBus
+        self.message_bus = AgentMessageBus()
+
+        # Make message_bus available to agent_bridge
+        if hasattr(self.agent_bridge, 'message_bus'):
+            self.agent_bridge.message_bus = self.message_bus
+        else:
+            # Set as attribute if not already set
+            self.agent_bridge.message_bus = self.message_bus
+
         # Create workflow executors
         self.worker_squad_executor = WorkerSquadExecutor(self)
         self.sprint_executor = SprintExecutor(self)
