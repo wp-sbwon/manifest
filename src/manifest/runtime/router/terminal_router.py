@@ -14,9 +14,12 @@ import subprocess
 from typing import Dict, Any, Optional, AsyncIterator, TYPE_CHECKING
 from pathlib import Path
 from manifest.runtime.opencode_adapter import OpenCodeAdapter
+from manifest.core.logger import get_logger
 
 if TYPE_CHECKING:
     from manifest.runtime.permissions.permission_manager import PermissionManager
+
+logger = get_logger(__name__)
 
 
 class TerminalRouter:

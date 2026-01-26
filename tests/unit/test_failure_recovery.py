@@ -36,7 +36,7 @@ async def test_analyze_failure(recovery_manager):
     """Test analyzing a failure."""
     # FailureRecoveryManager doesn't have analyze_failure, it's on FailureAnalyzer
     from manifest.agents.failure_recovery import FailureAnalyzer
-    
+
     analysis = FailureAnalyzer.analyze_failure(
         error="Test error",
         agent_type="coder",
@@ -52,7 +52,7 @@ async def test_suggest_recovery_strategy(recovery_manager):
     # FailureRecoveryManager doesn't have suggest_recovery_strategy
     # The analyze_failure already returns recovery_strategies
     from manifest.agents.failure_recovery import FailureAnalyzer
-    
+
     analysis = FailureAnalyzer.analyze_failure(
         error="Test error",
         agent_type="coder",
@@ -68,12 +68,12 @@ async def test_execute_recovery(recovery_manager):
     # FailureRecoveryManager uses attempt_recovery with specific parameters
     # Mock the coordinator's start_worker_agent_and_wait to return a proper result
     recovery_manager.coordinator.start_worker_agent_and_wait = AsyncMock(return_value={"success": True})
-    
+
     failure_result = {
         "error": "Test error",
         "output": ""
     }
-    
+
     # Patch asyncio.sleep to avoid waiting
     with patch('asyncio.sleep', new_callable=AsyncMock):
         result = await recovery_manager.attempt_recovery(

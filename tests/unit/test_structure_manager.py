@@ -33,7 +33,7 @@ def test_detect_code_changes(structure_manager, temp_dir):
     # Create a test file
     test_file = temp_dir / "test.py"
     test_file.write_text("class TestClass:\n    pass")
-    
+
     changes = structure_manager.detect_code_changes([str(test_file)])
     assert isinstance(changes, list)
 
@@ -52,10 +52,10 @@ def test_suggest_blueprint_updates(structure_manager, temp_dir):
     # Create a test file
     test_file = temp_dir / "test.py"
     test_file.write_text("class TestClass:\n    pass")
-    
+
     # Detect changes
     changes = structure_manager.detect_code_changes([str(test_file)])
-    
+
     # Suggest updates
     suggestions = structure_manager.suggest_blueprint_updates(changes)
     assert isinstance(suggestions, list)
@@ -67,7 +67,7 @@ def test_detect_blueprint_changes(structure_manager, temp_dir):
     blueprint_file = structure_manager.blueprint_file
     blueprint_file.parent.mkdir(parents=True, exist_ok=True)
     blueprint_file.write_text('{"components": []}')
-    
+
     # Provide both blueprints explicitly
     previous = {"components": [], "contracts": []}
     current = {"components": [], "contracts": []}
@@ -91,7 +91,7 @@ def test_suggest_code_changes(structure_manager, temp_dir):
         "deleted_contracts": []
     }
     current_code_blueprint = {"components": [], "contracts": []}
-    
+
     # Suggest code changes
     suggestions = structure_manager.suggest_code_changes(
         blueprint_changes=blueprint_changes,
@@ -119,7 +119,7 @@ def test_apply_blueprint_update(structure_manager):
     suggestion = Mock()
     suggestion.suggestion_type = "add_component"
     suggestion.component = Mock()
-    
+
     result = structure_manager.apply_blueprint_update(suggestion)
     # Should apply or return False
     assert isinstance(result, bool)
@@ -130,7 +130,7 @@ def test_apply_code_change(structure_manager):
     suggestion = Mock()
     suggestion.suggestion_type = "create_file"
     suggestion.file_path = "test.py"
-    
+
     result = structure_manager.apply_code_change(suggestion)
     # Should apply or return False
     assert isinstance(result, bool)

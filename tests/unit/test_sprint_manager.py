@@ -42,10 +42,10 @@ def test_load_sprint(sprint_manager):
         "name": "Test Sprint",
         "description": "Test description"
     }
-    
+
     # Save sprint first
     sprint_manager.save_sprint(sprint_data)
-    
+
     # Load it
     loaded = sprint_manager.load_sprint(sprint_id)
     assert loaded is not None
@@ -66,10 +66,10 @@ def test_save_sprint(sprint_manager):
         "name": "Test Sprint",
         "description": "Test description"
     }
-    
+
     result = sprint_manager.save_sprint(sprint_data)
     assert result is True
-    
+
     # Verify it was saved
     loaded = sprint_manager.load_sprint("sprint-1")
     assert loaded is not None
@@ -84,16 +84,16 @@ def test_update_sprint_tests(sprint_manager):
         "name": "Test Sprint"
     }
     sprint_manager.save_sprint(sprint_data)
-    
+
     result = sprint_manager.update_sprint_tests(
         sprint_id=sprint_id,
         test_type="integration",
         status="planned",
         test_files=["test1.py", "test2.py"]
     )
-    
+
     assert result is True
-    
+
     # Verify test data was saved
     sprint = sprint_manager.load_sprint(sprint_id)
     assert sprint is not None
@@ -113,7 +113,7 @@ def test_get_sprint_tests(sprint_manager):
         }
     }
     sprint_manager.save_sprint(sprint_data)
-    
+
     tests = sprint_manager.get_sprint_tests(sprint_id, "integration")
     assert tests is not None
     assert tests["status"] == "planned"
@@ -127,15 +127,15 @@ def test_update_sprint_e2e_test_execution_results(sprint_manager):
         "name": "Test Sprint"
     }
     sprint_manager.save_sprint(sprint_data)
-    
+
     result = sprint_manager.update_sprint_e2e_test_execution_results(
         sprint_id=sprint_id,
         task_id="task-1",
         content="Test execution output"
     )
-    
+
     assert result is True
-    
+
     # Verify results were saved
     sprint = sprint_manager.load_sprint(sprint_id)
     assert sprint is not None

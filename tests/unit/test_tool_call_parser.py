@@ -15,7 +15,7 @@ def test_parse_anthropic_tool_use():
         "name": "read_file",
         "input": {"file_path": "test.py"}
     }
-    
+
     parsed = ToolCallParser.parse_anthropic_tool_use(data)
     assert parsed is not None
     assert parsed["id"] == "tool-1"
@@ -42,7 +42,7 @@ def test_parse_openai_function_call():
             }
         }]
     }
-    
+
     parsed = ToolCallParser.parse_openai_function_call(data)
     assert parsed is not None
     assert parsed["name"] == "read_file"
@@ -57,7 +57,7 @@ def test_parse_from_text():
     {"type": "tool_use", "id": "tool-1", "name": "read_file", "input": {"file_path": "test.py"}}
     ```
     '''
-    
+
     tool_calls = ToolCallParser.parse_from_text(text)
     assert len(tool_calls) == 1
     assert tool_calls[0]["name"] == "read_file"
@@ -74,7 +74,7 @@ def test_parse_streaming_response_anthropic():
             "input": {"file_path": "test.py"}
         }
     }
-    
+
     parsed = ToolCallParser.parse_streaming_response("anthropic", data)
     assert parsed is not None
     assert parsed["name"] == "read_file"
@@ -90,7 +90,7 @@ def test_extract_tool_results_from_response_anthropic():
             "input": {"file_path": "test.py"}
         }]
     }
-    
+
     tool_calls = ToolCallParser.extract_tool_results_from_response("anthropic", response_data)
     assert len(tool_calls) == 1
     assert tool_calls[0]["name"] == "read_file"

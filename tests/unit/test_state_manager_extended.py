@@ -37,7 +37,7 @@ def test_set_task_checklist(state_manager):
     """Test setting task checklist."""
     tasks = [{"id": "task-1", "name": "Test"}]
     state_manager.set_task_checklist(tasks)
-    
+
     retrieved = state_manager.get_task_checklist()
     assert len(retrieved) >= 1
 
@@ -51,7 +51,7 @@ def test_get_chat_history(state_manager):
 def test_add_chat_message(state_manager):
     """Test adding a chat message."""
     state_manager.add_chat_message("main", "user", "Hello")
-    
+
     history = state_manager.get_chat_history("main")
     assert len(history) >= 1
 
@@ -68,7 +68,7 @@ async def test_load_state_async(state_manager):
     """Test loading state asynchronously."""
     # Save first
     await state_manager.save_state()
-    
+
     # Load
     result = await state_manager.load_state_async()
     assert isinstance(result, dict)
@@ -84,7 +84,7 @@ def test_set_mission_tree(state_manager):
     """Test setting mission tree."""
     tree = {"root": {"children": []}}
     state_manager.set_mission_tree(tree)
-    
+
     retrieved = state_manager.get_mission_tree()
     assert retrieved == tree
 
@@ -98,6 +98,6 @@ def test_get_last_action(state_manager):
 def test_set_last_action(state_manager):
     """Test setting last action."""
     state_manager.set_last_action("Test action")
-    
+
     action = state_manager.get_last_action()
     assert action == "Test action"

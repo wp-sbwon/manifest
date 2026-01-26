@@ -53,7 +53,7 @@ def test_get_file_diff(file_watcher, temp_dir):
     """Test getting file diff."""
     test_file = temp_dir / "test.py"
     test_file.write_text("print('hello')")
-    
+
     diff = file_watcher.get_file_diff("test.py")
     # Should return diff or None
     assert diff is None or isinstance(diff, str)
@@ -64,7 +64,7 @@ def test_register_change_callback(file_watcher):
     callback = Mock()
     initial_count = len(file_watcher._change_callbacks)
     file_watcher.register_change_callback(callback)
-    
+
     # Verify callback was added
     assert len(file_watcher._change_callbacks) == initial_count + 1
     assert callback in file_watcher._change_callbacks
@@ -87,7 +87,7 @@ def test_get_changed_files_include_untracked(file_watcher, temp_dir):
     # Create untracked file
     test_file = temp_dir / "untracked.py"
     test_file.write_text("print('test')")
-    
+
     changed_files = file_watcher.get_changed_files(include_untracked=True)
     assert isinstance(changed_files, list)
 

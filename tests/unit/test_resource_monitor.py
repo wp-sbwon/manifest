@@ -26,7 +26,7 @@ async def test_start_stop(resource_monitor):
     """Test starting and stopping monitoring."""
     await resource_monitor.start()
     assert resource_monitor.monitoring is True
-    
+
     await resource_monitor.stop()
     assert resource_monitor.monitoring is False
 
@@ -36,7 +36,7 @@ def test_get_current_stats(resource_monitor):
     # Initially empty
     stats = resource_monitor.get_current_stats()
     assert isinstance(stats, dict)
-    
+
     # Add some history
     resource_monitor.resource_history.append({
         "timestamp": "2024-01-01T00:00:00",
@@ -52,7 +52,7 @@ def test_get_container_stats(resource_monitor):
     container_id = "container-1"
     stats = resource_monitor.get_container_stats(container_id)
     assert stats is None
-    
+
     # Add container stats
     resource_monitor.container_stats[container_id] = {
         "cpu_percent": 30.0,
@@ -66,7 +66,7 @@ def test_get_container_stats(resource_monitor):
 def test_get_resource_trends(resource_monitor):
     """Test getting resource trends."""
     from datetime import datetime, timedelta
-    
+
     # Add some history with recent timestamps
     now = datetime.now()
     resource_monitor.resource_history = [
@@ -79,7 +79,7 @@ def test_get_resource_trends(resource_monitor):
             "system": {"cpu_percent": 55.0, "memory": {"percent": 65.0}}
         }
     ]
-    
+
     trends = resource_monitor.get_resource_trends("system.cpu_percent", minutes=10)
     assert isinstance(trends, list)
     assert len(trends) > 0
@@ -93,12 +93,12 @@ def test_check_thresholds(resource_monitor):
         "timestamp": "2024-01-01T00:00:00",
         "system": {"cpu_percent": 90.0, "memory": {"percent": 70.0}}
     })
-    
+
     thresholds = {
         "system.cpu_percent": 80.0,
         "system.memory.percent": 85.0
     }
-    
+
     violations = resource_monitor.check_thresholds(thresholds)
     assert isinstance(violations, list)
     # CPU should be over threshold

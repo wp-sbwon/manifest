@@ -51,9 +51,9 @@ async def test_disconnect(message_bus):
     # Set up a client first
     message_bus.client = AsyncMock()
     message_bus.client.aclose = AsyncMock()
-    
+
     await message_bus.disconnect()
-    
+
     # Verify client was closed and set to None
     assert message_bus.client is None
 
@@ -68,7 +68,7 @@ async def test_send_message(message_bus):
     mock_response.json.return_value = {"success": True}
     mock_client.post = AsyncMock(return_value=mock_response)
     message_bus.client = mock_client
-    
+
     result = await message_bus.send_message("test-topic", {"data": "test"})
     # Should send without error
     assert result is True
@@ -97,9 +97,9 @@ async def test_start_sync(state_sync):
     with patch('asyncio.create_task') as mock_create_task:
         mock_task = Mock()
         mock_create_task.return_value = mock_task
-        
+
         await state_sync.start()
-        
+
         # Verify message bus was subscribed to "state-update" topic
         state_sync.message_bus.subscribe.assert_called_once()
         # Verify sync task was created
@@ -112,11 +112,11 @@ async def test_stop_sync(state_sync):
     # Create a real asyncio task that can be cancelled
     async def dummy_task():
         await asyncio.sleep(10)  # Long sleep so we can cancel it
-    
+
     sync_task = asyncio.create_task(dummy_task())
     state_sync._sync_task = sync_task
-    
+
     await state_sync.stop()
-    
+
     # Verify sync task was cancelled
     assert sync_task.cancelled()

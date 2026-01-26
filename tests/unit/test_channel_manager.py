@@ -48,9 +48,9 @@ async def test_create_squad_channel(channel_manager):
     mock_container = Mock()
     mock_container.mount = AsyncMock()
     channel_manager.app.query_one = Mock(return_value=mock_container)
-    
+
     tab_id = await channel_manager.create_squad_channel("task-1", "coder")
-    
+
     # Should return tab_id (string) or None
     assert tab_id is None or isinstance(tab_id, str)
     # Verify channel was added to squad_channels
@@ -63,9 +63,9 @@ async def test_create_squad_channel_duplicate(channel_manager):
     channel_manager.squad_channels["squad-task-1-coder"] = {
         "tab_id": "tab-squad-task-1-coder"
     }
-    
+
     tab_id = await channel_manager.create_squad_channel("task-1", "coder")
-    
+
     assert tab_id == "tab-squad-task-1-coder"
 
 
@@ -75,9 +75,9 @@ async def test_switch_channel(channel_manager):
     channel_manager.squad_channels["test-channel"] = {
         "tab_id": "tab-test-channel"
     }
-    
+
     await channel_manager.switch_channel("test-channel")
-    
+
     assert channel_manager.active_channel == "test-channel"
 
 
@@ -87,13 +87,13 @@ async def test_refresh_channel_log(channel_manager):
     channel_manager.squad_channels["test-channel"] = {
         "tab_id": "tab-test-channel"
     }
-    
+
     # Mock log widget
     mock_log = Mock()
     channel_manager.app.query_one = Mock(return_value=mock_log)
-    
+
     await channel_manager.refresh_channel_log("test-channel")
-    
+
     # Verify query_one was called to get the log widget
     channel_manager.app.query_one.assert_called()
 
@@ -105,13 +105,13 @@ async def test_handle_agent_output(channel_manager):
     channel_manager.squad_channels[channel_name] = {
         "tab_id": "tab-squad-task-1-coder"
     }
-    
+
     # Mock log widget and state manager
     mock_log = Mock()
     channel_manager.app.query_one = Mock(return_value=mock_log)
     channel_manager.state_manager.add_chat_message = Mock()
     channel_manager.state_manager.save_state = AsyncMock()
-    
+
     # Use correct method signature: channel, content, role, save_immediately
     await channel_manager.handle_agent_output(
         channel=channel_name,
@@ -119,7 +119,7 @@ async def test_handle_agent_output(channel_manager):
         role="assistant",
         save_immediately=True
     )
-    
+
     # Verify state manager was called to save message
     channel_manager.state_manager.add_chat_message.assert_called_once_with(
         channel_name, "assistant", "Test output"
@@ -134,7 +134,7 @@ def test_get_channel_summary(channel_manager):
         "agent_type": "coder",
         "message_count": 5
     }
-    
+
     summary = channel_manager.get_channel_summary()
     assert isinstance(summary, dict)
     assert "channel-1" in summary or len(summary) >= 0

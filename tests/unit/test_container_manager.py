@@ -43,7 +43,7 @@ async def test_create_container(container_manager):
             container_manager.message_bus = Mock()
             container_manager.message_bus.connect = AsyncMock()
             container_manager.message_bus.send_message = AsyncMock()
-            
+
             container_id = await container_manager.start_agent_container(
                 task_id="task-1",
                 agent_type="coder"
@@ -66,7 +66,7 @@ async def test_start_container(container_manager):
             container_manager.message_bus = Mock()
             container_manager.message_bus.connect = AsyncMock()
             container_manager.message_bus.send_message = AsyncMock()
-            
+
             container_id = await container_manager.start_agent_container("task-1", "coder")
             assert container_id is not None
 
@@ -82,7 +82,7 @@ async def test_stop_container(container_manager):
     container_manager.docker_available = True
     container_manager.message_bus = Mock()
     container_manager.message_bus.send_message = AsyncMock()
-    
+
     result = await container_manager.stop_agent_container("task-1")
     assert isinstance(result, bool)
 
@@ -107,6 +107,6 @@ async def test_remove_container(container_manager):
     container_manager.docker_available = True
     container_manager.message_bus = Mock()
     container_manager.message_bus.send_message = AsyncMock()
-    
+
     result = await container_manager.stop_agent_container("task-1")
     assert isinstance(result, bool)

@@ -50,7 +50,7 @@ async def test_execute_command(terminal_router):
             stdout="output",
             stderr=""
         )
-        
+
         result = await terminal_router.execute_command("echo test")
         assert isinstance(result, dict)
         # TerminalRouter returns dict with 'stdout', 'stderr', 'returncode', 'command_id', 'backend'
@@ -63,7 +63,7 @@ async def test_execute_command(terminal_router):
 async def test_execute_command_with_permission_denied(terminal_router):
     """Test executing command with permission denied."""
     terminal_router.permission_manager.check_permission = Mock(return_value="deny")
-    
+
     result = await terminal_router.execute_command("rm -rf /")
     assert isinstance(result, dict)
     # Should be denied
@@ -74,9 +74,9 @@ async def test_execute_command_with_permission_denied(terminal_router):
 async def test_execute_command_with_ask_permission(terminal_router):
     """Test executing command with ask permission."""
     terminal_router.permission_manager.check_permission = Mock(return_value="ask")
-    
+
     result = await terminal_router.execute_command("git push")
-    
+
     # Should require approval - check for permission_required flag
     assert isinstance(result, dict)
     assert result.get("permission_required") is True or "approval" in str(result).lower()
@@ -104,7 +104,7 @@ async def test_execute_command_error_handling(terminal_router):
     """Test error handling in command execution."""
     with patch('subprocess.run') as mock_run:
         mock_run.side_effect = Exception("Command failed")
-        
+
         result = await terminal_router.execute_command("invalid_command")
         assert isinstance(result, dict)
         # Should handle error gracefully

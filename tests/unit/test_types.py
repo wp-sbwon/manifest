@@ -25,7 +25,7 @@ def test_task_dict_structure():
         "created_at": "2026-01-26T00:00:00",
         "updated_at": "2026-01-26T00:00:00"
     }
-    
+
     assert task["id"] == "task-1"
     assert task["name"] == "Test Task"
     assert isinstance(task, dict)
@@ -38,7 +38,7 @@ def test_prd_dict_structure():
         "requirements": ["Req 1"],
         "version": "1.0"
     }
-    
+
     assert prd["title"] == "Test PRD"
     assert isinstance(prd, dict)
 
@@ -52,6 +52,6 @@ def test_sprint_dict_structure():
         "tasks": [],
         "created_at": "2026-01-26T00:00:00"
     }
-    
+
     assert sprint["id"] == "sprint-1"
     assert isinstance(sprint, dict)
