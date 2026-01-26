@@ -41,13 +41,12 @@ def adapter(mock_config_manager, mock_state_manager):
 @pytest.mark.asyncio
 async def test_ensure_server_running_when_running(adapter):
     """Test that ensure_server_running returns True when server is running."""
-    with patch("httpx.AsyncClient") as mock_client:
-        mock_response = Mock()
-        mock_response.status_code = 200
-        mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
+    with patch.object(adapter, "_check_server_health", new_callable=AsyncMock) as mock_check:
+        mock_check.return_value = True
 
         result = await adapter._ensure_server_running()
         assert result is True
+        mock_check.assert_called()
 
 
 @pytest.mark.asyncio
