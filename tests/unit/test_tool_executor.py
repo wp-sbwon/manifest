@@ -25,12 +25,13 @@ def mock_terminal_router():
 def mock_file_manager(tmp_path):
     """Create mock file manager."""
     file_manager = Mock(spec=FileManager)
-    file_manager.read_file = Mock(return_value="File content")
-    file_manager.write_file = Mock(return_value={"success": True})
-    file_manager.edit_file = Mock(return_value={"success": True})
+    # FileManager uses 'read', 'write', 'edit', 'list' methods (not read_file, etc.)
+    file_manager.read = Mock(return_value="File content")
+    file_manager.write = Mock(return_value={"success": True})
+    file_manager.edit = Mock(return_value={"success": True})
     file_manager.grep = Mock(return_value=[])
     file_manager.glob = Mock(return_value=[])
-    file_manager.list_directory = Mock(return_value=[])
+    file_manager.list = Mock(return_value=[])
     return file_manager
 
 
@@ -73,8 +74,8 @@ async def test_execute_tool_read(tool_executor):
     assert result["tool_name"] == "read"
     assert result["tool_call_id"] == "call_123"
     assert result.get("result") is not None
-    # FileManager.read_file is called in _execute_read
-    assert tool_executor.file_manager.read_file.called
+    # FileManager.read is called in _execute_read
+    assert tool_executor.file_manager.read.called
 
 
 @pytest.mark.asyncio
@@ -91,8 +92,8 @@ async def test_execute_tool_write(tool_executor):
     assert result["tool_name"] == "write"
     assert result["tool_call_id"] == "call_123"
     assert result.get("result") is not None
-    # FileManager.write_file is called in _execute_write
-    assert tool_executor.file_manager.write_file.called
+    # FileManager.write is called in _execute_write
+    assert tool_executor.file_manager.write.called
 
 
 @pytest.mark.asyncio
@@ -160,8 +161,8 @@ async def test_execute_tool_list(tool_executor):
     assert result["tool_name"] == "list"
     assert result["tool_call_id"] == "call_123"
     assert result.get("result") is not None
-    # FileManager.list_directory is called in _execute_list
-    assert tool_executor.file_manager.list_directory.called
+    # FileManager.list is called in _execute_list
+    assert tool_executor.file_manager.list.called
 
 
 @pytest.mark.asyncio
@@ -219,8 +220,9 @@ async def test_execute_tool_calls_multiple(tool_executor):
     assert len(results) == 2
     assert results[0]["tool_call_id"] == "call_1"
     assert results[1]["tool_call_id"] == "call_2"
-    # FileManager.read_file is called via execute_tool -> _execute_read
-    assert tool_executor.file_manager.read_file.called
+    # FileManager.read is called via execute_tool -> _execute_read
+    assert tool_executor.file_manager.read.called
+    assert tool_executor.file_manager.read.call_count == 2
 
 
 @pytest.mark.asyncio
