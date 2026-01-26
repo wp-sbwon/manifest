@@ -21,12 +21,12 @@ logger = get_logger(__name__)
 
 class ToolExecutor:
     """Executes tool calls from LLMs.
-    
+
     Routes tool calls to appropriate handlers:
     - bash: TerminalRouter
     - edit, write, read, grep, glob, list: FileManager
     """
-    
+
     def __init__(
         self,
         terminal_router: Optional["TerminalRouter"] = None,
@@ -38,7 +38,7 @@ class ToolExecutor:
         agent_id: Optional[str] = None
     ):
         """Initialize tool executor.
-        
+
         Args:
             terminal_router: TerminalRouter instance for bash commands.
             file_manager: FileManager instance for file operations.
@@ -55,18 +55,18 @@ class ToolExecutor:
         self.agent_type = agent_type
         self.task_id = task_id
         self.agent_id = agent_id
-    
+
     async def execute_tool(
         self,
         tool_name: str,
         tool_input: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Execute a single tool call.
-        
+
         Args:
             tool_name: Name of the tool to execute.
             tool_input: Input parameters for the tool.
-            
+
         Returns:
             Dict with 'tool_call_id', 'tool_name', 'result', and optional 'error'.
             May also include 'permission_denied' or 'permission_required' flags.
@@ -100,7 +100,7 @@ class ToolExecutor:
             # Analyze error type for better error handling
             error_type = "execution_error"
             error_msg = str(e)
-            
+
             # Categorize common errors
             if "Permission" in error_msg or "permission" in error_msg.lower():
                 error_type = "permission_error"
@@ -108,7 +108,7 @@ class ToolExecutor:
                 error_type = "file_not_found"
             elif "String not found" in error_msg:
                 error_type = "string_not_found"
-            
+
             result = {
                 "tool_call_id": tool_input.get("id", "unknown"),
                 "tool_name": tool_name,
@@ -116,7 +116,7 @@ class ToolExecutor:
                 "error_type": error_type,
                 "result": None
             }
-        
+
         # Log to auditor if available (for all executions, success or error)
         if self.auditor and result:
             await self.auditor.log_tool_execution(
@@ -127,18 +127,18 @@ class ToolExecutor:
                 task_id=self.task_id,
                 agent_id=self.agent_id
             )
-        
+
         return result
-    
+
     async def execute_tool_calls(
         self,
         tool_calls: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """Execute multiple tool calls.
-        
+
         Args:
             tool_calls: List of tool call dicts with 'id', 'name', 'input'.
-            
+
         Returns:
             List of execution results with validation information.
         """
@@ -148,12 +148,12 @@ class ToolExecutor:
             tool_name = tool_call.get("name")
             tool_input = tool_call.get("input", {})
             tool_input["id"] = tool_id  # Include ID in input for result tracking
-            
+
             result = await self.execute_tool(tool_name, tool_input)
-            
+
             # Add validation information
             result["validated"] = self._validate_tool_result(result, tool_name, tool_input)
-            
+
             # Log to auditor if available (for all executions, success or error)
             if self.auditor and result:
                 await self.auditor.log_tool_execution(
@@ -164,11 +164,11 @@ class ToolExecutor:
                     task_id=self.task_id,
                     agent_id=self.agent_id
                 )
-            
+
             results.append(result)
-        
+
         return results
-    
+
     def _validate_tool_result(
         self,
         result: Dict[str, Any],
@@ -176,15 +176,15 @@ class ToolExecutor:
         tool_input: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Validate tool execution result.
-        
+
         Checks if the tool execution was successful and provides
         validation information for downstream processing.
-        
+
         Args:
             result: Tool execution result dictionary.
             tool_name: Name of the tool that was executed.
             tool_input: Input parameters for the tool.
-        
+
         Returns:
             Dictionary with validation information:
             {
@@ -198,13 +198,13 @@ class ToolExecutor:
             "validation_errors": [],
             "warnings": []
         }
-        
+
         # Check for errors
         if result.get("error"):
             validation["success"] = False
             validation["validation_errors"].append(result.get("error"))
             return validation
-        
+
         # Tool-specific validation
         if tool_name == "edit":
             tool_result = result.get("result", {})
@@ -219,7 +219,7 @@ class ToolExecutor:
                     validation["warnings"].append(
                         f"File '{file_path}' was modified. Run tests to verify changes."
                     )
-        
+
         elif tool_name == "write":
             tool_result = result.get("result", {})
             if not tool_result.get("success"):
@@ -233,7 +233,7 @@ class ToolExecutor:
                     validation["warnings"].append(
                         f"New file '{file_path}' was created. Run tests to verify."
                     )
-        
+
         elif tool_name == "bash":
             tool_result = result.get("result", {})
             returncode = tool_result.get("returncode", 0)
@@ -253,15 +253,15 @@ class ToolExecutor:
                             "Test command executed but some tests may have failed. "
                             "Check output for details."
                         )
-        
+
         return validation
-    
+
     async def _execute_bash(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute bash command.
-        
+
         Args:
             tool_input: Dict with 'command' and optional 'args'.
-            
+
         Returns:
             Execution result dict.
         """
@@ -272,10 +272,10 @@ class ToolExecutor:
                 "error": "TerminalRouter not available",
                 "result": None
             }
-        
+
         command = tool_input.get("command")
         args = tool_input.get("args", [])
-        
+
         if not command:
             return {
                 "tool_call_id": tool_input.get("id", "unknown"),
@@ -283,14 +283,14 @@ class ToolExecutor:
                 "error": "Command not provided",
                 "result": None
             }
-        
+
         try:
             result = await self.terminal_router.execute_command(
                 command=command,
                 args=args,
                 stream=False
             )
-            
+
             # Check for permission denied
             if result.get("permission_denied"):
                 return {
@@ -300,11 +300,11 @@ class ToolExecutor:
                     "result": None,
                     "permission_denied": True
                 }
-            
+
             # Check for permission required (ask)
             if result.get("permission_required"):
                 permission_details = result.get("permission_details", {})
-                
+
                 # Create approval request if approval_manager is available
                 if self.approval_manager:
                     request_id = self.approval_manager.create_approval_request(
@@ -315,7 +315,7 @@ class ToolExecutor:
                         tool_input=tool_input,
                         approval_callback=None  # Will be handled by retry mechanism
                     )
-                    
+
                     return {
                         "tool_call_id": tool_input.get("id", "unknown"),
                         "tool_name": "bash",
@@ -335,7 +335,7 @@ class ToolExecutor:
                         "permission_required": True,
                         "permission_details": permission_details
                     }
-            
+
             return {
                 "tool_call_id": tool_input.get("id", "unknown"),
                 "tool_name": "bash",
@@ -354,13 +354,13 @@ class ToolExecutor:
                 "error": str(e),
                 "result": None
             }
-    
+
     def _execute_edit(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute edit operation.
-        
+
         Args:
             tool_input: Dict with 'file_path', 'old_string', 'new_string'.
-            
+
         Returns:
             Execution result dict.
         """
@@ -371,11 +371,11 @@ class ToolExecutor:
                 "error": "FileManager not available",
                 "result": None
             }
-        
+
         file_path = tool_input.get("file_path")
         old_string = tool_input.get("old_string")
         new_string = tool_input.get("new_string")
-        
+
         if not all([file_path, old_string, new_string is not None]):
             return {
                 "tool_call_id": tool_input.get("id", "unknown"),
@@ -383,14 +383,14 @@ class ToolExecutor:
                 "error": "Missing required parameters: file_path, old_string, new_string",
                 "result": None
             }
-        
+
         result = self.file_manager.edit(file_path, old_string, new_string)
-        
+
         # Check for permission denied or required
         if not result.get("success"):
             error = result.get("error", "Unknown error")
             permission_required = result.get("permission_required", False)
-            
+
             # Create approval request if permission_required and approval_manager available
             if permission_required and self.approval_manager:
                 request_id = self.approval_manager.create_approval_request(
@@ -401,7 +401,7 @@ class ToolExecutor:
                     tool_input=tool_input,
                     approval_callback=None
                 )
-                
+
                 return {
                     "tool_call_id": tool_input.get("id", "unknown"),
                     "tool_name": "edit",
@@ -415,7 +415,7 @@ class ToolExecutor:
                     },
                     "approval_request_id": request_id
                 }
-            
+
             return {
                 "tool_call_id": tool_input.get("id", "unknown"),
                 "tool_name": "edit",
@@ -424,19 +424,19 @@ class ToolExecutor:
                 "permission_denied": error == "Permission denied",
                 "permission_required": permission_required
             }
-        
+
         return {
             "tool_call_id": tool_input.get("id", "unknown"),
             "tool_name": "edit",
             "result": result
         }
-    
+
     def _execute_write(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute write operation.
-        
+
         Args:
             tool_input: Dict with 'file_path', 'content'.
-            
+
         Returns:
             Execution result dict.
         """
@@ -447,10 +447,10 @@ class ToolExecutor:
                 "error": "FileManager not available",
                 "result": None
             }
-        
+
         file_path = tool_input.get("file_path")
         content = tool_input.get("content")
-        
+
         if not file_path or content is None:
             return {
                 "tool_call_id": tool_input.get("id", "unknown"),
@@ -458,14 +458,14 @@ class ToolExecutor:
                 "error": "Missing required parameters: file_path, content",
                 "result": None
             }
-        
+
         result = self.file_manager.write(file_path, content)
-        
+
         # Check for permission denied or required
         if not result.get("success"):
             error = result.get("error", "Unknown error")
             permission_required = result.get("permission_required", False)
-            
+
             # Create approval request if permission_required and approval_manager available
             if permission_required and self.approval_manager:
                 request_id = self.approval_manager.create_approval_request(
@@ -476,7 +476,7 @@ class ToolExecutor:
                     tool_input=tool_input,
                     approval_callback=None
                 )
-                
+
                 return {
                     "tool_call_id": tool_input.get("id", "unknown"),
                     "tool_name": "write",
@@ -490,7 +490,7 @@ class ToolExecutor:
                     },
                     "approval_request_id": request_id
                 }
-            
+
             return {
                 "tool_call_id": tool_input.get("id", "unknown"),
                 "tool_name": "write",
@@ -499,19 +499,19 @@ class ToolExecutor:
                 "permission_denied": error == "Permission denied",
                 "permission_required": permission_required
             }
-        
+
         return {
             "tool_call_id": tool_input.get("id", "unknown"),
             "tool_name": "write",
             "result": result
         }
-    
+
     def _execute_read(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute read operation.
-        
+
         Args:
             tool_input: Dict with 'file_path' and optional 'start_line', 'end_line'.
-            
+
         Returns:
             Execution result dict.
         """
@@ -522,7 +522,7 @@ class ToolExecutor:
                 "error": "FileManager not available",
                 "result": None
             }
-        
+
         file_path = tool_input.get("file_path")
         if not file_path:
             return {
@@ -531,24 +531,24 @@ class ToolExecutor:
                 "error": "Missing required parameter: file_path",
                 "result": None
             }
-        
+
         start_line = tool_input.get("start_line")
         end_line = tool_input.get("end_line")
-        
+
         result = self.file_manager.read(file_path, start_line, end_line)
-        
+
         return {
             "tool_call_id": tool_input.get("id", "unknown"),
             "tool_name": "read",
             "result": result
         }
-    
+
     def _execute_grep(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute grep operation.
-        
+
         Args:
             tool_input: Dict with 'pattern', 'file_path'.
-            
+
         Returns:
             Execution result dict.
         """
@@ -559,10 +559,10 @@ class ToolExecutor:
                 "error": "FileManager not available",
                 "result": None
             }
-        
+
         pattern = tool_input.get("pattern")
         file_path = tool_input.get("file_path")
-        
+
         if not pattern or not file_path:
             return {
                 "tool_call_id": tool_input.get("id", "unknown"),
@@ -570,21 +570,21 @@ class ToolExecutor:
                 "error": "Missing required parameters: pattern, file_path",
                 "result": None
             }
-        
+
         result = self.file_manager.grep(pattern, file_path)
-        
+
         return {
             "tool_call_id": tool_input.get("id", "unknown"),
             "tool_name": "grep",
             "result": result
         }
-    
+
     def _execute_glob(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute glob operation.
-        
+
         Args:
             tool_input: Dict with 'pattern'.
-            
+
         Returns:
             Execution result dict.
         """
@@ -595,7 +595,7 @@ class ToolExecutor:
                 "error": "FileManager not available",
                 "result": None
             }
-        
+
         pattern = tool_input.get("pattern")
         if not pattern:
             return {
@@ -604,21 +604,21 @@ class ToolExecutor:
                 "error": "Missing required parameter: pattern",
                 "result": None
             }
-        
+
         result = self.file_manager.glob(pattern)
-        
+
         return {
             "tool_call_id": tool_input.get("id", "unknown"),
             "tool_name": "glob",
             "result": result
         }
-    
+
     def _execute_list(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute list operation.
-        
+
         Args:
             tool_input: Dict with optional 'directory'.
-            
+
         Returns:
             Execution result dict.
         """
@@ -629,11 +629,11 @@ class ToolExecutor:
                 "error": "FileManager not available",
                 "result": None
             }
-        
+
         directory = tool_input.get("directory")
-        
+
         result = self.file_manager.list(directory)
-        
+
         return {
             "tool_call_id": tool_input.get("id", "unknown"),
             "tool_name": "list",

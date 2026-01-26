@@ -113,18 +113,18 @@ def get_coder_prompt(
 ) -> str:
     """
     Generate Coder prompt with context.
-    
+
     Args:
         task_description: Task description
         context: Tiered context (Tier 0, Tier 2, Tier 3)
         task_scope: Task scope (components, files, allowed modifications)
         available_tools: List of available tools
-        
+
     Returns:
         Complete prompt string
     """
     available_tools = available_tools or []
-    
+
     scope_section = ""
     if task_scope:
         scope_section = f"""
@@ -141,7 +141,7 @@ def get_coder_prompt(
 
 **IMPORTANT**: You MUST only work within this scope. Do not modify files or components outside this scope.
 """
-    
+
     # Check if TDD mode (test plan in context)
     tdd_section = ""
     if context.get("tdd_test") or context.get("test_plan") or context.get("test_skeleton"):
@@ -154,7 +154,7 @@ def get_coder_prompt(
 
 **IMPORTANT**: You are in TDD mode. Implement code to pass the tests above.
 """
-    
+
     prompt = f"""
 {CODER_IDENTITY}
 
@@ -193,23 +193,23 @@ def get_coder_prompt(
 def _format_context(context: Dict[str, Any]) -> str:
     """Format tiered context for prompt."""
     formatted = []
-    
+
     if "tier_0" in context:
         formatted.append("### Tier 0: Policy & Principles")
         formatted.append(str(context["tier_0"]))
-    
+
     if "tier_2" in context:
         formatted.append("### Tier 2: Task-Specific Context")
         formatted.append(str(context["tier_2"]))
-    
+
     if "tier_3" in context:
         formatted.append("### Tier 3: Code Context")
         formatted.append(str(context["tier_3"]))
-    
+
     # Add skills section if available
     if "skills" in context:
         skills_context = context["skills"]
         if skills_context.get("skills_formatted"):
             formatted.append("\n" + skills_context["skills_formatted"])
-    
+
     return "\n".join(formatted)

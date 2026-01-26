@@ -43,7 +43,7 @@ When creating new documentation:
    ```bash
    # ✅ Correct
    docs/NEW_DOCUMENT.md
-   
+
    # ❌ Wrong
    NEW_DOCUMENT.md  # in project root
    ```

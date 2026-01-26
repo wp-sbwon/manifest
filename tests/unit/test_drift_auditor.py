@@ -36,16 +36,16 @@ def test_parse_python_file(drift_auditor, temp_dir):
 class TestClass:
     def method1(self):
         pass
-    
+
     def method2(self):
         pass
 
 def standalone_function():
     pass
 """)
-    
+
     structure = drift_auditor.parse_python_file(test_file)
-    
+
     assert "classes" in structure
     assert len(structure["classes"]) == 1
     assert structure["classes"][0]["name"] == "TestClass"
@@ -67,7 +67,7 @@ def test_compare_with_blueprint(drift_auditor, temp_dir):
             }
         ]
     }
-    
+
     # Code structure with matching class
     code_structure = {
         "classes": [
@@ -78,10 +78,10 @@ def test_compare_with_blueprint(drift_auditor, temp_dir):
         ],
         "file_path": str(temp_dir / "test.py")
     }
-    
+
     conflicts = drift_auditor.compare_with_blueprint(code_structure)
     assert len(conflicts) == 0  # No conflicts
-    
+
     # Code structure with missing method
     code_structure_missing = {
         "classes": [
@@ -92,7 +92,7 @@ def test_compare_with_blueprint(drift_auditor, temp_dir):
         ],
         "file_path": str(temp_dir / "test.py")
     }
-    
+
     conflicts = drift_auditor.compare_with_blueprint(code_structure_missing)
     assert len(conflicts) > 0
     assert any("method2" in c.message for c in conflicts)
@@ -103,7 +103,7 @@ def test_conflict_severity(drift_auditor):
     conflict_error = DriftConflict(Severity.ERROR, "Error message")
     conflict_warning = DriftConflict(Severity.WARNING, "Warning message")
     conflict_info = DriftConflict(Severity.INFO, "Info message")
-    
+
     assert conflict_error.severity == Severity.ERROR
     assert conflict_warning.severity == Severity.WARNING
     assert conflict_info.severity == Severity.INFO
@@ -117,9 +117,9 @@ def test_group_conflicts_by_severity(drift_auditor):
         DriftConflict(Severity.WARNING, "Warning 1"),
         DriftConflict(Severity.INFO, "Info 1"),
     ]
-    
+
     grouped = drift_auditor.get_conflicts_by_severity(conflicts)
-    
+
     assert len(grouped["error"]) == 2
     assert len(grouped["warning"]) == 1
     assert len(grouped["info"]) == 1
@@ -132,12 +132,12 @@ def test_find_python_files(drift_auditor, temp_dir):
     (temp_dir / "test2.py").write_text("pass")
     (temp_dir / "subdir").mkdir()
     (temp_dir / "subdir" / "test3.py").write_text("pass")
-    
+
     # Skip venv
     (temp_dir / "venv").mkdir()
     (temp_dir / "venv" / "test_venv.py").write_text("pass")
-    
+
     files = drift_auditor.find_python_files(temp_dir)
-    
+
     assert len(files) >= 3
     assert all("venv" not in str(f) for f in files)

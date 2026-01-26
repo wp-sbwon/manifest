@@ -16,20 +16,20 @@ from manifest.ui.commands.command_parser import CommandParser
 
 class CommandHandler:
     """Handles user commands with routing to appropriate handlers.
-    
+
     Maintains a registry of command handlers and routes user input to the
     correct handler based on the command name. Commands must start with "/"
     to be recognized as commands.
-    
+
     Attributes:
         app: Reference to ManifestApp for accessing application methods.
         parser: CommandParser instance for parsing user input.
         handlers: Dictionary mapping command names to handler functions.
     """
-    
+
     def __init__(self, app: Any):
         """Initialize the command handler.
-        
+
         Args:
             app: ManifestApp instance that provides access to application
                 methods and state.
@@ -38,10 +38,10 @@ class CommandHandler:
         self.parser = CommandParser()
         self.handlers: Dict[str, Callable[[List[str], RichLog], Awaitable[None]]] = {}
         self._register_handlers()
-    
+
     def _register_handlers(self) -> None:
         """Register all available command handlers.
-        
+
         Maps command names to their handler methods. This is called during
         initialization to set up the command routing table.
         """
@@ -75,40 +75,40 @@ class CommandHandler:
             "git_status": self._handle_git_status,
             "git_log": self._handle_git_log,
         }
-    
+
     async def handle(self, user_input: str, log: RichLog) -> bool:
         """Process user input and route to appropriate handler.
-        
+
         Checks if the input is a command (starts with "/") and routes it
         to the registered handler. If it's not a command, returns False
         so it can be handled as a regular message.
-        
+
         Args:
             user_input: The input string from the user.
             log: RichLog widget to write command output and feedback to.
-        
+
         Returns:
             True if the input was recognized and handled as a command,
             False if it's a regular message (not a command).
         """
         if not user_input.startswith("/"):
             return False
-        
+
         command, args = self.parser.parse(user_input)
-        
+
         if command in self.handlers:
             await self.handlers[command](args, log)
             return True
         else:
             log.write(f"[bold yellow]Unknown command: {command}[/]")
             return True
-    
+
     async def _handle_audit(self, args: List[str], log: RichLog):
         """Handle /audit command."""
         log.write("[bold green]Running drift audit...[/]")
         await self.app.audit_drift()
         log.write("[bold green]Drift audit complete.[/]")
-    
+
     async def _handle_reload(self, args: List[str], log: RichLog):
         """Handle /reload command."""
         await self.app.load_intent_data()
@@ -118,7 +118,7 @@ class CommandHandler:
         await self.app.update_blueprint_view()
         await self.app.update_project_view()
         log.write("[bold green]Data reloaded.[/]")
-    
+
     async def _handle_status(self, args: List[str], log: RichLog):
         """Handle /status command."""
         if self.app.agent_bridge and self.app.agent_bridge.is_connected:
@@ -126,16 +126,16 @@ class CommandHandler:
             log.write(f"[bold green]Status: {status}[/]")
         else:
             log.write("[bold yellow]Agent bridge not connected.[/]")
-    
+
     async def _handle_start_agent(self, args: List[str], log: RichLog):
         """Handle /start_agent command."""
         if len(args) < 1:
             log.write("[bold yellow]Usage: /start_agent <task_id> [agent_type][/]")
             return
-        
+
         task_id = args[0]
         agent_type = args[1] if len(args) > 1 else "coder"
-        
+
         if self.app.agent_coordinator:
             log.write(f"[bold green]Starting {agent_type} agent for task {task_id}...[/]")
             success = await self.app.agent_coordinator.start_worker_agent(task_id, agent_type)
@@ -146,13 +146,13 @@ class CommandHandler:
                 log.write(f"[bold red]Failed to start agent.[/]")
         else:
             log.write("[bold yellow]Agent coordinator not available.[/]")
-    
+
     async def _handle_stop_agent(self, args: List[str], log: RichLog):
         """Handle /stop_agent command."""
         if len(args) < 1:
             log.write("[bold yellow]Usage: /stop_agent <task_id>[/]")
             return
-        
+
         task_id = args[0]
         if self.app.agent_coordinator:
             success = await self.app.agent_coordinator.stop_agent(task_id)
@@ -163,24 +163,24 @@ class CommandHandler:
                 log.write(f"[bold red]Failed to stop agent.[/]")
         else:
             log.write("[bold yellow]Agent coordinator not available.[/]")
-    
+
     async def _handle_sync_blueprints(self, args: List[str], log: RichLog):
         """Handle /sync_blueprints command."""
         log.write("[bold green]Synchronizing blueprints...[/]")
         await self.app.sync_blueprints()
         log.write("[bold green]Blueprint sync complete.[/]")
-    
+
     async def _handle_resolve_conflict(self, args: List[str], log: RichLog):
         """Handle /resolve_conflict command."""
         if len(args) < 1:
             log.write("[bold red]Usage: /resolve_conflict <conflict_id> [approved|rejected][/]")
             return
-        
+
         conflict_id = args[0]
         action = args[1] if len(args) > 1 else "approved"
         await self.app.resolve_conflict(conflict_id, action)
         log.write(f"[bold green]Conflict {conflict_id} {action}.[/]")
-    
+
     async def _handle_config(self, args: List[str], log: RichLog):
         """Handle /config command."""
         initial_tab = args[0] if args else "api_keys"
@@ -193,27 +193,27 @@ class CommandHandler:
         }
         tab = tab_map.get(initial_tab, "api_keys")
         self.app.action_open_settings(tab)
-    
+
     async def _handle_sprint_history(self, args: List[str], log: RichLog):
         """Handle /sprint_history command."""
         await self.app.show_sprint_history()
-    
+
     async def _handle_orchestrator(self, args: List[str], log: RichLog):
         """Handle /orchestrator command."""
         await self.app.show_orchestrator_chat()
-    
+
     async def _handle_create_task(self, args: List[str], log: RichLog):
         """Handle /create_task command."""
         if len(args) < 1:
             log.write("[bold yellow]Usage: /create_task <name> [description] [stage] [status] [sprint_id][/]")
             return
-        
+
         name = args[0] if args else "New Task"
         description = args[1] if len(args) > 1 else ""
         stage = args[2] if len(args) > 2 else "planning"
         status = args[3] if len(args) > 3 else "pending"
         sprint_id = args[4] if len(args) > 4 else None
-        
+
         task_id = self.app.state_manager.create_task(
             name=name,
             description=description,
@@ -224,19 +224,19 @@ class CommandHandler:
         await self.app.state_manager.save_state()
         await self.app._load_project_data()
         log.write(f"[bold green]Task created: {task_id} - {name}[/]")
-    
+
     async def _handle_update_task(self, args: List[str], log: RichLog):
         """Handle /update_task command."""
         if len(args) < 1:
             log.write("[bold yellow]Usage: /update_task <task_id> [name=value] [status=value] ...[/]")
             return
-        
+
         task_id = args[0]
         updates = self.parser.parse_key_value_pairs(
             args[1:],
             allowed_keys=["name", "description", "status", "stage"]
         )
-        
+
         if updates:
             success = self.app.state_manager.update_task(task_id, **updates)
             if success:
@@ -247,13 +247,13 @@ class CommandHandler:
                 log.write(f"[bold red]Task {task_id} not found.[/]")
         else:
             log.write("[bold yellow]No updates specified. Usage: /update_task <task_id> [name=value] [status=value] ...[/]")
-    
+
     async def _handle_delete_task(self, args: List[str], log: RichLog):
         """Handle /delete_task command."""
         if len(args) < 1:
             log.write("[bold yellow]Usage: /delete_task <task_id>[/]")
             return
-        
+
         task_id = args[0]
         success = self.app.state_manager.delete_task(task_id)
         if success:
@@ -262,14 +262,14 @@ class CommandHandler:
             log.write(f"[bold green]Task {task_id} deleted.[/]")
         else:
             log.write(f"[bold red]Task {task_id} not found.[/]")
-    
+
     async def _handle_list_tasks(self, args: List[str], log: RichLog):
         """Handle /list_tasks command."""
         filters = self.parser.parse_filters(args)
         status = filters.get("status")
         stage = filters.get("stage")
         sprint_id = filters.get("sprint")
-        
+
         tasks = self.app.state_manager.find_tasks(status=status, stage=stage, sprint_id=sprint_id)
         if tasks:
             log.write(f"[bold green]Found {len(tasks)} task(s):[/]")
@@ -281,22 +281,22 @@ class CommandHandler:
                 log.write(f"  • {task_id}: {name} [{task_status}] [{task_stage}]")
         else:
             log.write("[bold yellow]No tasks found.[/]")
-    
+
     async def _handle_approve_sprint(self, args: List[str], log: RichLog):
         """Handle /approve_sprint command."""
         if len(args) < 1:
             log.write("[bold yellow]Usage: /approve_sprint <sprint_id>[/]")
             return
-        
+
         sprint_id = args[0]
         await self.app.show_sprint_approval_ui(sprint_id)
-    
+
     async def _handle_start_sprint(self, args: List[str], log: RichLog):
         """Handle /start_sprint command."""
         if len(args) < 1:
             log.write("[bold yellow]Usage: /start_sprint <sprint_id>[/]")
             return
-        
+
         sprint_id = args[0]
         if self.app.agent_coordinator:
             log.write(f"[bold green]Starting Sprint {sprint_id}...[/]")
@@ -307,13 +307,13 @@ class CommandHandler:
                 log.write(f"[bold red]Failed to start Sprint: {result.get('error', 'Unknown error')}[/]")
         else:
             log.write("[bold yellow]Agent coordinator not available.[/]")
-    
+
     async def _handle_apply_blueprint_updates(self, args: List[str], log: RichLog):
         """Handle /apply_blueprint_updates command."""
         if not self.app._pending_blueprint_suggestions:
             log.write("[bold yellow]No pending Blueprint update suggestions.[/]")
             return
-        
+
         log.write(f"[bold green]Applying {len(self.app._pending_blueprint_suggestions)} Blueprint updates...[/]")
         results = self.app.structure_manager.apply_blueprint_updates_batch(
             self.app._pending_blueprint_suggestions,
@@ -328,13 +328,13 @@ class CommandHandler:
             log.write(f"[bold red]Failed to apply {results['failed']} updates.[/]")
             for error in results["errors"][:5]:
                 log.write(f"  • {error}")
-    
+
     async def _handle_apply_blueprint_update(self, args: List[str], log: RichLog):
         """Handle /apply_blueprint_update command."""
         if len(args) < 1:
             log.write("[bold yellow]Usage: /apply_blueprint_update <index>[/]")
             return
-        
+
         try:
             index = int(args[0])
             if 0 <= index < len(self.app._pending_blueprint_suggestions):
@@ -358,13 +358,13 @@ class CommandHandler:
         if not self.app._pending_code_suggestions:
             log.write("[bold yellow]No pending code change suggestions.[/]")
             return
-            
+
         log.write(f"[bold green]Applying {len(self.app._pending_code_suggestions)} code changes...[/]")
         applied = 0
         for suggestion in self.app._pending_code_suggestions:
             if self.app.structure_manager.apply_code_change(suggestion):
                 applied += 1
-                
+
         if applied > 0:
             log.write(f"[bold green]Applied {applied} code changes successfully.[/]")
             self.app._pending_code_suggestions = []
@@ -377,7 +377,7 @@ class CommandHandler:
         if len(args) < 1:
             log.write("[bold yellow]Usage: /apply_code_change <index>[/]")
             return
-            
+
         try:
             index = int(args[0])
             if 0 <= index < len(self.app._pending_code_suggestions):
@@ -415,23 +415,23 @@ class CommandHandler:
         if not self.app.git_manager.is_available():
             log.write("[bold yellow]Git not available.[/]")
             return
-            
+
         message = " ".join(args) if args else ""
-        
+
         # If no message, try to generate from selected task
         if not message and hasattr(self.app, '_selected_task_id') and self.app._selected_task_id:
             task = self.app.state_manager.get_task(self.app._selected_task_id)
             if task:
                 message = self.app.git_manager.generate_commit_message(task)
                 log.write(f"[dim]Generated commit message: {message}[/]")
-        
+
         if not message:
             log.write("[bold yellow]Usage: /git_commit <message> or select a task to auto-generate message.[/]")
             return
-            
+
         # Sync blueprint before commit
         self.app.git_manager.sync_blueprint(self.app.manifest_dir)
-        
+
         commit_hash = self.app.git_manager.create_commit(message)
         if commit_hash:
             log.write(f"[bold green]Commit created: {commit_hash[:8]}[/]")
@@ -444,7 +444,7 @@ class CommandHandler:
         if not self.app.git_manager.is_available():
             log.write("[bold yellow]Git not available.[/]")
             return
-            
+
         log.write("[bold green]Pushing changes...[/]")
         success = self.app.git_manager.push()
         if success:
@@ -457,7 +457,7 @@ class CommandHandler:
         if not self.app.git_manager.is_available():
             log.write("[bold yellow]Git not available.[/]")
             return
-            
+
         log.write("[bold green]Pulling changes...[/]")
         success = self.app.git_manager.pull()
         if success:
@@ -471,20 +471,20 @@ class CommandHandler:
         if not self.app.git_manager.is_available():
             log.write("[bold yellow]Git not available.[/]")
             return
-            
+
         commit_hash = args[0] if args else ""
-        
+
         # If no hash, try to find for selected task
         if not commit_hash and hasattr(self.app, '_selected_task_id') and self.app._selected_task_id:
             task_id = self.app._selected_task_id
             commit_hash = self.app.git_manager.get_commit_for_task(task_id)
             if commit_hash:
                 log.write(f"[dim]Found commit for task {task_id}: {commit_hash[:8]}[/]")
-        
+
         if not commit_hash:
             log.write("[bold yellow]Usage: /git_rollback <commit_hash> or select a task to find its commit.[/]")
             return
-            
+
         log.write(f"[bold red]Rolling back to {commit_hash[:8]}...[/]")
         success = self.app.git_manager.rollback_to_commit(commit_hash)
         if success:
@@ -498,7 +498,7 @@ class CommandHandler:
         if not self.app.git_manager.is_available():
             log.write("[bold yellow]Git not available.[/]")
             return
-            
+
         diff = self.app.git_manager.get_diff()
         if diff:
             log.write("[bold cyan]Uncommitted Changes:[/]")
@@ -511,7 +511,7 @@ class CommandHandler:
         if not self.app.git_manager.is_available():
             log.write("[bold yellow]Git not available.[/]")
             return
-            
+
         limit = int(args[0]) if args else 10
         commits = self.app.git_manager.get_latest_commits(limit)
         if commits:
@@ -520,13 +520,13 @@ class CommandHandler:
                 log.write(f"  [bold blue]{c['short_hash']}[/] [dim]{c['timestamp']}[/] {c['message']}")
         else:
             log.write("[bold yellow]No commits found.[/]")
-    
+
     async def _handle_shadow_stop(self, args: List[str], log: RichLog):
         """Handle /shadow_stop command."""
         if len(args) < 1:
             log.write("[bold yellow]Usage: /shadow_stop <process_id>[/]")
             return
-        
+
         process_id = args[0]
         if self.app.agent_bridge and self.app.agent_bridge.shadow_manager:
             success = await self.app.agent_bridge.shadow_manager.stop_shadow_process(process_id)
@@ -542,23 +542,23 @@ class CommandHandler:
         if not self.app.git_manager.is_available():
             log.write("[bold yellow]Git not available.[/]")
             return
-            
+
         message = " ".join(args) if args else ""
-        
+
         # If no message, try to generate from selected task
         if not message and hasattr(self.app, '_selected_task_id') and self.app._selected_task_id:
             task = self.app.state_manager.get_task(self.app._selected_task_id)
             if task:
                 message = self.app.git_manager.generate_commit_message(task)
                 log.write(f"[dim]Generated commit message: {message}[/]")
-        
+
         if not message:
             log.write("[bold yellow]Usage: /git_commit <message> or select a task to auto-generate message.[/]")
             return
-            
+
         # Sync blueprint before commit
         self.app.git_manager.sync_blueprint(self.app.manifest_dir)
-        
+
         commit_hash = self.app.git_manager.create_commit(message)
         if commit_hash:
             log.write(f"[bold green]Commit created: {commit_hash[:8]}[/]")
@@ -571,7 +571,7 @@ class CommandHandler:
         if not self.app.git_manager.is_available():
             log.write("[bold yellow]Git not available.[/]")
             return
-            
+
         log.write("[bold green]Pushing changes...[/]")
         success = self.app.git_manager.push()
         if success:
@@ -584,7 +584,7 @@ class CommandHandler:
         if not self.app.git_manager.is_available():
             log.write("[bold yellow]Git not available.[/]")
             return
-            
+
         log.write("[bold green]Pulling changes...[/]")
         success = self.app.git_manager.pull()
         if success:
@@ -598,20 +598,20 @@ class CommandHandler:
         if not self.app.git_manager.is_available():
             log.write("[bold yellow]Git not available.[/]")
             return
-            
+
         commit_hash = args[0] if args else ""
-        
+
         # If no hash, try to find for selected task
         if not commit_hash and hasattr(self.app, '_selected_task_id') and self.app._selected_task_id:
             task_id = self.app._selected_task_id
             commit_hash = self.app.git_manager.get_commit_for_task(task_id)
             if commit_hash:
                 log.write(f"[dim]Found commit for task {task_id}: {commit_hash[:8]}[/]")
-        
+
         if not commit_hash:
             log.write("[bold yellow]Usage: /git_rollback <commit_hash> or select a task to find its commit.[/]")
             return
-            
+
         log.write(f"[bold red]Rolling back to {commit_hash[:8]}...[/]")
         success = self.app.git_manager.rollback_to_commit(commit_hash)
         if success:
@@ -625,7 +625,7 @@ class CommandHandler:
         if not self.app.git_manager.is_available():
             log.write("[bold yellow]Git not available.[/]")
             return
-            
+
         diff = self.app.git_manager.get_diff()
         if diff:
             log.write("[bold cyan]Uncommitted Changes:[/]")
@@ -638,7 +638,7 @@ class CommandHandler:
         if not self.app.git_manager.is_available():
             log.write("[bold yellow]Git not available.[/]")
             return
-            
+
         limit = int(args[0]) if args else 10
         commits = self.app.git_manager.get_latest_commits(limit)
         if commits:

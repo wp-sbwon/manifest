@@ -13,7 +13,7 @@ def temp_manifest_dir(tmp_path):
     """Create temporary manifest directory with test data."""
     manifest_dir = tmp_path / ".manifest"
     manifest_dir.mkdir()
-    
+
     # Create blueprint.json
     blueprint = {
         "version": "1.0",
@@ -25,7 +25,7 @@ def temp_manifest_dir(tmp_path):
     }
     with open(manifest_dir / "blueprint.json", "w") as f:
         json.dump(blueprint, f)
-    
+
     # Create intent.json
     intent = {
         "version": "1.0",
@@ -34,7 +34,7 @@ def temp_manifest_dir(tmp_path):
     }
     with open(manifest_dir / "intent.json", "w") as f:
         json.dump(intent, f)
-    
+
     # Create architecture.json
     architecture = {
         "version": "1.0",
@@ -44,13 +44,13 @@ def temp_manifest_dir(tmp_path):
     }
     with open(manifest_dir / "architecture.json", "w") as f:
         json.dump(architecture, f)
-    
+
     # Create policy file
     policy_dir = tmp_path / ".claude" / "rules"
     policy_dir.mkdir(parents=True)
     with open(policy_dir / "manifest-policy.md", "w") as f:
         f.write("# Test Policy\n\nTest content")
-    
+
     return manifest_dir
 
 
@@ -64,7 +64,7 @@ def test_get_orchestrator_context(temp_manifest_dir):
     """Test getting orchestrator context."""
     provider = ContextProvider(temp_manifest_dir)
     context = provider.get_orchestrator_context()
-    
+
     assert context["tier"] == "orchestrator"
     assert "tier_0" in context
     assert "tier_1" in context
@@ -76,7 +76,7 @@ def test_get_worker_context(temp_manifest_dir):
     """Test getting worker context."""
     provider = ContextProvider(temp_manifest_dir)
     context = provider.get_worker_context("task-1", "coder")
-    
+
     assert context["tier"] == "worker"
     assert context["task_id"] == "task-1"
     assert context["agent_type"] == "coder"
@@ -96,7 +96,7 @@ def test_load_tier_0(temp_manifest_dir, tmp_path):
         os.chdir(tmp_path)
         provider = ContextProvider(temp_manifest_dir)
         tier_0 = provider._load_tier_0()
-        
+
         assert tier_0["source"] == ".claude/rules/manifest-policy.md"
         assert "content" in tier_0
         assert "Test content" in tier_0["content"]
@@ -109,6 +109,6 @@ def test_get_context_summary(temp_manifest_dir):
     provider = ContextProvider(temp_manifest_dir)
     context = provider.get_orchestrator_context()
     summary = provider.get_context_summary(context)
-    
+
     assert "tier" in summary
     assert summary["tier"] == "orchestrator"

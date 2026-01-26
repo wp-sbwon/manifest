@@ -42,19 +42,19 @@ You DO:
 
 class DebugAgent:
     """Debug agent for analyzing bugs and proposing fixes.
-    
+
     When tests fail, the debug agent analyzes the error messages and test
     results to identify root causes. It provides specific fix instructions
     for the coder agent to implement. The debug agent doesn't write code
     itself - it analyzes and guides.
-    
+
     Attributes:
         agent_id: Unique identifier for this agent instance.
         executor: AgentExecutor for making LLM API calls.
         state_manager: StateManager for persisting debug analysis.
         message_history: List of conversation messages for context.
     """
-    
+
     def __init__(
         self,
         agent_id: str,
@@ -64,7 +64,7 @@ class DebugAgent:
         tool_executor: Optional[ToolExecutor] = None
     ):
         """Initialize the debug agent.
-        
+
         Args:
             agent_id: Unique identifier for this agent.
             executor: Executor instance for LLM API calls.
@@ -82,7 +82,7 @@ class DebugAgent:
         self.tool_executor = tool_executor
         self.message_history: List[Dict[str, str]] = []
         self.agent_type = "debug"
-        
+
         # Track tool execution results
         self.tool_execution_summary: Dict[str, Any] = {
             "modified_files": [],
@@ -91,7 +91,7 @@ class DebugAgent:
             "errors": [],
             "total_tool_calls": 0
         }
-    
+
     async def debug(
         self,
         test_results: Dict[str, Any],
@@ -100,25 +100,25 @@ class DebugAgent:
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
         """Analyze test failures and propose fixes.
-        
+
         Examines test results and error messages to understand what went
         wrong and why. Provides specific instructions for fixing the issues.
         The analysis is streamed in real-time and saved to state.
-        
+
         Args:
             test_results: Dictionary containing test execution results
                 including pass/fail counts and details.
             error_messages: List of error message strings from failed tests.
             context: Tiered context for understanding the codebase.
             model_config: Dictionary with provider, model, and api_key.
-        
+
         Yields:
             Dictionaries with type "chunk" (streaming) or "complete" (finished).
             Content contains root cause analysis and fix instructions.
         """
         # Generate debug prompt
         prompt = self._generate_debug_prompt(test_results, error_messages, context)
-        
+
         # Execute agent
         async for chunk in self.executor.execute_agent(
             agent_id=self.agent_id,
@@ -136,9 +136,9 @@ class DebugAgent:
             elif chunk.get("type") == "complete":
                 # Save complete response
                 await self._save_response(chunk.get("content", ""))
-            
+
             yield chunk
-    
+
     def _generate_debug_prompt(
         self,
         test_results: Dict[str, Any],
@@ -146,20 +146,20 @@ class DebugAgent:
         context: Dict[str, Any]
     ) -> str:
         """Generate a prompt for debugging test failures.
-        
+
         Creates a prompt that includes test results, error messages, and
         context to help the agent analyze what went wrong and propose fixes.
-        
+
         Args:
             test_results: Test execution results dictionary.
             error_messages: List of error messages from failed tests.
             context: Tiered context for code understanding.
-        
+
         Returns:
             Complete prompt string for debugging.
         """
         errors_text = "\n".join([f"- {msg}" for msg in error_messages])
-        
+
         prompt = f"""
 {DEBUG_IDENTITY}
 
@@ -189,13 +189,13 @@ Focus on:
 - What the Coder should change
 """
         return prompt
-    
+
     async def _save_response(self, content: str) -> None:
         """Save debug analysis to state and chat history.
-        
+
         Note: State saving is handled by agent_bridge._handle_agent_chunk()
         to avoid duplicate saves. This method is kept for backward compatibility.
-        
+
         Args:
             content: The complete debug analysis content.
         """

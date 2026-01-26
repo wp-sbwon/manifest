@@ -12,7 +12,7 @@ from pathlib import Path
 
 class ComponentSelectedFromGraph(Message):
     """Message sent when a component is selected from the graph view."""
-    
+
     def __init__(self, component_id: str, component_data: Dict[str, Any]):
         super().__init__()
         self.component_id = component_id
@@ -21,7 +21,7 @@ class ComponentSelectedFromGraph(Message):
 
 class StructureGraphView(Static):
     """Graph-based visualization showing Features and Components together."""
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.architecture_data: Dict[str, Any] = {}
@@ -34,7 +34,7 @@ class StructureGraphView(Static):
             "status": "all"  # "all", "implemented", "ghost", "drift"
         }
         self.components_by_id: Dict[str, Dict[str, Any]] = {}
-    
+
     def load_data(
         self,
         architecture: Dict[str, Any],
@@ -43,7 +43,7 @@ class StructureGraphView(Static):
     ):
         """
         Load architecture and blueprint data with status information.
-        
+
         Args:
             architecture: Architecture data (features, requirements)
             blueprint: Blueprint data (components, contracts)
@@ -54,37 +54,37 @@ class StructureGraphView(Static):
         self.status_info = status_info or {}
         self.component_statuses = status_info.get("component_statuses", {}) if status_info else {}
         self.feature_completions = status_info.get("feature_completions", {}) if status_info else {}
-        
+
         # Build component lookup
         self.components_by_id = {}
         for comp in blueprint.get("components", []):
             comp_id = comp.get("id", "")
             if comp_id:
                 self.components_by_id[comp_id] = comp
-        
+
         self.refresh()
-    
+
     def set_filter(self, filter_type: str, value: str):
         """Set filter for graph display."""
         if filter_type in self.filters:
             self.filters[filter_type] = value
             self.refresh()
-    
+
     def render(self) -> str:
         """Render the graph visualization."""
         if not self.architecture_data or not self.blueprint_data:
             return "No architecture or blueprint data available"
-        
+
         features = self.architecture_data.get("features", [])
         components_by_id: Dict[str, Dict[str, Any]] = {}
         contracts = self.blueprint_data.get("contracts", [])
-        
+
         # Build component lookup
         for comp in self.blueprint_data.get("components", []):
             comp_id = comp.get("id", "")
             if comp_id:
                 components_by_id[comp_id] = comp
-        
+
         # Build contract lookup for data flow
         contracts_by_from: Dict[str, List[Dict[str, Any]]] = {}
         for contract in contracts:
@@ -93,15 +93,15 @@ class StructureGraphView(Static):
                 if from_id not in contracts_by_from:
                     contracts_by_from[from_id] = []
                 contracts_by_from[from_id].append(contract)
-        
+
         lines = []
-        
+
         # Render each feature as a box/cluster
         for feature in features:
             feature_id = feature.get("id", "")
             feature_name = feature.get("name", "Unknown Feature")
             completion = self.feature_completions.get(feature_id, feature.get("completion_percentage", 0))
-            
+
             # Feature box header
             status_icon = "✅" if completion == 100 else "⚡" if completion > 0 else "⏳"
             lines.append(f"┌─────────────────────────────────────────────────────────────┐")
@@ -110,19 +110,19 @@ class StructureGraphView(Static):
             padding = 59 - len(feature_name) - len(str(completion)) - 15
             lines[-1] += " " * max(0, padding) + "│"
             lines.append(f"│" + " " * 59 + "│")
-            
+
             # Get components for this feature
             feature_components = feature.get("components", [])
             requirements = feature.get("requirements", [])
-            
+
             # Collect all components from requirements
             all_comp_ids: Set[str] = set(feature_components)
             for req in requirements:
                 all_comp_ids.update(req.get("components", []))
-            
+
             # Filter components based on filters
             filtered_comp_ids = self._filter_components(list(all_comp_ids), components_by_id)
-            
+
             if not filtered_comp_ids:
                 lines.append(f"│  (No components to display)                              │")
             else:
@@ -132,13 +132,13 @@ class StructureGraphView(Static):
                     comp = components_by_id.get(comp_id)
                     if comp:
                         comp_nodes.append((comp_id, comp))
-                
+
                 # Simple layout: show components in rows
                 max_per_row = 2
                 for i in range(0, len(comp_nodes), max_per_row):
                     row_comps = comp_nodes[i:i + max_per_row]
                     row_lines = []
-                    
+
                     for comp_id, comp in row_comps:
                         comp_name = comp.get("name", "Unknown")
                         comp_type = comp.get("type", "unknown")
@@ -146,16 +146,16 @@ class StructureGraphView(Static):
                         comp_module = comp.get("module_path", "")
                         status = self.component_statuses.get(comp_id, comp.get("status", "pending"))
                         status_icon, _ = self._get_component_status_icon(status)
-                        
+
                         # Metadata tags
                         metadata_tags = []
                         if comp.get("algorithm"):
                             metadata_tags.append(comp["algorithm"])
                         if comp.get("design_pattern"):
                             metadata_tags.append(comp["design_pattern"])
-                        
+
                         metadata_str = f" [{'] ['.join(metadata_tags)}]" if metadata_tags else ""
-                        
+
                         # Component box with more details
                         comp_box = f"  ┌──────────────────────────┐"
                         comp_label = f"  │{status_icon} {comp_name[:20]:<20}│"
@@ -164,7 +164,7 @@ class StructureGraphView(Static):
                             comp_meta = f"  │{metadata_str[:22]:<22}│"
                         else:
                             comp_meta = f"  │" + " " * 22 + "│"
-                        
+
                         # Add file/module info if available
                         comp_info_lines = []
                         if comp_file:
@@ -173,22 +173,22 @@ class StructureGraphView(Static):
                         if comp_module:
                             module_short = comp_module.split(".")[-1] if "." in comp_module else comp_module
                             comp_info_lines.append(f"  │📦 {module_short[:21]:<21}│")
-                        
+
                         # Add methods count if available
                         methods = comp.get("methods", [])
                         if methods:
                             methods_count = len(methods)
                             comp_info_lines.append(f"  │Methods: {methods_count}" + " " * (23 - 11 - len(str(methods_count))) + "│")
-                        
+
                         comp_bottom = f"  └──────────────────────────┘"
-                        
+
                         # Combine all lines
                         comp_lines = [comp_box, comp_label, comp_type_line, comp_meta]
                         comp_lines.extend(comp_info_lines)
                         comp_lines.append(comp_bottom)
-                        
+
                         row_lines.append(comp_lines)
-                    
+
                     # Combine row components
                     if len(row_lines) == 1:
                         for line in row_lines[0]:
@@ -198,9 +198,9 @@ class StructureGraphView(Static):
                         for j in range(len(row_lines[0])):
                             combined = row_lines[0][j] + "    " + row_lines[1][j]
                             lines.append(f"│{combined}" + " " * (59 - len(combined) - 1) + "│")
-                    
+
                     lines.append(f"│" + " " * 59 + "│")
-                    
+
                     # Add contract arrows between components in this feature
                     if i < len(comp_nodes) - 1:
                         # Show contracts for all components in this row
@@ -214,37 +214,37 @@ class StructureGraphView(Static):
                                         contract_file = contract.get("file", "")
                                         symbols = contract.get("symbols", [])
                                         data_flow = contract.get("data_flow", {})
-                                        
+
                                         # Build contract label with more details
                                         if data_flow:
                                             flow_label = f"  → {contract_type}: {data_flow.get('input', '')} → {data_flow.get('output', '')}"
                                         else:
                                             flow_label = f"  → {contract_type}"
-                                        
+
                                         # Add symbols if available
                                         if symbols:
                                             symbols_str = ", ".join(symbols[:3])
                                             if len(symbols) > 3:
                                                 symbols_str += f" (+{len(symbols) - 3} more)"
                                             flow_label += f" [{symbols_str}]"
-                                        
+
                                         # Add file location if available
                                         if contract_file:
                                             file_short = contract_file.split("/")[-1] if "/" in contract_file else contract_file
                                             flow_label += f" 📁 {file_short}"
-                                        
+
                                         lines.append(f"│{flow_label}" + " " * (59 - len(flow_label) - 1) + "│")
                                         break
-            
+
             lines.append(f"└─────────────────────────────────────────────────────────────┘")
             lines.append("")
-        
+
         # Add filter info
         filter_info = f"[Zones: {self.filters['zone'].upper()}] [Status: {self.filters['status'].upper()}]"
         lines.append(filter_info)
-        
+
         return "\n".join(lines) if lines else "No features to display"
-    
+
     def _filter_components(
         self,
         comp_ids: List[str],
@@ -252,28 +252,28 @@ class StructureGraphView(Static):
     ) -> List[str]:
         """Filter components based on current filters."""
         filtered = []
-        
+
         for comp_id in comp_ids:
             comp = components_by_id.get(comp_id)
             if not comp:
                 continue
-            
+
             # Zone filter
             if self.filters["zone"] != "all":
                 comp_zone = comp.get("zone", "")
                 if comp_zone != self.filters["zone"]:
                     continue
-            
+
             # Status filter
             if self.filters["status"] != "all":
                 comp_status = self.component_statuses.get(comp_id, comp.get("status", "pending"))
                 if comp_status != self.filters["status"]:
                     continue
-            
+
             filtered.append(comp_id)
-        
+
         return filtered
-    
+
     def _get_component_status_icon(self, status: str) -> tuple[str, str]:
         """Get status icon and color for component."""
         if status == "implemented":

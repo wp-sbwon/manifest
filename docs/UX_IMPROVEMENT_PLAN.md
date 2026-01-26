@@ -1,6 +1,6 @@
 # UX & 가시성 개선 계획 (Claude Code 스타일 + Project Visibility)
 
-**작성일**: 2026-01-24  
+**작성일**: 2026-01-24
 **목표**: Claude Code/OpenCode 스타일의 개발자 친화적 UX와 프로젝트/태스크 현황의 극대화된 가시성 확보
 
 ---

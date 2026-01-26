@@ -1,6 +1,6 @@
 # 코드베이스 전체 검토 및 개선 계획
 
-**작성일**: 2026-01-24  
+**작성일**: 2026-01-24
 **검토 범위**: 전체 코드베이스 (Tool System 구조 반영)
 
 ---
@@ -17,7 +17,7 @@
   # agent_bridge.py:_handle_agent_chunk()
   self.state_manager.add_chat_message(channel, "assistant", content)
   await self.channel_manager.handle_agent_output(channel, content, "assistant")
-  
+
   # channel_manager.py:handle_agent_output()
   self.state_manager.add_chat_message(channel, role, content)  # 중복!
   await self.state_manager.save_state()

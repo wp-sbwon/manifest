@@ -29,15 +29,15 @@ logger = get_logger(__name__)
 
 class SettingsManager:
     """Unified interface for all Manifest settings management.
-    
+
     Integrates ConfigManager and SkillsManager to provide a single interface
     for managing all application settings. This includes API keys, agent
     models, skills, policy files, and additional configuration options.
-    
+
     The manager delegates to specialized managers (ConfigManager for API
     keys and models, SkillsManager for skills) while providing a convenient
     unified API for UI and programmatic access.
-    
+
     Attributes:
         manifest_dir: Path to .manifest directory.
         project_root: Root directory of the project.
@@ -46,14 +46,14 @@ class SettingsManager:
         policy_file: Path to manifest-policy.md.
         agents_md_file: Path to AGENTS.md.
     """
-    
+
     def __init__(self, manifest_dir: Path = None, project_root: Path = None):
         """Initialize the settings manager.
-        
+
         Creates instances of ConfigManager and SkillsManager to handle
         different aspects of settings. The manager coordinates between
         these specialized managers to provide a unified interface.
-        
+
         Args:
             manifest_dir: Path to .manifest directory. Defaults to .manifest.
             project_root: Root directory of the project. Defaults to current directory.
@@ -62,24 +62,24 @@ class SettingsManager:
         self.project_root = project_root or Path.cwd()
         self.config_manager = ConfigManager(self.manifest_dir)
         self.skills_manager = SkillsManager(self.manifest_dir, self.project_root)
-        
+
         # File paths
         self.policy_file = self.project_root / ".claude" / "rules" / "manifest-policy.md"
         self.agents_md_file = self.project_root / "AGENTS.md"
-    
+
     # API Keys Management
     def get_api_keys(self) -> Dict[str, Optional[str]]:
         """Get all API keys."""
         return self.config_manager.get_api_keys()
-    
+
     def save_api_keys(self, keys: Dict[str, str]) -> bool:
         """Save API keys."""
         return self.config_manager.save_api_keys(keys)
-    
+
     async def validate_key(self, provider: str, key: str) -> bool:
         """Validate an API key."""
         return await self.config_manager.validate_key(provider, key)
-    
+
     # Agent Model Configuration
     def get_all_agent_models(self) -> Dict[str, Dict[str, Any]]:
         """Get all agent model configurations."""
@@ -93,7 +93,7 @@ class SettingsManager:
                 "use_default_key": True  # Simplified - actual config may differ
             }
         return models
-    
+
     def get_agent_model(self, agent_type: str) -> Dict[str, Any]:
         """Get model configuration for a specific agent."""
         config = self.config_manager.get_agent_model_config(agent_type)
@@ -101,7 +101,7 @@ class SettingsManager:
             "provider": config["provider"],
             "model": config["model"]
         }
-    
+
     def set_agent_model(
         self,
         agent_type: str,
@@ -113,7 +113,7 @@ class SettingsManager:
         return self.config_manager.set_agent_model_config(
             agent_type, provider, model, None, use_default_key
         )
-    
+
     def get_default_models(self) -> Dict[str, str]:
         """Get default models per provider."""
         agent_config = self.config_manager._load_agent_config()
@@ -122,14 +122,14 @@ class SettingsManager:
             "openai": "gpt-4-turbo-preview",
             "google": "gemini-pro"
         })
-    
+
     def set_default_model(self, provider: str, model: str) -> bool:
         """Set default model for a provider."""
         agent_config = self.config_manager._load_agent_config()
         if "default_models" not in agent_config:
             agent_config["default_models"] = {}
         agent_config["default_models"][provider] = model
-        
+
         agent_config_file = self.manifest_dir / "agent_config.json"
         try:
             self.manifest_dir.mkdir(parents=True, exist_ok=True)
@@ -139,19 +139,19 @@ class SettingsManager:
         except Exception as e:
             logger.error(f"Error saving default models: {e}", exc_info=True)
             return False
-    
+
     # Agent Skills Management
     def get_agent_skills(self) -> Dict[str, List[str]]:
         """Get agent default skills."""
         return self.skills_manager._agent_skills.copy()
-    
+
     def set_agent_skills(self, agent_type: str, skill_ids: List[str]) -> bool:
         """Set skills for an agent type."""
         agent_config = self.config_manager._load_agent_config()
         if "agent_skills" not in agent_config:
             agent_config["agent_skills"] = {}
         agent_config["agent_skills"][agent_type] = skill_ids
-        
+
         agent_config_file = self.manifest_dir / "agent_config.json"
         try:
             self.manifest_dir.mkdir(parents=True, exist_ok=True)
@@ -163,19 +163,19 @@ class SettingsManager:
         except Exception as e:
             logger.error(f"Error saving agent skills: {e}", exc_info=True)
             return False
-    
+
     def get_project_skills(self) -> List[Dict[str, Any]]:
         """Get project-scoped skills from AGENTS.md."""
         return self.skills_manager._project_skills.copy()
-    
+
     def get_skill_definitions(self) -> Dict[str, Dict[str, Any]]:
         """Get all skill definitions."""
         return self.skills_manager._skill_definitions.copy()
-    
+
     def get_skill_content(self, skill_id: str) -> Optional[str]:
         """Get content of a skill file."""
         return self.skills_manager.get_skill_content(skill_id)
-    
+
     def save_skill_file(self, skill_id: str, content: str) -> bool:
         """Save a skill file to .claude/rules/."""
         skill_file = self.claude_rules_dir / f"{skill_id}.md"
@@ -189,12 +189,12 @@ class SettingsManager:
         except Exception as e:
             logger.error(f"Error saving skill file: {e}", exc_info=True)
             return False
-    
+
     @property
     def claude_rules_dir(self) -> Path:
         """Get .claude/rules directory."""
         return self.project_root / ".claude" / "rules"
-    
+
     # Policy Management
     def get_policy_content(self) -> str:
         """Get manifest-policy.md content."""
@@ -205,7 +205,7 @@ class SettingsManager:
             except Exception as e:
                 return f"Error reading policy: {e}"
         return ""
-    
+
     def save_policy_content(self, content: str) -> bool:
         """Save manifest-policy.md content."""
         try:
@@ -216,7 +216,7 @@ class SettingsManager:
         except Exception as e:
             logger.error(f"Error saving policy: {e}", exc_info=True)
             return False
-    
+
     # AGENTS.md Management
     def get_agents_md_content(self) -> str:
         """Get AGENTS.md content."""
@@ -227,7 +227,7 @@ class SettingsManager:
             except Exception as e:
                 return f"Error reading AGENTS.md: {e}"
         return ""
-    
+
     def save_agents_md_content(self, content: str) -> bool:
         """Save AGENTS.md content."""
         try:
@@ -239,7 +239,7 @@ class SettingsManager:
         except Exception as e:
             logger.error(f"Error saving AGENTS.md: {e}", exc_info=True)
             return False
-    
+
     # Structural Spec-First Management Settings
     def get_spec_first_settings(self) -> Dict[str, Any]:
         """Get Spec-First Management settings."""
@@ -250,7 +250,7 @@ class SettingsManager:
                     return json.load(f)
             except Exception:
                 pass
-        
+
         # Default settings
         return {
             "auto_sync_enabled": False,
@@ -260,7 +260,7 @@ class SettingsManager:
             "backup_before_apply": True,
             "max_backups": 5
         }
-    
+
     def save_spec_first_settings(self, settings: Dict[str, Any]) -> bool:
         """Save Spec-First Management settings."""
         try:
@@ -272,7 +272,7 @@ class SettingsManager:
         except Exception as e:
             logger.error(f"Error saving spec-first settings: {e}", exc_info=True)
             return False
-    
+
     # Shadow Manager Settings
     def get_shadow_settings(self) -> Dict[str, Any]:
         """Get Shadow Manager settings."""
@@ -283,14 +283,14 @@ class SettingsManager:
                     return json.load(f)
             except Exception:
                 pass
-        
+
         # Default settings
         return {
             "use_shadow_processes": False,  # Default: direct execution
             "auto_cleanup_hours": 24,
             "max_concurrent_shadows": 10
         }
-    
+
     def save_shadow_settings(self, settings: Dict[str, Any]) -> bool:
         """Save Shadow Manager settings."""
         try:
@@ -302,31 +302,31 @@ class SettingsManager:
         except Exception as e:
             logger.error(f"Error saving shadow settings: {e}", exc_info=True)
             return False
-    
+
     # Validation
     def validate_settings(self) -> Dict[str, Any]:
         """Validate all settings."""
         errors = []
         warnings = []
-        
+
         # Validate API keys
         keys = self.get_api_keys()
         for provider, key in keys.items():
             if not key:
                 warnings.append(f"API key for {provider} is not set")
-        
+
         # Validate agent models
         models = self.get_all_agent_models()
         for agent_type, config in models.items():
             if not config.get("provider") or not config.get("model"):
                 errors.append(f"Agent {agent_type} is missing provider or model")
-        
+
         return {
             "valid": len(errors) == 0,
             "errors": errors,
             "warnings": warnings
         }
-    
+
     # Agent Permissions Management
     def get_agent_permissions(self) -> Dict[str, Dict[str, Any]]:
         """Get all agent permissions."""
@@ -335,7 +335,7 @@ class SettingsManager:
         for agent_type in agent_types:
             permissions[agent_type] = self.config_manager.get_agent_permissions(agent_type)
         return permissions
-    
+
     def set_agent_permission(
         self,
         agent_type: str,
@@ -343,31 +343,31 @@ class SettingsManager:
         value: str
     ) -> bool:
         """Set a specific permission for an agent type.
-        
+
         Args:
             agent_type: Type of agent (e.g., "coder", "planner").
             permission_type: Type of permission (e.g., "read", "write", "bash").
             value: Permission value ("allow", "ask", "deny").
-        
+
         Returns:
             True if saved successfully, False otherwise.
         """
         current_perms = self.config_manager.get_agent_permissions(agent_type)
         if "permission" not in current_perms:
             current_perms["permission"] = {}
-        
+
         current_perms["permission"][permission_type] = value
-        
+
         return self.config_manager.set_agent_permissions(agent_type, current_perms)
-    
+
     def get_global_permissions(self) -> Dict[str, Any]:
         """Get global permissions."""
         return self.config_manager.get_global_permissions()
-    
+
     def set_global_permissions(self, permissions: Dict[str, Any]) -> bool:
         """Set global permissions."""
         return self.config_manager.set_global_permissions(permissions)
-    
+
     # Get all settings (for UI display)
     def get_all_settings(self) -> Dict[str, Any]:
         """Get all settings as a dictionary."""

@@ -164,16 +164,16 @@ PYTHONPATH=src pytest tests/ --cov=src/manifest
 ```python
 def function_name(param1: str, param2: int) -> bool:
     """Brief description.
-    
+
     Longer description if needed.
-    
+
     Args:
         param1: Description of param1
         param2: Description of param2
-    
+
     Returns:
         Description of return value
-    
+
     Raises:
         ValueError: When something goes wrong
     """

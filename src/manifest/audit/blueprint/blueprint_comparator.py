@@ -29,7 +29,7 @@ class BlueprintConflict:
     bottom_up_component: Optional[Dict[str, Any]] = None
     file_path: Optional[str] = None
     component_id: Optional[str] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -45,7 +45,7 @@ class BlueprintConflict:
 
 class BlueprintComparator:
     """Compares top-down (design) and bottom-up (code) blueprints."""
-    
+
     def compare_blueprints(
         self,
         top_down: Dict[str, Any],
@@ -53,30 +53,30 @@ class BlueprintComparator:
     ) -> List[BlueprintConflict]:
         """Compare two blueprints and return all conflicts."""
         conflicts = []
-        
+
         # Compare components
         component_conflicts = self.compare_components(
             top_down.get("components", []),
             bottom_up.get("components", [])
         )
         conflicts.extend(component_conflicts)
-        
+
         # Compare contracts
         contract_conflicts = self.compare_contracts(
             top_down.get("contracts", []),
             bottom_up.get("contracts", [])
         )
         conflicts.extend(contract_conflicts)
-        
+
         # Compare zones
         zone_conflicts = self.compare_zones(
             top_down.get("zones", {}),
             bottom_up.get("zones", {})
         )
         conflicts.extend(zone_conflicts)
-        
+
         return conflicts
-    
+
     def compare_components(
         self,
         top_down_components: List[Dict[str, Any]],
@@ -84,21 +84,21 @@ class BlueprintComparator:
     ) -> List[BlueprintConflict]:
         """Compare components between blueprints."""
         conflicts = []
-        
+
         # Build lookup dictionaries
         top_down_by_name: Dict[str, Dict[str, Any]] = {}
         bottom_up_by_name: Dict[str, Dict[str, Any]] = {}
-        
+
         for comp in top_down_components:
             name = comp.get("name")
             if name:
                 top_down_by_name[name] = comp
-        
+
         for comp in bottom_up_components:
             name = comp.get("name")
             if name:
                 bottom_up_by_name[name] = comp
-        
+
         # Check for missing components (in top-down but not in bottom-up)
         for name, td_comp in top_down_by_name.items():
             if name not in bottom_up_by_name:
@@ -113,23 +113,23 @@ class BlueprintComparator:
             else:
                 # Component exists, check Ground Truth fields (strict comparison)
                 bu_comp = bottom_up_by_name[name]
-                
+
                 # Ground Truth fields: methods, attributes (strict comparison)
                 method_conflicts = self._compare_methods(td_comp, bu_comp)
                 conflicts.extend(method_conflicts)
-                
+
                 attr_conflicts = self._compare_attributes(td_comp, bu_comp)
                 conflicts.extend(attr_conflicts)
-                
+
                 # Ground Truth fields: structural info (id, name, type, file, line)
                 structural_conflicts = self._compare_structural_fields(td_comp, bu_comp)
                 conflicts.extend(structural_conflicts)
-                
+
                 # Non-Ground Truth fields: metadata (algorithm, design_pattern, complexity)
                 # These are compared with tolerance for LLM inference differences
                 metadata_conflicts = self._compare_metadata_fields(td_comp, bu_comp)
                 conflicts.extend(metadata_conflicts)
-        
+
         # Check for extra components (in bottom-up but not in top-down)
         for name, bu_comp in bottom_up_by_name.items():
             if name not in top_down_by_name:
@@ -141,9 +141,9 @@ class BlueprintComparator:
                     component_id=bu_comp.get("id"),
                     file_path=bu_comp.get("file")
                 ))
-        
+
         return conflicts
-    
+
     def _compare_methods(
         self,
         top_down: Dict[str, Any],
@@ -151,10 +151,10 @@ class BlueprintComparator:
     ) -> List[BlueprintConflict]:
         """Compare methods between two components."""
         conflicts = []
-        
+
         td_methods = set(top_down.get("methods", []))
         bu_methods = set(bottom_up.get("methods", []))
-        
+
         # Missing methods
         missing = td_methods - bu_methods
         for method in missing:
@@ -167,7 +167,7 @@ class BlueprintComparator:
                 component_id=top_down.get("id"),
                 file_path=bottom_up.get("file")
             ))
-        
+
         # Extra methods (informational)
         extra = bu_methods - td_methods
         for method in extra:
@@ -180,9 +180,9 @@ class BlueprintComparator:
                 component_id=bottom_up.get("id"),
                 file_path=bottom_up.get("file")
             ))
-        
+
         return conflicts
-    
+
     def _compare_attributes(
         self,
         top_down: Dict[str, Any],
@@ -190,10 +190,10 @@ class BlueprintComparator:
     ) -> List[BlueprintConflict]:
         """Compare attributes between two components."""
         conflicts = []
-        
+
         td_attrs = set(top_down.get("attributes", []))
         bu_attrs = set(bottom_up.get("attributes", []))
-        
+
         # Missing attributes
         missing = td_attrs - bu_attrs
         for attr in missing:
@@ -206,9 +206,9 @@ class BlueprintComparator:
                 component_id=top_down.get("id"),
                 file_path=bottom_up.get("file")
             ))
-        
+
         return conflicts
-    
+
     def compare_contracts(
         self,
         top_down_contracts: List[Dict[str, Any]],
@@ -216,11 +216,11 @@ class BlueprintComparator:
     ) -> List[BlueprintConflict]:
         """Compare contracts (relationships) between blueprints."""
         conflicts = []
-        
+
         # Build lookup sets for comparison
         td_contracts = self._normalize_contracts(top_down_contracts)
         bu_contracts = self._normalize_contracts(bottom_up_contracts)
-        
+
         # Missing contracts
         missing = td_contracts - bu_contracts
         for contract_key in missing:
@@ -230,7 +230,7 @@ class BlueprintComparator:
                 message=f"Contract '{contract_key}' specified in design but not found in code",
                 component_id=contract_key
             ))
-        
+
         # Extra contracts (informational)
         extra = bu_contracts - td_contracts
         for contract_key in extra:
@@ -240,9 +240,9 @@ class BlueprintComparator:
                 message=f"Contract '{contract_key}' exists in code but not in design",
                 component_id=contract_key
             ))
-        
+
         return conflicts
-    
+
     def _normalize_contracts(self, contracts: List[Dict[str, Any]]) -> set:
         """Normalize contracts to comparable keys."""
         normalized = set()
@@ -253,7 +253,7 @@ class BlueprintComparator:
             key = f"{from_id}->{to_id}:{contract_type}"
             normalized.add(key)
         return normalized
-    
+
     def compare_zones(
         self,
         top_down_zones: Dict[str, List[str]],
@@ -261,12 +261,12 @@ class BlueprintComparator:
     ) -> List[BlueprintConflict]:
         """Compare zone assignments between blueprints."""
         conflicts = []
-        
+
         # Compare each zone
         for zone_name in ["client", "server", "data"]:
             td_components = set(top_down_zones.get(zone_name, []))
             bu_components = set(bottom_up_zones.get(zone_name, []))
-            
+
             # Components in top-down but not in bottom-up for this zone
             missing = td_components - bu_components
             for comp_id in missing:
@@ -276,9 +276,9 @@ class BlueprintComparator:
                     message=f"Component '{comp_id}' assigned to '{zone_name}' zone in design but not in code",
                     component_id=comp_id
                 ))
-        
+
         return conflicts
-    
+
     def get_conflicts_by_severity(
         self,
         conflicts: List[BlueprintConflict]
@@ -289,27 +289,27 @@ class BlueprintComparator:
             "warning": [],
             "info": []
         }
-        
+
         for conflict in conflicts:
             grouped[conflict.severity.value].append(conflict)
-        
+
         return grouped
-    
+
     def get_conflicts_by_type(
         self,
         conflicts: List[BlueprintConflict]
     ) -> Dict[str, List[BlueprintConflict]]:
         """Group conflicts by type."""
         grouped = {}
-        
+
         for conflict in conflicts:
             conflict_type = conflict.type.value
             if conflict_type not in grouped:
                 grouped[conflict_type] = []
             grouped[conflict_type].append(conflict)
-        
+
         return grouped
-    
+
     def _compare_structural_fields(
         self,
         top_down: Dict[str, Any],
@@ -320,7 +320,7 @@ class BlueprintComparator:
         Fields: id, name, type, file, line
         """
         conflicts = []
-        
+
         # Check name (should match for comparison to work)
         td_name = top_down.get("name")
         bu_name = bottom_up.get("name")
@@ -334,7 +334,7 @@ class BlueprintComparator:
                 component_id=top_down.get("id"),
                 file_path=bottom_up.get("file")
             ))
-        
+
         # Check type
         td_type = top_down.get("type")
         bu_type = bottom_up.get("type")
@@ -348,7 +348,7 @@ class BlueprintComparator:
                 component_id=top_down.get("id"),
                 file_path=bottom_up.get("file")
             ))
-        
+
         # Check file path (should match or be similar)
         td_file = top_down.get("file", "")
         bu_file = bottom_up.get("file", "")
@@ -364,9 +364,9 @@ class BlueprintComparator:
                     component_id=top_down.get("id"),
                     file_path=bottom_up.get("file")
                 ))
-        
+
         return conflicts
-    
+
     def _compare_metadata_fields(
         self,
         top_down: Dict[str, Any],
@@ -378,7 +378,7 @@ class BlueprintComparator:
         Note: methodology is excluded as it's a development methodology, not product logic.
         """
         conflicts = []
-        
+
         # Compare algorithm (if present in both)
         td_algorithm = top_down.get("algorithm")
         bu_algorithm = bottom_up.get("algorithm")
@@ -405,7 +405,7 @@ class BlueprintComparator:
                 component_id=top_down.get("id"),
                 file_path=bottom_up.get("file")
             ))
-        
+
         # Compare design_pattern (if present in both)
         td_pattern = top_down.get("design_pattern")
         bu_pattern = bottom_up.get("design_pattern")
@@ -430,7 +430,7 @@ class BlueprintComparator:
                 component_id=top_down.get("id"),
                 file_path=bottom_up.get("file")
             ))
-        
+
         # Compare complexity (if present in both)
         td_complexity = top_down.get("complexity")
         bu_complexity = bottom_up.get("complexity")
@@ -455,5 +455,5 @@ class BlueprintComparator:
                 component_id=top_down.get("id"),
                 file_path=bottom_up.get("file")
             ))
-        
+
         return conflicts

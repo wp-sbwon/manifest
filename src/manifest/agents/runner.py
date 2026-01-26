@@ -27,33 +27,33 @@ logger = get_logger(__name__)
 async def run_agent(task_id: str, agent_type: str):
     """
     Run an agent in a container environment.
-    
+
     Args:
         task_id: ID of the task to work on.
         agent_type: Type of agent to run.
     """
     logger.info(f"Starting agent runner for task {task_id}, type {agent_type}")
-    
+
     # Initialize core components
     manifest_dir = Path("/app/.manifest")
     state_manager = StateManager(manifest_dir)
     config_manager = get_config_manager()
-    
+
     # Initialize communication
     # In a container, the base_url should point to the host machine or main app container
     # Defaulting to manifest-app which should be defined in the docker network
     base_url = os.environ.get("MANIFEST_API_URL", "http://manifest-app:8000")
     message_bus = ContainerMessageBus(base_url=base_url, agent_id=task_id)
     await message_bus.connect()
-    
+
     state_sync = ContainerStateSync(state_manager, message_bus)
     await state_sync.start()
-    
+
     # Initialize agent components
     from manifest.agents.task_scoper import TaskScoper
     task_scoper = TaskScoper(manifest_dir)
     context_provider = ContextProvider(manifest_dir, task_scoper)
-    
+
     executor = AgentExecutor(state_manager, config_manager)
     agent_manager = AgentManager(executor, state_manager)
 
@@ -62,26 +62,26 @@ async def run_agent(task_id: str, agent_type: str):
         config_manager=config_manager,
         agent_type=agent_type
     )
-    
+
     # Initialize TerminalRouter with permission checking
     terminal_router = TerminalRouter(
         working_dir=Path("/app"),
         permission_manager=permission_manager,
         agent_type=agent_type
     )
-    
+
     # Initialize FileManager with permission checking
     file_manager = FileManager(
         working_dir=Path("/app"),
         permission_manager=permission_manager,
         agent_type=agent_type
     )
-    
+
     # Initialize ToolExecutor
     # Create ToolExecutionAuditor for logging
     from manifest.runtime.tools.tool_execution_auditor import ToolExecutionAuditor
     auditor = ToolExecutionAuditor(manifest_dir=state_manager.manifest_dir)
-    
+
     tool_executor = ToolExecutor(
         terminal_router=terminal_router,
         file_manager=file_manager,
@@ -90,13 +90,13 @@ async def run_agent(task_id: str, agent_type: str):
         task_id=task_id,
         agent_id=task_id
     )
-    
+
     try:
         # Get context for the agent
         # The context might be passed via environment variables or fetched from state
         context = context_provider.get_worker_context(task_id, agent_type)
         model_config = config_manager.get_agent_model_config(agent_type)
-        
+
         # Update status to active
         await message_bus.send_message(
             topic="agent-status",
@@ -107,7 +107,7 @@ async def run_agent(task_id: str, agent_type: str):
                 "timestamp": __import__("datetime").datetime.now().isoformat()
             }
         )
-        
+
         # Create and run agent with terminal router and tool executor
         agent_dict = await agent_manager.create_agent(
             agent_type=agent_type,
@@ -119,17 +119,17 @@ async def run_agent(task_id: str, agent_type: str):
         )
         if not agent_dict:
             raise ValueError(f"Failed to create agent of type {agent_type}")
-        
+
         # Get the actual agent instance
         agent = agent_dict.get("instance")
         if not agent:
             raise ValueError(f"Agent instance not found for type {agent_type}")
-            
+
         logger.info(f"Executing agent {agent_type} for task {task_id}")
-        
+
         # Get task description from context
         task_description = context.get("task_description", "No description provided")
-        
+
         # Execution logic based on agent type
         if agent_type == "orchestrator":
             mission_description = context.get("mission_description", task_description)
@@ -198,7 +198,7 @@ async def run_agent(task_id: str, agent_type: str):
                     logger.info(f"Integration Test completed for task {task_id}")
         else:
             logger.warning(f"Unknown agent type: {agent_type}. No execution logic defined.")
-        
+
         # Mark as completed
         await message_bus.send_message(
             topic="agent-status",
@@ -209,7 +209,7 @@ async def run_agent(task_id: str, agent_type: str):
                 "timestamp": __import__("datetime").datetime.now().isoformat()
             }
         )
-        
+
     except Exception as e:
         logger.error(f"Error running agent: {e}", exc_info=True)
         # Report failure
@@ -233,7 +233,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manifest Agent Runner")
     parser.add_argument("--task-id", required=True, help="Task ID to work on")
     parser.add_argument("--agent-type", required=True, help="Type of agent to run")
-    
+
     args = parser.parse_args()
-    
+
     asyncio.run(run_agent(args.task_id, args.agent_type))

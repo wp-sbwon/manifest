@@ -42,21 +42,21 @@ You DO:
 
 class ApproverAgent:
     """Approver agent for final review and approval of Worker Squad work.
-    
+
     The approver is the final gate in the Worker Squad workflow. It reviews
     all stages (planner plan, coder implementation, test results, self-review)
     and makes a decision: approve (work is complete) or reject (needs rework).
-    
+
     If rejecting, provides specific feedback that guides the workflow back
     to the appropriate stage (usually coder) for fixes.
-    
+
     Attributes:
         agent_id: Unique identifier for this agent instance.
         executor: AgentExecutor for making LLM API calls.
         state_manager: StateManager for persisting approval decisions.
         message_history: List of conversation messages for context.
     """
-    
+
     def __init__(
         self,
         agent_id: str,
@@ -65,7 +65,7 @@ class ApproverAgent:
         terminal_router: Optional["TerminalRouter"] = None
     ):
         """Initialize the approver agent.
-        
+
         Args:
             agent_id: Unique identifier for this agent.
             executor: Executor instance for LLM API calls.
@@ -78,7 +78,7 @@ class ApproverAgent:
         self.state_manager = state_manager
         self.message_history: List[Dict[str, str]] = []
         self.quality_manager = CodeQualityManager()
-    
+
     async def approve(
         self,
         planner_output: str,
@@ -92,11 +92,11 @@ class ApproverAgent:
         # Run automated quality checks
         quality_info = {}
         task_id = self.agent_id
-        
+
         # Get files modified from coder output
         import re
         files = re.findall(r'(?:modified|changed|updated|created)\s+file[:\s]+(.+?)(?:\n|$)', coder_output, re.IGNORECASE)
-        
+
         if files:
             quality_info["lint_results"] = {}
             quality_info["security_results"] = {}
@@ -104,7 +104,7 @@ class ApproverAgent:
                 f = f.strip()
                 quality_info["lint_results"][f] = self.quality_manager.run_lint(f)
                 quality_info["security_results"][f] = self.quality_manager.run_security_check(f)
-        
+
         # Check architecture compliance if component_id is available
         component_id = context.get("component_id")
         if component_id and files:
@@ -114,7 +114,7 @@ class ApproverAgent:
         prompt = self._generate_approval_prompt(
             planner_output, coder_output, test_results, self_review_result, context, quality_info
         )
-        
+
         # Execute agent
         async for chunk in self.executor.execute_agent(
             agent_id=self.agent_id,
@@ -132,9 +132,9 @@ class ApproverAgent:
             elif chunk.get("type") == "complete":
                 # Save complete response
                 await self._save_response(chunk.get("content", ""))
-            
+
             yield chunk
-    
+
     def _generate_approval_prompt(
         self,
         planner_output: str,
@@ -201,14 +201,14 @@ DECISION: APPROVED|REJECTED
 FEEDBACK: [your feedback here]
 """
         return prompt
-    
+
     async def _save_response(self, content: str) -> None:
         """Save approval decision to state and chat history.
-        
+
         Writes the approver's decision and feedback to the appropriate channel
         so it can be displayed in the UI and used to determine next steps
         in the workflow.
-        
+
         Args:
             content: The complete approval decision and feedback content.
         """

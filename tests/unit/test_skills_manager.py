@@ -115,11 +115,11 @@ def test_load_project_skills(tmp_manifest_dir, tmp_project_root, sample_agents_m
 def test_get_skills_for_agent(tmp_manifest_dir, tmp_project_root, sample_agent_config, sample_skill_file, sample_agents_md):
     """Test getting skills for a specific agent."""
     manager = SkillsManager(tmp_manifest_dir, tmp_project_root)
-    
+
     # Get skills for coder
     coder_skills = manager.get_skills_for_agent("coder")
     assert len(coder_skills) > 0
-    
+
     # Should include both project skill and agent default skill
     skill_ids = [s.get("id") for s in coder_skills]
     assert "default_skill" in skill_ids or "project_skill" in skill_ids
@@ -130,7 +130,7 @@ def test_format_skills_for_prompt(tmp_manifest_dir, tmp_project_root, sample_ski
     manager = SkillsManager(tmp_manifest_dir, tmp_project_root)
     skills = manager.get_skills_for_agent("coder")
     formatted = manager.format_skills_for_prompt(skills)
-    
+
     if len(skills) > 0:
         assert "AVAILABLE SKILLS" in formatted
         # Check if any skill ID appears in formatted output
@@ -144,7 +144,7 @@ def test_format_skills_for_prompt(tmp_manifest_dir, tmp_project_root, sample_ski
 def test_skill_applies_to_agent(tmp_manifest_dir, tmp_project_root):
     """Test skill applicability to agents."""
     manager = SkillsManager(tmp_manifest_dir, tmp_project_root)
-    
+
     # Skill with explicit agents list
     skill_with_agents = {
         "id": "test_skill",
@@ -152,7 +152,7 @@ def test_skill_applies_to_agent(tmp_manifest_dir, tmp_project_root):
     }
     assert manager._skill_applies_to_agent(skill_with_agents, "coder") is True
     assert manager._skill_applies_to_agent(skill_with_agents, "review") is False
-    
+
     # Skill without agents list (applies to all)
     skill_without_agents = {
         "id": "universal_skill"
@@ -173,10 +173,10 @@ def test_missing_files_graceful(tmp_manifest_dir, tmp_project_root):
     """Test graceful handling of missing files."""
     # No agent_config.json, no AGENTS.md, no .claude/rules/
     manager = SkillsManager(tmp_manifest_dir, tmp_project_root)
-    
+
     # Should not raise errors
     skills = manager.get_skills_for_agent("coder")
     assert isinstance(skills, list)
-    
+
     formatted = manager.format_skills_for_prompt(skills)
     assert isinstance(formatted, str)

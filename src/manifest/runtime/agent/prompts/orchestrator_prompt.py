@@ -83,18 +83,18 @@ def get_orchestrator_prompt(
 ) -> str:
     """
     Generate Orchestrator prompt with context.
-    
+
     Args:
         mission_description: Mission description from user
         context: Tiered context (Tier 0, Tier 1)
         available_agents: List of available agent types
         mode: Orchestrator mode (ideation, sprint_planning, coordinate, task_management)
-        
+
     Returns:
         Complete prompt string
     """
     available_agents = available_agents or ["planner", "coder", "test", "review", "debug", "approver", "project_review"]
-    
+
     mode_specific_instructions = ""
     if mode == "ideation":
         mode_specific_instructions = """
@@ -149,7 +149,7 @@ You are in Coordination mode. Your goal is to:
 4. Coordinate with Coder for implementation
 5. Monitor progress and adjust strategy
 """
-    
+
     prompt = f"""
 {ORCHESTRATOR_SYSTEM_PROMPT}
 
@@ -185,23 +185,23 @@ def get_ideation_prompt(
 ) -> str:
     """
     Generate Ideation mode prompt for PRD creation.
-    
+
     Args:
         user_input: Current user input
         context: Tiered context
         ideation_history: Previous ideation conversation history
-        
+
     Returns:
         Complete ideation prompt string
     """
     ideation_history = ideation_history or []
-    
+
     # Load PRD template
     prd_template_path = Path(".claude/rules/prd-template.md")
     prd_template = ""
     if prd_template_path.exists():
         prd_template = prd_template_path.read_text(encoding="utf-8")
-    
+
     history_text = ""
     if ideation_history:
         history_lines = []
@@ -210,7 +210,7 @@ def get_ideation_prompt(
             content = msg.get("content", "")
             history_lines.append(f"{role.upper()}: {content}")
         history_text = "\n".join(history_lines)
-    
+
     prompt = f"""
 {ORCHESTRATOR_SYSTEM_PROMPT}
 
@@ -256,19 +256,19 @@ You are helping the user create a Product Requirements Document (PRD).
 def _format_context(context: Dict[str, Any]) -> str:
     """Format tiered context for prompt."""
     formatted = []
-    
+
     if "tier_0" in context:
         formatted.append("### Tier 0: Policy & Principles")
         formatted.append(str(context["tier_0"]))
-    
+
     if "tier_1" in context:
         formatted.append("### Tier 1: Architecture & Blueprint")
         formatted.append(str(context["tier_1"]))
-    
+
     # Add skills section if available
     if "skills" in context:
         skills_context = context["skills"]
         if skills_context.get("skills_formatted"):
             formatted.append("\n" + skills_context["skills_formatted"])
-    
+
     return "\n".join(formatted)

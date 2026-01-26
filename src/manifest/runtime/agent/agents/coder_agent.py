@@ -22,12 +22,12 @@ if TYPE_CHECKING:
 
 class CoderAgent:
     """Coder agent for implementing code based on plans.
-    
+
     The coder agent receives a task description, planner's plan, and scoped
     context, then implements the code to fulfill the requirements. It works
     within task boundaries to ensure it only modifies allowed files and
     components.
-    
+
     Attributes:
         agent_id: Unique identifier for this agent instance.
         executor: AgentExecutor for making LLM API calls.
@@ -35,7 +35,7 @@ class CoderAgent:
         message_history: List of conversation messages for context.
         terminal_router: Optional TerminalRouter for executing commands.
     """
-    
+
     def __init__(
         self,
         agent_id: str,
@@ -45,7 +45,7 @@ class CoderAgent:
         tool_executor: Optional[ToolExecutor] = None
     ):
         """Initialize the coder agent.
-        
+
         Args:
             agent_id: Unique identifier for this agent.
             executor: Executor instance for LLM API calls.
@@ -62,7 +62,7 @@ class CoderAgent:
         self.tool_executor = tool_executor
         self.message_history: List[Dict[str, str]] = []
         self.agent_type = "coder"
-        
+
         # Track tool execution results for completion detection
         self.tool_execution_summary: Dict[str, Any] = {
             "modified_files": [],
@@ -71,7 +71,7 @@ class CoderAgent:
             "errors": [],
             "total_tool_calls": 0
         }
-    
+
     async def implement(
         self,
         task_description: str,
@@ -80,19 +80,19 @@ class CoderAgent:
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
         """Implement code for a task based on the planner's plan.
-        
+
         Generates a coder-specific prompt with task description, context,
         and scope boundaries, then executes the agent with tool use support.
         Handles tool execution loop: LLM generates tool calls, we execute them,
         and feed results back to LLM until completion.
-        
+
         Args:
             task_description: Description of what needs to be implemented.
             context: Tiered context dictionary (Tier 0, 2-3 for workers).
             task_scope: Dictionary defining what files/components can be
                 modified. Includes allowed_files, allowed_components, etc.
             model_config: Dictionary with provider, model, and api_key.
-        
+
         Yields:
             Dictionaries with type "chunk" (streaming), "tool_use", "tool_result",
             or "complete" (finished).
@@ -104,10 +104,10 @@ class CoderAgent:
             task_scope=task_scope,
             available_tools=context.get("available_tools", [])
         )
-        
+
         # Get tool definitions
         tools = get_tool_definitions()
-        
+
         # Reset tool execution summary for this implementation
         self.tool_execution_summary = {
             "modified_files": [],
@@ -116,18 +116,18 @@ class CoderAgent:
             "errors": [],
             "total_tool_calls": 0
         }
-        
+
         # Tool execution loop
         max_iterations = 10  # Prevent infinite loops
         iteration = 0
-        
+
         while iteration < max_iterations:
             iteration += 1
-            
+
             # Execute agent with tools
             tool_calls_in_this_round = []
             full_response = ""
-            
+
             async for chunk in self.executor.execute_agent(
                 agent_id=self.agent_id,
                 agent_type="coder",
@@ -138,7 +138,7 @@ class CoderAgent:
                 tools=tools
             ):
                 chunk_type = chunk.get("type")
-                
+
                 if chunk_type == "chunk":
                     content = chunk.get("content", "")
                     full_response += content
@@ -171,40 +171,40 @@ class CoderAgent:
                     error_chunk["tool_execution_summary"] = self.tool_execution_summary.copy()
                     yield error_chunk
                     return
-            
+
             # Execute tool calls if any
             if tool_calls_in_this_round and self.tool_executor:
                 # Track tool execution
                 self.tool_execution_summary["total_tool_calls"] += len(tool_calls_in_this_round)
-                
+
                 # Execute all tool calls
                 tool_results = await self.tool_executor.execute_tool_calls(tool_calls_in_this_round)
-                
+
                 # Parse tool results to track what was done
                 for i, tool_call in enumerate(tool_calls_in_this_round):
                     tool_name = tool_call.get("name", "unknown")
                     tool_input = tool_call.get("input", {})
                     tool_result = tool_results[i] if i < len(tool_results) else {}
-                    
+
                     # Track file modifications
                     if tool_name == "edit" or tool_name == "write":
                         file_path = tool_input.get("file_path", "unknown")
                         if file_path not in self.tool_execution_summary["modified_files"]:
                             self.tool_execution_summary["modified_files"].append(file_path)
-                    
+
                     # Track file reads
                     elif tool_name == "read":
                         file_path = tool_input.get("file_path", "unknown")
                         if file_path not in self.tool_execution_summary["read_files"]:
                             self.tool_execution_summary["read_files"].append(file_path)
-                    
+
                     # Track command executions
                     elif tool_name == "bash":
                         command = tool_input.get("command", "unknown")
                         args = tool_input.get("args", [])
                         full_command = f"{command} {' '.join(args) if args else ''}".strip()
                         self.tool_execution_summary["executed_commands"].append(full_command)
-                    
+
                     # Track errors and permission issues
                     if tool_result.get("error"):
                         error_info = {
@@ -219,7 +219,7 @@ class CoderAgent:
                             error_info["permission_required"] = True
                             error_info["permission_details"] = tool_result.get("permission_details", {})
                         self.tool_execution_summary["errors"].append(error_info)
-                    
+
                     # Track validation results
                     validation = tool_result.get("validated", {})
                     if not validation.get("success"):
@@ -232,17 +232,17 @@ class CoderAgent:
                                     "error": f"Validation failed: {val_error}",
                                     "file_path": tool_input.get("file_path") if tool_name in ["edit", "write", "read"] else None
                                 })
-                    
+
                     # Track validation warnings
                     validation_warnings = validation.get("warnings", [])
                     if validation_warnings:
                         if "validation_warnings" not in self.tool_execution_summary:
                             self.tool_execution_summary["validation_warnings"] = []
                         self.tool_execution_summary["validation_warnings"].extend(validation_warnings)
-                
+
                 # Format tool results for Anthropic API (tool_result content blocks)
                 provider = model_config.get("provider", "anthropic")
-                
+
                 if provider == "anthropic":
                     # Anthropic format: tool_result content blocks
                     for result in tool_results:
@@ -250,13 +250,13 @@ class CoderAgent:
                         tool_name = result.get("tool_name", "unknown")
                         tool_result = result.get("result")
                         error = result.get("error")
-                        
+
                         if error:
                             tool_result_content = f"Error: {error}"
                         else:
                             # Format result as JSON string
                             tool_result_content = json.dumps(tool_result, indent=2) if tool_result else "null"
-                        
+
                         # Add tool_result to message history in Anthropic format
                         self.message_history.append({
                             "role": "user",
@@ -268,7 +268,7 @@ class CoderAgent:
                                 }
                             ]
                         })
-                        
+
                         # Yield tool result for UI
                         yield {
                             "type": "tool_result",
@@ -284,19 +284,19 @@ class CoderAgent:
                         tool_name = result.get("tool_name", "unknown")
                         tool_result = result.get("result")
                         error = result.get("error")
-                        
+
                         if error:
                             tool_result_content = f"Error: {error}"
                         else:
                             tool_result_content = json.dumps(tool_result, indent=2) if tool_result else "null"
-                        
+
                         self.message_history.append({
                             "role": "tool",
                             "tool_call_id": tool_id,
                             "name": tool_name,
                             "content": tool_result_content
                         })
-                        
+
                         yield {
                             "type": "tool_result",
                             "tool_call_id": tool_id,
@@ -304,7 +304,7 @@ class CoderAgent:
                             "result": tool_result,
                             "error": error
                         }
-                
+
                 # Continue loop to get LLM response to tool results
                 # Update prompt to None so we just continue conversation
                 prompt = None
@@ -313,26 +313,26 @@ class CoderAgent:
                 if full_response:
                     await self._save_response(full_response)
                 break
-        
+
         if iteration >= max_iterations:
             yield {
                 "type": "error",
                 "content": f"Maximum tool execution iterations ({max_iterations}) reached",
                 "tool_execution_summary": self.tool_execution_summary.copy()
             }
-    
+
     async def _save_response(self, content: str):
         """Save agent response to state.
-        
+
         Note: State saving is handled by agent_bridge._handle_agent_chunk() to avoid
         duplicate saves. This method is kept for backward compatibility.
-        
+
         Args:
             content: The complete agent output content.
         """
         # State saving is handled by agent_bridge._handle_agent_chunk()
         pass
-    
+
     async def self_review(
         self,
         planner_plan: str,
@@ -342,19 +342,19 @@ class CoderAgent:
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Self-review implementation against plan.
-        
+
         Args:
             planner_plan: Planner's plan
             implementation_summary: Summary of implementation
             context: Tiered context
             model_config: Model configuration
-            
+
         Yields:
             Self-review output chunks
         """
         # Generate self-review prompt
         prompt = self._generate_self_review_prompt(planner_plan, implementation_summary, context)
-        
+
         # Execute agent
         async for chunk in self.executor.execute_agent(
             agent_id=self.agent_id,
@@ -372,9 +372,9 @@ class CoderAgent:
             elif chunk.get("type") == "complete":
                 # Save complete response
                 await self._save_response(chunk.get("content", ""))
-            
+
             yield chunk
-    
+
     def _generate_self_review_prompt(
         self,
         planner_plan: str,
@@ -382,15 +382,15 @@ class CoderAgent:
         context: Dict[str, Any]
     ) -> str:
         """Generate a prompt for self-review mode.
-        
+
         Creates a prompt that asks the coder to compare its implementation
         against the planner's plan and identify any discrepancies.
-        
+
         Args:
             planner_plan: The original plan to compare against.
             implementation_summary: Summary of what was implemented.
             context: Tiered context for additional information.
-        
+
         Returns:
             Complete prompt string for self-review.
         """

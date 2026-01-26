@@ -30,7 +30,7 @@ class WorkflowEventType(Enum):
 
 class WorkflowEvent:
     """Represents a workflow event.
-    
+
     Attributes:
         event_type: Type of event (WorkflowEventType).
         task_id: ID of the task this event relates to.
@@ -39,7 +39,7 @@ class WorkflowEvent:
         data: Additional event data.
         timestamp: When the event occurred.
     """
-    
+
     def __init__(
         self,
         event_type: WorkflowEventType,
@@ -49,7 +49,7 @@ class WorkflowEvent:
         data: Optional[Dict[str, Any]] = None
     ):
         """Initialize a workflow event.
-        
+
         Args:
             event_type: Type of event.
             task_id: Task ID.
@@ -64,7 +64,7 @@ class WorkflowEvent:
         self.agent_type = agent_type
         self.data = data or {}
         self.timestamp = time.time()
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert event to dictionary."""
         return {
@@ -79,25 +79,25 @@ class WorkflowEvent:
 
 class WorkflowEventBus:
     """Event bus for workflow automation.
-    
+
     Provides publish-subscribe pattern for workflow events. Agents can
     emit events, and subscribers (e.g., Worker Squad Executor) can
     listen to events and automatically trigger next stages.
-    
+
     Attributes:
         _subscribers: Dictionary mapping event types to list of callbacks.
         _event_history: List of recent events for debugging.
     """
-    
+
     def __init__(self):
         """Initialize the event bus."""
         self._subscribers: Dict[WorkflowEventType, List[Callable]] = {}
         self._event_history: List[WorkflowEvent] = []
         self._max_history = 1000  # Keep last 1000 events
-    
+
     async def publish(self, event: WorkflowEvent) -> None:
         """Publish an event to all subscribers.
-        
+
         Args:
             event: The event to publish.
         """
@@ -105,7 +105,7 @@ class WorkflowEventBus:
         self._event_history.append(event)
         if len(self._event_history) > self._max_history:
             self._event_history.pop(0)
-        
+
         # Notify subscribers
         subscribers = self._subscribers.get(event.event_type, [])
         if subscribers:
@@ -113,7 +113,7 @@ class WorkflowEventBus:
                 f"Publishing event {event.event_type.value} for task {event.task_id} "
                 f"to {len(subscribers)} subscribers"
             )
-            
+
             # Call all subscribers
             for callback in subscribers:
                 try:
@@ -126,14 +126,14 @@ class WorkflowEventBus:
                         f"Error in event subscriber for {event.event_type.value}: {e}",
                         exc_info=True
                     )
-    
+
     def subscribe(
         self,
         event_type: WorkflowEventType,
         callback: Callable[[WorkflowEvent], Any]
     ) -> None:
         """Subscribe to events of a specific type.
-        
+
         Args:
             event_type: Type of event to subscribe to.
             callback: Callback function that receives WorkflowEvent.
@@ -143,14 +143,14 @@ class WorkflowEventBus:
             self._subscribers[event_type] = []
         self._subscribers[event_type].append(callback)
         logger.debug(f"Subscribed to {event_type.value}")
-    
+
     def unsubscribe(
         self,
         event_type: WorkflowEventType,
         callback: Callable[[WorkflowEvent], Any]
     ) -> None:
         """Unsubscribe from events.
-        
+
         Args:
             event_type: Type of event to unsubscribe from.
             callback: Callback function to remove.
@@ -161,7 +161,7 @@ class WorkflowEventBus:
                 logger.debug(f"Unsubscribed from {event_type.value}")
             except ValueError:
                 pass  # Callback not in list
-    
+
     def get_event_history(
         self,
         task_id: Optional[str] = None,
@@ -169,37 +169,37 @@ class WorkflowEventBus:
         limit: int = 100
     ) -> List[WorkflowEvent]:
         """Get event history with optional filtering.
-        
+
         Args:
             task_id: Optional task ID to filter by.
             event_type: Optional event type to filter by.
             limit: Maximum number of events to return.
-        
+
         Returns:
             List of matching events, most recent first.
         """
         events = self._event_history
-        
+
         if task_id:
             events = [e for e in events if e.task_id == task_id]
-        
+
         if event_type:
             events = [e for e in events if e.event_type == event_type]
-        
+
         # Return most recent first
         return list(reversed(events[-limit:]))
-    
+
     def get_latest_event(
         self,
         task_id: str,
         event_type: Optional[WorkflowEventType] = None
     ) -> Optional[WorkflowEvent]:
         """Get the latest event for a task.
-        
+
         Args:
             task_id: Task ID to get event for.
             event_type: Optional event type to filter by.
-        
+
         Returns:
             Latest matching event, or None if not found.
         """

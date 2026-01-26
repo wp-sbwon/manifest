@@ -81,7 +81,7 @@ def test_save_api_keys(tmp_manifest_dir, tmp_project_root):
     }
     result = manager.save_api_keys(keys)
     assert result is True
-    
+
     # Verify keys were saved
     loaded_keys = manager.get_api_keys()
     assert loaded_keys["anthropic"] == "test-key-1"
@@ -103,7 +103,7 @@ def test_set_agent_model(tmp_manifest_dir, tmp_project_root):
     manager = SettingsManager(tmp_manifest_dir, tmp_project_root)
     result = manager.set_agent_model("coder", "openai", "gpt-4")
     assert result is True
-    
+
     # Verify model was set
     model = manager.get_agent_model("coder")
     assert model["provider"] == "openai"
@@ -124,7 +124,7 @@ def test_set_agent_skills(tmp_manifest_dir, tmp_project_root):
     manager = SettingsManager(tmp_manifest_dir, tmp_project_root)
     result = manager.set_agent_skills("coder", ["skill1", "skill2"])
     assert result is True
-    
+
     # Verify skills were set
     skills = manager.get_agent_skills()
     assert "skill1" in skills["coder"]
@@ -145,7 +145,7 @@ def test_save_policy_content(tmp_manifest_dir, tmp_project_root):
     new_content = "# New Policy\n\nUpdated content."
     result = manager.save_policy_content(new_content)
     assert result is True
-    
+
     # Verify content was saved
     content = manager.get_policy_content()
     assert "New Policy" in content
@@ -156,7 +156,7 @@ def test_get_agents_md_content(tmp_manifest_dir, tmp_project_root):
     """Test getting AGENTS.md content."""
     agents_md = tmp_project_root / "AGENTS.md"
     agents_md.write_text("# AGENTS.md\n\nTest content.")
-    
+
     manager = SettingsManager(tmp_manifest_dir, tmp_project_root)
     content = manager.get_agents_md_content()
     assert "AGENTS.md" in content
@@ -168,7 +168,7 @@ def test_save_agents_md_content(tmp_manifest_dir, tmp_project_root):
     new_content = "# AGENTS.md\n\n## Skills\n\n### Skill: test"
     result = manager.save_agents_md_content(new_content)
     assert result is True
-    
+
     # Verify content was saved
     content = manager.get_agents_md_content()
     assert "test" in content

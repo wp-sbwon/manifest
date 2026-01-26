@@ -1,6 +1,6 @@
 # Manifest 프로젝트 요구사항 명세서
 
-**버전**: 1.0  
+**버전**: 1.0
 **최종 업데이트**: 2025-01-23
 
 ## 프로젝트 목표
@@ -22,7 +22,7 @@
 ## 기능 요구사항 (Functional Requirements)
 
 ### FR-1: Visual Truth System
-**우선순위**: Critical  
+**우선순위**: Critical
 **상태**: ✅ 완전 구현
 
 **설명**: 설계(Architect)와 구현(Blueprint)의 실시간 동기화
@@ -39,7 +39,7 @@
 - `src/manifest/audit/drift_auditor.py`: 불일치 감지
 
 ### FR-2: Tiered Context System
-**우선순위**: Critical  
+**우선순위**: Critical
 **상태**: ✅ 완전 구현
 
 **설명**: Mission Stage에 따른 계층적 컨텍스트 제공
@@ -63,7 +63,7 @@
 - `src/manifest/agents/task_scoper.py`: Task 범위 관리
 
 ### FR-3: Multi-Agent System
-**우선순위**: Critical  
+**우선순위**: Critical
 **상태**: ⚠️ 부분 구현 (60%)
 
 **설명**: 여러 전문 Agent의 협업을 통한 작업 수행
@@ -95,7 +95,7 @@
 - `src/manifest/bridge/agent_bridge.py`: Agent 통합
 
 ### FR-4: Architecture Drift Detection
-**우선순위**: High  
+**우선순위**: High
 **상태**: ✅ 완전 구현
 
 **설명**: 아키텍처와 코드 간의 불일치 실시간 감지
@@ -112,7 +112,7 @@
 - `src/manifest/audit/blueprint_comparator.py`: Blueprint 비교
 
 ### FR-5: State Continuity
-**우선순위**: High  
+**우선순위**: High
 **상태**: ✅ 완전 구현
 
 **설명**: 세션 중단 후에도 정확한 재개
@@ -128,7 +128,7 @@
 - `src/manifest/core/state_manager.py`: 상태 영속성
 
 ### FR-6: Settings Management UI
-**우선순위**: Medium  
+**우선순위**: Medium
 **상태**: ✅ 완전 구현
 
 **설명**: 모든 설정을 UI에서 관리 (파일 직접 편집 불필요)
@@ -145,7 +145,7 @@
 - `src/manifest/core/settings_manager.py`: 통합 설정 관리
 
 ### FR-7: Skills System
-**우선순위**: Medium  
+**우선순위**: Medium
 **상태**: ✅ 완전 구현
 
 **설명**: Agent별 및 프로젝트별 Skills 관리 (OpenCode 컨벤션)
@@ -160,7 +160,7 @@
 - `src/manifest/agents/skills_manager.py`: Skills 관리
 
 ### FR-8: Terminal Command Execution
-**우선순위**: High  
+**우선순위**: High
 **상태**: ✅ 완전 구현
 
 **설명**: Agent가 터미널 명령을 실행할 수 있어야 함
@@ -176,7 +176,7 @@
 - `src/manifest/runtime/opencode_adapter.py`: OpenCode 통합
 
 ### FR-9: User Input Processing
-**우선순위**: Critical  
+**우선순위**: Critical
 **상태**: ⚠️ 부분 구현 (30%)
 
 **설명**: 사용자 입력을 Agent로 전달하여 처리
@@ -195,7 +195,7 @@
 - `src/manifest/ui/app.py:779`: "In real implementation" 주석
 
 ### FR-10: Container Support
-**우선순위**: Medium  
+**우선순위**: Medium
 **상태**: ⚠️ 부분 구현 (40%)
 
 **설명**: Docker 컨테이너에서 Agent 실행 지원

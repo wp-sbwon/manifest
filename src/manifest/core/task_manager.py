@@ -22,23 +22,23 @@ logger = get_logger(__name__)
 
 class TaskManager:
     """Manages all task-related operations.
-    
+
     Handles the complete lifecycle of tasks from creation through completion.
     Tasks are stored in the state's task checklist and can be queried,
     updated, and managed through this class.
-    
+
     Attributes:
         state_manager: Reference to the StateManager for persistence.
     """
-    
+
     def __init__(self, state_manager: StateManager):
         """Initialize the task manager.
-        
+
         Args:
             state_manager: StateManager instance used for persisting task data.
         """
         self.state_manager = state_manager
-    
+
     def create_task(
         self,
         name: str,
@@ -49,11 +49,11 @@ class TaskManager:
         dependencies: Optional[List[str]] = None
     ) -> str:
         """Create a new task and add it to the checklist.
-        
+
         Tasks are typically created by the Orchestrator agent when breaking
         down work. The task is assigned a unique ID based on the current
         number of tasks, and timestamps are automatically set.
-        
+
         Args:
             name: Short name or title for the task.
             description: Detailed description of what the task involves.
@@ -64,13 +64,13 @@ class TaskManager:
             sprint_id: Optional ID of the sprint this task belongs to.
                 Tasks can exist outside of sprints if None.
             dependencies: Optional list of task IDs that this task depends on.
-        
+
         Returns:
             String ID of the newly created task (e.g., "task-1").
         """
         tasks = self.state_manager.get_task_checklist()
         task_id = f"task-{len(tasks) + 1}"
-        
+
         task: TaskDict = {
             "id": task_id,
             "name": name,
@@ -83,11 +83,11 @@ class TaskManager:
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat()
         }
-        
+
         tasks.append(task)  # type: ignore
         self.state_manager.set_task_checklist(tasks)
         return task_id
-    
+
     def update_task(
         self,
         task_id: str,
@@ -97,17 +97,17 @@ class TaskManager:
         stage: Optional[str] = None
     ) -> bool:
         """Update one or more properties of an existing task.
-        
+
         Only the fields provided (non-None) will be updated. The task's
         updated_at timestamp is automatically refreshed.
-        
+
         Args:
             task_id: ID of the task to update.
             name: New name for the task (optional).
             description: New description for the task (optional).
             status: New status for the task (optional).
             stage: New stage for the task (optional).
-        
+
         Returns:
             True if the task was found and updated, False if task doesn't
             exist.
@@ -127,16 +127,16 @@ class TaskManager:
                 self.state_manager.set_task_checklist(tasks)
                 return True
         return False
-    
+
     def cancel_task(self, task_id: str) -> bool:
         """Cancel a task by setting its status to "cancelled".
-        
+
         Cancelled tasks remain in the checklist but are marked as cancelled
         and typically won't be processed further.
-        
+
         Args:
             task_id: ID of the task to cancel.
-        
+
         Returns:
             True if task was found and cancelled, False otherwise.
         """
@@ -148,18 +148,18 @@ class TaskManager:
                 self.state_manager.set_task_checklist(tasks)
                 return True
         return False
-    
+
     def rollback_task(self, task_id: str) -> bool:
         """Rollback a task to the previous stage in the workflow.
-        
+
         Moves the task back one stage (e.g., from "testing" to "implementation").
         The status is reset to "pending". Note that this only updates the
         state; actual code rollback would be handled by AgentCoordinator
         using Git.
-        
+
         Args:
             task_id: ID of the task to rollback.
-        
+
         Returns:
             True if task was found and rolled back, False otherwise.
         """
@@ -175,7 +175,7 @@ class TaskManager:
                         task["stage"] = stage_order[current_index - 1]
                         task["status"] = "pending"
                         task["updated_at"] = datetime.now().isoformat()
-                        
+
                         # Note: Git revert would be handled by AgentCoordinator
                         # This just updates the state
                         self.state_manager.set_task_checklist(tasks)
@@ -183,17 +183,17 @@ class TaskManager:
                 except ValueError:
                     pass
         return False
-    
+
     def complete_task(self, task_id: str) -> bool:
         """Mark a task as completely done after user approval.
-        
+
         Sets both status and stage to "completed" and records a completion
         timestamp. Also captures the current Git diff to preserve a snapshot
         of what was changed for this task.
-        
+
         Args:
             task_id: ID of the task to mark as complete.
-        
+
         Returns:
             True if task was found and marked complete, False otherwise.
         """
@@ -204,14 +204,14 @@ class TaskManager:
                 task["stage"] = "completed"
                 task["updated_at"] = datetime.now().isoformat()
                 task["completed_at"] = datetime.now().isoformat()
-                
+
                 # Capture Git diff snapshot when task completes
                 self.save_task_git_diff(task_id)
-                
+
                 self.state_manager.set_task_checklist(tasks)
                 return True
         return False
-    
+
     def find_tasks(
         self,
         status: Optional[str] = None,
@@ -220,11 +220,11 @@ class TaskManager:
         agent_type: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Find tasks matching the specified criteria.
-        
+
         All criteria are optional and can be combined. Tasks must match
         all provided criteria to be included in results. If no criteria
         are provided, returns all tasks.
-        
+
         Args:
             status: Filter by task status (e.g., "pending", "in_progress",
                 "done", "blocked", "approved", "cancelled").
@@ -234,13 +234,13 @@ class TaskManager:
                 sprint will be returned.
             agent_type: Filter by agent type assigned to the task (e.g.,
                 "planner", "coder", "test").
-        
+
         Returns:
             List of task dictionaries matching all provided criteria.
         """
         tasks = self.state_manager.get_task_checklist()
         filtered = tasks
-        
+
         if status:
             filtered = [t for t in filtered if t.get("status") == status]
         if stage:
@@ -249,36 +249,36 @@ class TaskManager:
             filtered = [t for t in filtered if t.get("sprint_id") == sprint_id]
         if agent_type:
             filtered = [t for t in filtered if t.get("agent", {}).get("type") == agent_type]
-        
+
         return filtered
-    
+
     def delete_task(self, task_id: str) -> bool:
         """Permanently delete a task from the checklist.
-        
+
         Removes the task from the task checklist. This operation cannot
         be undone, so use with caution.
-        
+
         Args:
             task_id: ID of the task to delete.
-        
+
         Returns:
             True if task was found and deleted, False if task doesn't exist.
         """
         tasks = self.state_manager.get_task_checklist()
         original_count = len(tasks)
         tasks = [t for t in tasks if t.get("id") != task_id]
-        
+
         if len(tasks) < original_count:
             self.state_manager.set_task_checklist(tasks)
             return True
         return False
-    
+
     def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve a specific task by its ID.
-        
+
         Args:
             task_id: ID of the task to retrieve.
-        
+
         Returns:
             Task dictionary if found, None if the task doesn't exist.
         """
@@ -287,29 +287,29 @@ class TaskManager:
 
     def is_task_blocked(self, task_id: str) -> Tuple[bool, List[str]]:
         """Check if a task is blocked by its dependencies.
-        
+
         Args:
             task_id: ID of the task to check.
-            
+
         Returns:
             Tuple of (is_blocked, list_of_blocking_task_ids).
         """
         task = self.get_task(task_id)
         if not task:
             return False, []
-            
+
         dependencies = task.get("dependencies", [])
         if not dependencies:
             return False, []
-            
+
         blocking_tasks = []
         for dep_id in dependencies:
             dep_task = self.get_task(dep_id)
             if not dep_task or dep_task.get("status") != "done":
                 blocking_tasks.append(dep_id)
-                
+
         return len(blocking_tasks) > 0, blocking_tasks
-    
+
     def save_worker_squad_stage(
         self,
         task_id: str,
@@ -317,17 +317,17 @@ class TaskManager:
         stage_result: Dict[str, Any]
     ) -> bool:
         """Save the result of a Worker Squad stage execution.
-        
+
         Worker Squad stages include: planner, tdd_test, coder, test, debug,
         self_review, and approver. Stage results are stored with the task
         and include timestamps for tracking execution history.
-        
+
         Args:
             task_id: ID of the task this stage belongs to.
             stage: Name of the stage (e.g., "planner", "coder", "test").
             stage_result: Dictionary containing stage execution results,
                 including status, output, and any stage-specific data.
-        
+
         Returns:
             True if the stage result was saved successfully, False if the
             task doesn't exist.
@@ -336,24 +336,24 @@ class TaskManager:
         task = next((t for t in tasks if t.get("id") == task_id), None)
         if not task:
             return False
-        
+
         # Initialize worker_squad_stages if not exists
         if "worker_squad_stages" not in task:
             task["worker_squad_stages"] = {}
-        
+
         # Add timestamp to stage result
         stage_result_with_timestamp = {
             **stage_result,
             "timestamp": datetime.now().isoformat()
         }
-        
+
         # Save stage result
         task["worker_squad_stages"][stage] = stage_result_with_timestamp
         task["updated_at"] = datetime.now().isoformat()
-        
+
         self.state_manager.set_task_checklist(tasks)
         return True
-    
+
     async def save_worker_squad_stage_async(
         self,
         task_id: str,
@@ -361,15 +361,15 @@ class TaskManager:
         stage_result: Dict[str, Any]
     ) -> bool:
         """Save Worker Squad stage result asynchronously.
-        
+
         Same as save_worker_squad_stage but also persists state to disk
         asynchronously after saving the stage result.
-        
+
         Args:
             task_id: ID of the task this stage belongs to.
             stage: Name of the stage.
             stage_result: Dictionary containing stage execution results.
-        
+
         Returns:
             True if saved successfully, False otherwise.
         """
@@ -377,17 +377,17 @@ class TaskManager:
         if result:
             await self.state_manager.save_state()
         return result
-    
+
     def get_task_git_diff(self, task_id: str) -> Optional[str]:
         """Get the current Git diff for uncommitted changes.
-        
+
         Executes git diff to retrieve uncommitted changes in the repository.
         Checks both unstaged and staged changes. This is useful for capturing
         what code was modified for a task.
-        
+
         Args:
             task_id: ID of the task (used for context, not directly in Git command).
-        
+
         Returns:
             Git diff string if changes exist and Git is available, None if
             Git is not available, not a Git repository, or there are no changes.
@@ -402,11 +402,11 @@ class TaskManager:
                 text=True,
                 cwd=manifest_dir.parent if manifest_dir.parent.exists() else Path.cwd()
             )
-            
+
             if result.returncode != 0:
                 # Git not available or not a Git repository
                 return None
-            
+
             # Get diff of unstaged changes
             diff_result = subprocess.run(
                 ["git", "diff"],
@@ -414,7 +414,7 @@ class TaskManager:
                 text=True,
                 cwd=manifest_dir.parent if manifest_dir.parent.exists() else Path.cwd()
             )
-            
+
             if diff_result.returncode == 0 and diff_result.stdout.strip():
                 return diff_result.stdout
             else:
@@ -425,25 +425,25 @@ class TaskManager:
                     text=True,
                     cwd=manifest_dir.parent if manifest_dir.parent.exists() else Path.cwd()
                 )
-                
+
                 if diff_staged_result.returncode == 0 and diff_staged_result.stdout.strip():
                     return diff_staged_result.stdout
-            
+
             return None
         except Exception:
             # Git not available or error
             return None
-    
+
     def save_task_git_diff(self, task_id: str) -> bool:
         """Capture and save the current Git diff for a task.
-        
+
         Retrieves the current uncommitted changes using get_task_git_diff
         and stores them with the task. This creates a snapshot of what code
         was changed, which is useful when the task is completed.
-        
+
         Args:
             task_id: ID of the task to save diff for.
-        
+
         Returns:
             True if the task was found and diff was saved, False otherwise.
         """
@@ -451,18 +451,18 @@ class TaskManager:
         task = next((t for t in tasks if t.get("id") == task_id), None)
         if not task:
             return False
-        
+
         # Get Git diff
         git_diff = self.get_task_git_diff(task_id)
-        
+
         # Initialize changes if not exists
         if "changes" not in task:
             task["changes"] = {}
-        
+
         # Save Git diff
         task["changes"]["git_diff"] = git_diff
         task["changes"]["git_diff_timestamp"] = datetime.now().isoformat()
-        
+
         # Update task
         task["updated_at"] = datetime.now().isoformat()
         self.state_manager.set_task_checklist(tasks)

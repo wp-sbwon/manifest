@@ -136,7 +136,7 @@ Features planned for implementation after core infrastructure is complete:
 ### Agent Squad Monitoring & Watchdog System
 **Priority**: Medium (후순위 - Multi-agent 시스템 뼈대 구현 후)
 
-**Description**: 
+**Description**:
 Agent squad의 작업을 실시간으로 모니터링하고 문제를 감지/방지하는 시스템
 
 **Requirements**:
@@ -144,7 +144,7 @@ Agent squad의 작업을 실시간으로 모니터링하고 문제를 감지/방
   - 각 agent의 실행 상태 추적
   - 작업 진행률 모니터링
   - 리소스 사용량 추적 (CPU, 메모리, 네트워크)
-  
+
 - 문제 감지 및 방지
   - Terminal command hanging 감지
   - 무한 루프 감지
@@ -152,7 +152,7 @@ Agent squad의 작업을 실시간으로 모니터링하고 문제를 감지/방
   - 타임아웃 관리
   - 메모리 누수 감지
   - 무응답 프로세스 감지
-  
+
 - 자동 복구 메커니즘
   - Hanging 작업 자동 종료
   - 실패한 작업 재시도 로직

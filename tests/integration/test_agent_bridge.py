@@ -67,11 +67,11 @@ async def test_bridge_commands(agent_bridge):
     """Test bridge commands."""
     await agent_bridge.start()
     assert agent_bridge.is_connected is True
-    
+
     status = await agent_bridge.get_status()
     assert status is not None
-    
+
     result = await agent_bridge.start_mission("test-task", "Test mission")
     assert result is True
-    
+
     await agent_bridge.stop()

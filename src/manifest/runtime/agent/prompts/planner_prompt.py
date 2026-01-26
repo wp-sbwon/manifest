@@ -85,22 +85,22 @@ def get_planner_prompt(
 ) -> str:
     """
     Generate Planner prompt with context.
-    
+
     Args:
         task_description: Task description from orchestrator or user
         context: Tiered context (Tier 0, Tier 1, Tier 2)
         available_agents: List of available agent types
         stage: Optional stage (e.g., "conflict_review" for blueprint conflict review)
-        
+
     Returns:
         Complete prompt string
     """
     available_agents = available_agents or ["coder", "test", "review"]
-    
+
     # Check if this is a conflict review request
     if stage == "conflict_review" or context.get("conflict_review"):
         return _get_conflict_review_prompt(task_description, context)
-    
+
     prompt = f"""
 {PLANNER_SYSTEM_PROMPT}
 
@@ -129,24 +129,24 @@ def get_planner_prompt(
 
 def _get_conflict_review_prompt(task_description: str, context: Dict[str, Any]) -> str:
     """Generate prompt for blueprint conflict review.
-    
+
     Args:
         task_description: Conflict review task description
         context: Context including conflict_review information
-        
+
     Returns:
         Complete prompt string for conflict review
     """
     conflict_review = context.get("conflict_review", {})
     conflict_issue = conflict_review.get("conflict_issue", {})
     review_request = conflict_review.get("review_request", {})
-    
+
     conflict_type = conflict_issue.get("type", "unknown")
     component_id = conflict_issue.get("component_id", "unknown")
     severity = conflict_issue.get("severity", "unknown")
     message = conflict_issue.get("message", "")
     file_path = conflict_issue.get("file_path", "")
-    
+
     prompt = f"""
 {PLANNER_SYSTEM_PROMPT}
 
@@ -211,19 +211,19 @@ RECOMMENDATION:
 def _format_context(context: Dict[str, Any]) -> str:
     """Format tiered context for prompt."""
     formatted = []
-    
+
     if "tier_0" in context:
         formatted.append("### Tier 0: Policy & Principles")
         formatted.append(str(context["tier_0"]))
-    
+
     if "tier_1" in context:
         formatted.append("### Tier 1: Architecture & Blueprint")
         formatted.append(str(context["tier_1"]))
-    
+
     # Add skills section if available
     if "skills" in context:
         skills_context = context["skills"]
         if skills_context.get("skills_formatted"):
             formatted.append("\n" + skills_context["skills_formatted"])
-    
+
     return "\n".join(formatted)

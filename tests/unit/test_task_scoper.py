@@ -12,7 +12,7 @@ def temp_manifest_dir(tmp_path):
     """Create temporary manifest directory with test data."""
     manifest_dir = tmp_path / ".manifest"
     manifest_dir.mkdir()
-    
+
     # Create blueprint.json
     blueprint = {
         "version": "1.0",
@@ -39,7 +39,7 @@ def temp_manifest_dir(tmp_path):
     }
     with open(manifest_dir / "blueprint.json", "w") as f:
         json.dump(blueprint, f)
-    
+
     # Create intent.json
     intent = {
         "version": "1.0",
@@ -57,7 +57,7 @@ def temp_manifest_dir(tmp_path):
     }
     with open(manifest_dir / "intent.json", "w") as f:
         json.dump(intent, f)
-    
+
     return manifest_dir
 
 
@@ -73,7 +73,7 @@ def test_get_task_context(temp_manifest_dir):
     """Test getting task context."""
     scoper = TaskScoper(temp_manifest_dir)
     context = scoper.get_task_context("task-1")
-    
+
     assert "components" in context
     assert "files" in context
     assert "requirements" in context
@@ -83,10 +83,10 @@ def test_get_task_context(temp_manifest_dir):
 def test_validate_task_scope(temp_manifest_dir):
     """Test task scope validation."""
     scoper = TaskScoper(temp_manifest_dir)
-    
+
     # File in scope
     assert scoper.validate_task_scope("task-1", "src/auth/service.py") == True
-    
+
     # File not in scope
     assert scoper.validate_task_scope("task-1", "src/other/file.py") == False
 
@@ -95,7 +95,7 @@ def test_get_task_scope_summary(temp_manifest_dir):
     """Test getting task scope summary."""
     scoper = TaskScoper(temp_manifest_dir)
     summary = scoper.get_task_scope_summary("task-1")
-    
+
     assert "task_id" in summary
     assert "component_count" in summary
     assert "file_count" in summary
