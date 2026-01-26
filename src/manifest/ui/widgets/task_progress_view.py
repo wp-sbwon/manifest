@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional, List
 from textual.widgets import Static, RichLog
 from textual.containers import Vertical, VerticalScroll
 from manifest.core.logger import get_logger
+from manifest.ui.widgets.workflow_visualization import WorkflowVisualization
 
 logger = get_logger(__name__)
 
@@ -21,11 +22,13 @@ class TaskProgressView(Vertical):
         super().__init__(*args, **kwargs)
         self.current_task_id: Optional[str] = None
         self.current_task: Optional[Dict[str, Any]] = None
+        self.app_ref: Optional[Any] = None  # Reference to app for accessing coordinator
 
     def compose(self):
         """Compose the widget."""
         with VerticalScroll(id="task-progress-scroll"):
             yield Static("", id="task-progress-header")
+            yield WorkflowVisualization(id="workflow-visualization")
             yield Static("", id="task-progress-stages")
             yield Static("", id="task-progress-files")
             yield RichLog(id="task-progress-diff", markup=True, wrap=True)
@@ -49,6 +52,9 @@ class TaskProgressView(Vertical):
             header.update(f"[bold cyan]Task: {task_name} ({task_id})[/]\n"
                          f"Status: [bold]{task_status}[/]\n"
                          f"Description: {task_desc[:200]}")
+
+            # Update workflow visualization
+            self._update_workflow_visualization(task_id, task)
 
             # Update stages
             self._update_stages(task)
