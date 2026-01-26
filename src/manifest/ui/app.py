@@ -19,6 +19,7 @@ import asyncio
 import json
 import os
 import threading
+import time
 import uvicorn
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -331,9 +332,9 @@ class ManifestApp(App):
         self.blueprint_comparator = BlueprintComparator()
 
         # Structure Manager for Spec-First Management
+        self.manifest_dir = Path(".manifest")
         from manifest.audit.monitoring.structure_manager import StructureManager
         self.structure_manager = StructureManager(self.manifest_dir, Path.cwd())
-        self.manifest_dir = Path(".manifest")
         self.intent_data = {}
         self.blueprint_data = {}
         self.project_data = {}

@@ -47,10 +47,10 @@ def test_save_prd(prd_manager):
         "title": "Test PRD",
         "requirements": ["Req 1", "Req 2"]
     }
-    
+
     result = prd_manager.save_prd(prd_data)
     assert result is True
-    
+
     # Verify file was created
     prd_file = prd_manager.get_prd_file()
     assert prd_file.exists()
@@ -59,16 +59,16 @@ def test_save_prd(prd_manager):
 def test_save_prd_async(prd_manager):
     """Test saving PRD data asynchronously."""
     import asyncio
-    
+
     prd_data = {
         "title": "Test PRD",
         "requirements": ["Req 1"]
     }
-    
+
     async def run_test():
         result = await prd_manager.save_prd_async(prd_data)
         assert result is True
-    
+
     asyncio.run(run_test())
 
 
@@ -80,7 +80,7 @@ def test_load_prd(prd_manager):
         "requirements": ["Req 1"]
     }
     prd_manager.save_prd(prd_data)
-    
+
     # Load
     loaded = prd_manager.load_prd()
     assert loaded is not None
@@ -97,15 +97,15 @@ def test_load_prd_not_found(prd_manager):
 def test_load_prd_async(prd_manager):
     """Test loading PRD data asynchronously."""
     import asyncio
-    
+
     # Save first
     prd_data = {"title": "Test PRD"}
     prd_manager.save_prd(prd_data)
-    
+
     async def run_test():
         loaded = await prd_manager.load_prd_async()
         assert loaded is not None
-    
+
     asyncio.run(run_test())
 
 
@@ -124,7 +124,7 @@ def test_load_prd_invalid_json(prd_manager):
     prd_file = prd_manager.get_prd_file()
     prd_file.parent.mkdir(parents=True, exist_ok=True)
     prd_file.write_text("invalid json {")
-    
+
     loaded = prd_manager.load_prd()
     # Should handle invalid JSON gracefully
     assert loaded is None or isinstance(loaded, dict)

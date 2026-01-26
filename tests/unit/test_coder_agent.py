@@ -49,19 +49,19 @@ async def test_implement_task(coder_agent):
     context = {"task_description": task_description}
     task_scope = {}
     model_config = {"provider": "opencode"}
-    
+
     # Mock executor to return a generator
     async def mock_execute(*args, **kwargs):
         yield {"type": "text", "content": "Implementation started"}
         yield {"type": "complete"}
-    
+
     # Replace the executor's execute_agent method with our async generator
     coder_agent.executor.execute_agent = mock_execute
-    
+
     results = []
     async for chunk in coder_agent.implement(task_description, context, task_scope, model_config):
         results.append(chunk)
-    
+
     assert len(results) > 0
     # Verify we got expected results
     assert any(r.get("type") in ["text", "complete"] for r in results)
@@ -74,16 +74,16 @@ async def test_self_review(coder_agent):
     implementation_summary = "Implemented feature X with tests"
     context = {"task_description": "Review implementation"}
     model_config = {"provider": "opencode"}
-    
+
     # Mock executor to return a generator
     async def mock_execute(*args, **kwargs):
         yield {"type": "chunk", "content": "Review started"}
         yield {"type": "complete", "content": "Complete"}
-    
+
     coder_agent.executor.execute_agent = mock_execute
-    
+
     results = []
     async for chunk in coder_agent.self_review(planner_plan, implementation_summary, context, model_config):
         results.append(chunk)
-    
+
     assert len(results) > 0

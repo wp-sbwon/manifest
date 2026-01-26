@@ -39,7 +39,7 @@ def test_get_diff(git_manager):
         mock_repo = Mock()
         mock_repo.git.diff.return_value = "diff --git a/test.py b/test.py"
         git_manager.repo = mock_repo
-        
+
         diff = git_manager.get_diff()
         assert isinstance(diff, str)
 
@@ -52,7 +52,7 @@ def test_get_current_branch(git_manager):
         mock_branch.name = "main"
         mock_repo.active_branch = mock_branch
         git_manager.repo = mock_repo
-        
+
         branch = git_manager.get_current_branch()
         assert isinstance(branch, str)
         assert branch == "main"
@@ -74,7 +74,7 @@ def test_get_latest_commits(git_manager):
         mock_commit2.committed_datetime.isoformat = lambda: "2024-01-02T00:00:00"
         mock_repo.iter_commits.return_value = [mock_commit1, mock_commit2]
         git_manager.repo = mock_repo
-        
+
         commits = git_manager.get_latest_commits(limit=5)
         assert isinstance(commits, list)
         assert len(commits) == 2
@@ -87,7 +87,7 @@ def test_create_commit(git_manager):
         mock_repo.git.add.return_value = None
         mock_repo.index.commit.return_value = Mock(hexsha="abc123")
         git_manager.repo = mock_repo
-        
+
         commit_hash = git_manager.create_commit("Test commit")
         assert commit_hash == "abc123"
 

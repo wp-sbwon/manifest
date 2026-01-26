@@ -51,7 +51,7 @@ async def test_log_tool_execution(auditor, sample_tool_call):
         agent_id="test-agent",
         task_id="task-1"
     )
-    
+
     # Check that audit log was created
     assert auditor.audit_file.exists() or len(auditor._audit_log) > 0
 
@@ -61,7 +61,7 @@ async def test_log_tool_execution_with_error(auditor):
     """Test logging tool execution with error."""
     tool_input = {"file_path": "nonexistent.txt"}
     result = {"error": "File not found", "success": False}
-    
+
     await auditor.log_tool_execution(
         tool_name="read",
         tool_input=tool_input,
@@ -69,7 +69,7 @@ async def test_log_tool_execution_with_error(auditor):
         agent_id="test-agent",
         task_id="task-1"
     )
-    
+
     # Error should be logged
     logs = auditor.get_audit_log()
     error_logs = [log for log in logs if log.get("agent_id") == "test-agent"]
@@ -95,10 +95,10 @@ async def test_get_audit_logs(auditor, sample_tool_call):
         agent_id="agent-2",
         task_id="task-2"
     )
-    
+
     logs = auditor.get_audit_log()
     agent1_logs = [log for log in logs if log.get("agent_id") == "agent-1"]
-    
+
     assert len(agent1_logs) > 0
     assert all(log.get("agent_id") == "agent-1" for log in agent1_logs)
 
@@ -120,9 +120,9 @@ async def test_get_audit_logs_by_task(auditor, sample_tool_call):
         agent_id="agent-1",
         task_id="task-2"
     )
-    
+
     logs = auditor.get_audit_log(task_id="task-1")
-    
+
     assert len(logs) > 0
     assert all(log.get("task_id") == "task-1" for log in logs)
 
@@ -137,10 +137,10 @@ async def test_get_audit_logs_by_tool(auditor, sample_tool_call):
         agent_id="agent-1",
         task_id="task-1"
     )
-    
+
     logs = auditor.get_audit_log()
     tool_logs = [log for log in logs if log.get("tool_name") == "read"]
-    
+
     assert len(tool_logs) > 0
     assert all(log.get("tool_name") == "read" for log in tool_logs)
 
@@ -167,7 +167,7 @@ def test_sanitize_input(auditor):
         "file_path": "/path/to/file.txt",
         "content": "sensitive data"
     }
-    
+
     sanitized = auditor._sanitize_input(tool_input, "write")
     # Should return dict (may sanitize sensitive data)
     assert isinstance(sanitized, dict)
@@ -179,7 +179,7 @@ def test_sanitize_result(auditor):
         "content": "file content",
         "success": True
     }
-    
+
     sanitized = auditor._sanitize_result(result, "read")
     # Should return dict
     assert isinstance(sanitized, dict)
@@ -197,7 +197,7 @@ async def test_audit_log_rotation(auditor, sample_tool_call):
             agent_id=f"agent-{i}",
             task_id=f"task-{i}"
         )
-    
+
     # Log should not exceed max_log_entries
     assert len(auditor._audit_log) <= auditor.max_log_entries
 
@@ -207,7 +207,7 @@ async def test_get_file_modification_history(auditor):
     """Test getting file modification history."""
     tool_input = {"file_path": "test.txt", "old_string": "old", "new_string": "new"}
     result = {"success": True}
-    
+
     await auditor.log_tool_execution(
         tool_name="edit",
         tool_input=tool_input,
@@ -215,7 +215,7 @@ async def test_get_file_modification_history(auditor):
         agent_id="agent-1",
         task_id="task-1"
     )
-    
+
     history = auditor.get_file_modification_history("test.txt")
     assert isinstance(history, list)
 
@@ -225,7 +225,7 @@ async def test_get_command_execution_history(auditor):
     """Test getting command execution history."""
     tool_input = {"command": "echo hello", "args": []}
     result = {"returncode": 0, "stdout": "hello"}
-    
+
     await auditor.log_tool_execution(
         tool_name="bash",
         tool_input=tool_input,
@@ -233,7 +233,7 @@ async def test_get_command_execution_history(auditor):
         agent_id="agent-1",
         task_id="task-1"
     )
-    
+
     history = auditor.get_command_execution_history()
     assert isinstance(history, list)
 
@@ -242,7 +242,7 @@ async def test_get_command_execution_history(auditor):
 async def test_save_audit_log(auditor, sample_tool_call):
     """Test saving audit log to disk."""
     import asyncio
-    
+
     await auditor.log_tool_execution(
         tool_name=sample_tool_call["tool_name"],
         tool_input=sample_tool_call["tool_input"],
@@ -250,10 +250,10 @@ async def test_save_audit_log(auditor, sample_tool_call):
         agent_id="agent-1",
         task_id="task-1"
     )
-    
+
     # Wait for async save
     await asyncio.sleep(0.1)
-    
+
     # Audit file should exist or be in memory
     assert auditor.audit_file.exists() or len(auditor._audit_log) > 0
 
@@ -271,14 +271,14 @@ async def test_load_audit_log(auditor, temp_dir):
             "success": True
         }]
     }
-    
+
     auditor.audit_file.parent.mkdir(parents=True, exist_ok=True)
     with open(auditor.audit_file, 'w') as f:
         json.dump(audit_data, f)
-    
+
     # Reload
     auditor._load_audit_log()
-    
+
     assert len(auditor._audit_log) > 0
 
 
@@ -286,7 +286,7 @@ def test_extract_file_modification(auditor):
     """Test extracting file modification information."""
     tool_input = {"file_path": "test.txt", "old_string": "old", "new_string": "new"}
     result = {"success": True}
-    
+
     modification = auditor._extract_file_modification("edit", tool_input, result)
     assert isinstance(modification, dict)
     assert "file_path" in modification or modification is not None
@@ -296,7 +296,7 @@ def test_extract_file_modification(auditor):
 async def test_concurrent_logging(auditor, sample_tool_call):
     """Test concurrent logging of tool executions."""
     import asyncio
-    
+
     async def log_execution(agent_id, task_id):
         await auditor.log_tool_execution(
             tool_name=sample_tool_call["tool_name"],
@@ -305,13 +305,13 @@ async def test_concurrent_logging(auditor, sample_tool_call):
             agent_id=agent_id,
             task_id=task_id
         )
-    
+
     tasks = [
         log_execution(f"agent-{i}", f"task-{i}")
         for i in range(10)
     ]
     await asyncio.gather(*tasks)
-    
+
     # All logs should be recorded
     logs = auditor.get_audit_log()
     assert len(logs) >= 10
@@ -327,7 +327,7 @@ async def test_audit_log_format(auditor, sample_tool_call):
         agent_id="agent-1",
         task_id="task-1"
     )
-    
+
     logs = auditor.get_audit_log()
     if len(logs) > 0:
         log = logs[0]
@@ -357,8 +357,8 @@ async def test_error_handling_invalid_tool_call(auditor):
 def test_audit_directory_creation(temp_dir):
     """Test that audit directory is created if it doesn't exist."""
     new_manifest_dir = temp_dir / "new_manifest"
-    
+
     new_auditor = ToolExecutionAuditor(manifest_dir=new_manifest_dir)
-    
+
     # Directory should be created or parent exists
     assert new_manifest_dir.exists() or new_manifest_dir.parent.exists()

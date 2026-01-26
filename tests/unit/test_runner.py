@@ -40,23 +40,23 @@ async def test_run_agent_function():
          patch('manifest.agents.runner.ContainerMessageBus') as mock_bus, \
          patch('manifest.agents.runner.AgentManager') as mock_manager, \
          patch('manifest.agents.runner.AgentExecutor') as mock_executor:
-        
+
         # Setup mocks
         mock_bus_instance = AsyncMock()
         mock_bus.return_value = mock_bus_instance
         mock_bus_instance.connect = AsyncMock()
-        
+
         mock_agent = AsyncMock()
         mock_agent_dict = {"instance": mock_agent}
         mock_manager_instance = Mock()
         mock_manager_instance.create_agent = AsyncMock(return_value=mock_agent_dict)
         mock_manager.return_value = mock_manager_instance
-        
+
         # Mock agent methods
         async def mock_implement(*args, **kwargs):
             yield {"type": "complete"}
         mock_agent.implement = mock_implement
-        
+
         # Run agent
         try:
             await run_agent("task-1", "coder")

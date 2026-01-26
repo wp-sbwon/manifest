@@ -121,14 +121,14 @@ async def test_handle_create_task_command(command_handler, mock_log, tmp_path):
     """Test handling /create_task command."""
     from manifest.core.task_manager import TaskManager
     from manifest.core.state_manager import StateManager
-    
+
     # Create real state manager for task creation
     temp_state = StateManager(manifest_dir=tmp_path)
     temp_state.create_task = Mock(return_value="task-1")
     temp_state.save_state = AsyncMock()
     command_handler.app.state_manager = temp_state
     command_handler.app._load_project_data = AsyncMock()
-    
+
     result = await command_handler.handle("/create_task TestTask", mock_log)
     assert result is True
 
@@ -137,12 +137,12 @@ async def test_handle_create_task_command(command_handler, mock_log, tmp_path):
 async def test_handle_list_tasks_command(command_handler, mock_log):
     """Test handling /list_tasks command."""
     from manifest.core.state_manager import StateManager
-    
+
     # Create real state manager
     temp_state = StateManager(manifest_dir=Path("/tmp/test_manifest"))
     command_handler.app.state_manager = temp_state
     command_handler.app.state_manager.find_tasks = Mock(return_value=[])
-    
+
     result = await command_handler.handle("/list_tasks", mock_log)
     assert result is True
 
@@ -152,6 +152,6 @@ async def test_handle_git_status_command(command_handler, mock_log):
     """Test handling /git_status command."""
     command_handler.app.git_manager = Mock()
     command_handler.app.git_manager.get_status = Mock(return_value={"status": "clean"})
-    
+
     result = await command_handler.handle("/git_status", mock_log)
     assert result is True

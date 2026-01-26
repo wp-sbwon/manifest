@@ -50,19 +50,19 @@ async def test_coordinate_mission(orchestrator_agent):
     mission_description = "Build feature X"
     context = {"mission_description": mission_description, "available_agents": ["planner", "coder"]}
     model_config = {"provider": "opencode"}
-    
+
     # Mock executor to return a generator
     async def mock_execute(*args, **kwargs):
         yield {"type": "chunk", "content": "Coordination started"}
         yield {"type": "complete", "content": "Complete"}
-    
+
     # The execute_agent is already an AsyncMock, but we need to make it return a generator
     orchestrator_agent.executor.execute_agent = mock_execute
     orchestrator_agent.state_manager.add_chat_message = Mock()
     orchestrator_agent._save_response = AsyncMock()
-    
+
     results = []
     async for chunk in orchestrator_agent.coordinate(mission_description, context, model_config):
         results.append(chunk)
-    
+
     assert len(results) > 0

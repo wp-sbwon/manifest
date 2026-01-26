@@ -47,7 +47,7 @@ async def test_start_stop(watchdog):
     """Test starting and stopping monitoring."""
     await watchdog.start()
     assert watchdog.monitoring is True
-    
+
     await watchdog.stop()
     assert watchdog.monitoring is False
 
@@ -56,7 +56,7 @@ def test_register_unregister_command(watchdog):
     """Test registering and unregistering commands."""
     watchdog.register_command("cmd-1")
     assert "cmd-1" in watchdog._command_timestamps
-    
+
     watchdog.unregister_command("cmd-1")
     assert "cmd-1" not in watchdog._command_timestamps
 

@@ -30,7 +30,7 @@ def test_create_approval_request(approval_manager):
         tool_name="write_file",
         tool_input={"path": "test.py", "content": "test"}
     )
-    
+
     assert request_id is not None
     assert request_id in approval_manager.pending_requests
 
@@ -45,7 +45,7 @@ def test_get_pending_requests(approval_manager):
         tool_name="write_file",
         tool_input={"path": "test.py"}
     )
-    
+
     requests = approval_manager.get_pending_requests()
     assert isinstance(requests, list)
     assert len(requests) == 1
@@ -62,7 +62,7 @@ async def test_approve_request(approval_manager):
         tool_name="write_file",
         tool_input={"path": "test.py"}
     )
-    
+
     result = await approval_manager.approve_request(request_id)
     assert result is True
     assert approval_manager.pending_requests[request_id]["status"] == "approved"
@@ -78,7 +78,7 @@ async def test_deny_request(approval_manager):
         tool_name="write_file",
         tool_input={"path": "test.py"}
     )
-    
+
     result = await approval_manager.deny_request(request_id)
     assert result is True
     assert approval_manager.pending_requests[request_id]["status"] == "denied"
@@ -93,7 +93,7 @@ def test_get_request(approval_manager):
         tool_name="write_file",
         tool_input={"path": "test.py"}
     )
-    
+
     request = approval_manager.get_request(request_id)
     assert request is not None
     assert request["id"] == request_id

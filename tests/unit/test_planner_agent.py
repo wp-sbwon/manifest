@@ -47,16 +47,16 @@ async def test_plan_task(planner_agent):
     task_description = "Plan feature X"
     context = {"task_description": task_description}
     model_config = {"provider": "opencode"}
-    
+
     # Mock executor to return a generator
     async def mock_execute(*args, **kwargs):
         yield {"type": "text", "content": "Planning started"}
         yield {"type": "complete"}
-    
+
     planner_agent.executor.execute_agent = mock_execute
-    
+
     results = []
     async for chunk in planner_agent.plan(task_description, context, model_config):
         results.append(chunk)
-    
+
     assert len(results) > 0

@@ -77,7 +77,7 @@ def test_check_permission_with_resource(permission_manager):
     # Test with file path resource
     result = permission_manager.check_permission("read", "test.py")
     assert result in ["allow", "ask", "deny"]
-    
+
     # Test with command resource
     result = permission_manager.check_permission("bash", "git push")
     assert result in ["allow", "ask", "deny"]
@@ -145,7 +145,7 @@ def test_permission_manager_with_custom_config():
             }
         }
     })
-    
+
     pm = PermissionManager(config_manager=custom_config, agent_type="coder")
     # Should use custom permissions
     result = pm.check_permission("read")
