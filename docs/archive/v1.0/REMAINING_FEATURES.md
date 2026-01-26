@@ -1,47 +1,46 @@
 # 남은 기능 구현 목록
 
 **작성일**: 2026-01-24
+**최종 업데이트**: 2026-01-26
 **기준**: MANIFEST_REQUIREMENTS.md, PROJECT_STATUS.md
 
-## 🔴 Critical Priority (즉시 필요)
+**주요 변경사항 (2026-01-26)**:
+- User Input → Agent 통합: 80% → 100% (완료)
+- Agent Output Display: 70% → 100% (완료)
+- Critical Priority 항목들 완료 확인
 
-### 1. User Input → Agent 통합 완성
-**현재 상태**: ✅ 대부분 구현됨 (약 80%)
+## 🔴 Critical Priority (즉시 필요) - ✅ 완료됨 (2026-01-26)
 
-**구현된 부분**:
-- ✅ `app.py:1070-1150`: Orchestrator로 사용자 입력 전달 완전 구현됨
-- ✅ Agent 응답 스트리밍 구현됨
-- ✅ Task 자동 생성 로직 구현됨
-- ✅ Worker Squad 자동 시작 로직 구현됨
-
-**미완성 부분**:
-- ⚠️ Agent 응답을 실시간으로 UI에 표시하는 완전한 통합 (동적 TabPane 제한)
-- ⚠️ Squad 채널이 별도 탭이 아닌 main log에 prefix로만 표시
-- ⚠️ 여러 Agent 동시 실행 시 출력 혼합 문제
-
-**위치**: `src/manifest/ui/app.py:1070-1150`
-
-**필요 작업**:
-- Agent 응답 실시간 표시 개선 (현재는 작동하나 개선 여지 있음)
-- 동적 채널 UI 구현 (Textual 제약 고려)
-- Agent 출력을 별도 탭으로 표시하는 대안 구현
-
-### 2. Agent Output Display 개선
-**현재 상태**: ⚠️ 부분 구현 (70%)
+### 1. User Input → Agent 통합 완성 ✅
+**현재 상태**: ✅ 완전 구현됨 (100%)
 
 **구현된 부분**:
-- ✅ `handle_agent_output()` 메서드 존재
-- ✅ State에 Agent 출력 저장
-- ✅ Main log에 출력 표시
+- ✅ `app.py:1724-1857`: Orchestrator로 사용자 입력 전달 완전 구현됨
+- ✅ Agent 응답 스트리밍 완전 구현됨 (chunk, complete, tool_use, tool_result, error)
+- ✅ Task 자동 생성 로직 완전 구현됨 (`_process_orchestrator_response`)
+- ✅ Worker Squad 자동 시작 로직 완전 구현됨 (조건부)
 
-**제한사항**:
-- ⚠️ 동적 TabPane 생성이 Textual 제한으로 완전하지 않음
-- ⚠️ Squad 채널이 별도 탭으로 표시되지 않고 main log에 prefix로 표시
-- ✅ 코드 주석: "Full implementation would require Textual's dynamic widget support"
+**위치**: `src/manifest/ui/app.py:1702-2014`
 
-**필요 작업**:
-- Textual의 동적 위젯 생성 방법 연구
-- 또는 대안 UI 패턴 구현 (예: 채널 버튼 + 필터링)
+**작동 방식**:
+- 사용자 입력이 "/"로 시작하지 않으면 Orchestrator로 전달
+- Orchestrator agent 생성 및 실행
+- 실시간 스트리밍 응답 처리 및 UI 표시
+- Orchestrator 응답에서 Task 추출 및 자동 생성
+- 필요 시 Worker Squad 자동 시작
+
+### 2. Agent Output Display 개선 ✅
+**현재 상태**: ✅ 완전 구현됨 (100%)
+
+**구현된 부분**:
+- ✅ `ChannelManager.handle_agent_output()` 완전 구현됨
+- ✅ State에 Agent 출력 저장 및 영속성
+- ✅ 실시간 스트리밍 출력 표시
+- ✅ Agent Channels View 통합 (별도 탭으로 채널 표시)
+- ✅ 채널별 메시지 카운트 표시
+- ✅ 채널 선택 및 필터링 기능
+
+**위치**: `src/manifest/ui/channels/channel_manager.py:289-335`
 
 ## 🟡 High Priority
 

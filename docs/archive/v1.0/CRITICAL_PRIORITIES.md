@@ -1,7 +1,12 @@
 # Critical Priorities - 최종 정리
 
 **작성일**: 2026-01-24
+**최종 업데이트**: 2026-01-26
 **기준**: REMAINING_FEATURES.md, PROJECT_REVIEW.md
+
+**주요 변경사항 (2026-01-26)**:
+- User Input → Agent 통합: ✅ 완료 확인
+- Agent Output Display: ✅ 완료 확인
 
 ---
 
@@ -42,12 +47,16 @@ result = await self.coordinator.start_worker_agent_and_wait(...)
 
 ---
 
-### 2. Agent Output Display 개선 ⚠️
-**현재 상태**: 부분 구현 (70%)
+### 2. Agent Output Display 개선 ✅
+**현재 상태**: ✅ 완전 구현됨 (100%, 2026-01-26 확인)
 
-**문제점**:
-- Agent 출력이 State에 저장되지만 UI 표시가 제한적
-- 동적 TabPane 생성이 Textual 제약으로 불가능
+**구현 완료**:
+- ✅ ChannelManager를 통한 Agent 출력 실시간 표시
+- ✅ Agent Channels View 통합 (별도 탭)
+- ✅ 채널별 메시지 카운트 및 필터링
+- ✅ State 저장 및 영속성
+
+**위치**: `src/manifest/ui/channels/channel_manager.py`
 - Squad 채널이 별도 탭이 아닌 main log에 prefix로만 표시
 - 여러 Agent 동시 실행 시 출력 혼합 문제
 

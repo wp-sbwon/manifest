@@ -1,7 +1,12 @@
 # 재검토된 우선순위 계획
 
 **작성일**: 2026-01-24
+**최종 업데이트**: 2026-01-26
 **기준**: 새로운 Tool System, OpenCode 통합, Permission System 구조 반영
+
+**주요 변경사항 (2026-01-26)**:
+- User Input → Agent 통합: ✅ 완료 확인
+- Agent Output Display: ✅ 완료 확인
 
 ---
 
