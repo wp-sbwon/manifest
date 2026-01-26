@@ -21,11 +21,12 @@ from manifest.runtime.tools.tool_definitions import get_tool_definitions
 from manifest.runtime.tools.tool_call_parser import ToolCallParser
 from manifest.agents.context_size_calculator import ContextSizeCalculator
 from manifest.core.logger import get_logger
+from manifest.runtime.agent.core.base_executor import BaseAgentExecutor
 
 logger = get_logger(__name__)
 
 
-class AgentExecutor:
+class AgentExecutor(BaseAgentExecutor):
     """
     Executes agents by making LLM API calls.
     Supports multiple LLM providers (Anthropic, OpenAI, etc.).

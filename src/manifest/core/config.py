@@ -436,6 +436,85 @@ class ConfigManager:
         agent_config_section = permissions_config.get("agent", {})
         return agent_config_section.get(agent_type, {})
 
+    def get_setting(self, key: str, default: Any = None) -> Any:
+        """Get a setting value by key.
+
+        Settings are stored in a settings.json file in the manifest directory.
+        Supports dot notation for nested keys (e.g., "agent.execution_backend").
+
+        Args:
+            key: Setting key, supports dot notation for nested access.
+            default: Default value if setting not found.
+
+        Returns:
+            Setting value or default if not found.
+        """
+        settings_file = self.manifest_dir / "settings.json"
+        if not settings_file.exists():
+            return default
+
+        try:
+            with open(settings_file, "r") as f:
+                settings = json.load(f)
+        except Exception:
+            return default
+
+        # Support dot notation
+        keys = key.split(".")
+        value = settings
+        for k in keys:
+            if isinstance(value, dict):
+                value = value.get(k)
+                if value is None:
+                    return default
+            else:
+                return default
+
+        return value if value is not None else default
+
+    def set_setting(self, key: str, value: Any) -> bool:
+        """Set a setting value by key.
+
+        Settings are stored in a settings.json file in the manifest directory.
+        Supports dot notation for nested keys (e.g., "agent.execution_backend").
+
+        Args:
+            key: Setting key, supports dot notation for nested access.
+            value: Value to set.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        settings_file = self.manifest_dir / "settings.json"
+
+        # Load existing settings
+        settings = {}
+        if settings_file.exists():
+            try:
+                with open(settings_file, "r") as f:
+                    settings = json.load(f)
+            except Exception:
+                settings = {}
+
+        # Set nested value using dot notation
+        keys = key.split(".")
+        current = settings
+        for k in keys[:-1]:
+            if k not in current or not isinstance(current[k], dict):
+                current[k] = {}
+            current = current[k]
+        current[keys[-1]] = value
+
+        # Save settings
+        try:
+            self.manifest_dir.mkdir(parents=True, exist_ok=True)
+            with open(settings_file, "w") as f:
+                json.dump(settings, f, indent=2)
+            return True
+        except Exception as e:
+            logger.error(f"Error saving setting: {e}", exc_info=True)
+            return False
+
     def set_agent_permissions(
         self,
         agent_type: str,
