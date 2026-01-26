@@ -32,6 +32,9 @@ jobs:
           python -c "from manifest.ui.app import ManifestApp; print('✓ Imports OK')"
           python -c "from manifest.core.state_manager import StateManager; print('✓ Core imports OK')"
           python -c "from manifest.agents.agent_coordinator import AgentCoordinator; print('✓ Agent imports OK')"
+          python -c "from manifest.bridge.agent_bridge import AgentBridge; print('✓ Bridge imports OK')"
+          python -c "from manifest.runtime.agent.core.executor_factory import ExecutorFactory; print('✓ ExecutorFactory imports OK')"
+          python -c "from manifest.runtime.agent.core import ExecutorFactory as EF; print('✓ ExecutorFactory lazy import OK')"
 
       - name: Check Python syntax
         run: |
