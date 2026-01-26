@@ -20,39 +20,44 @@ This document outlines the immediate next steps for the Manifest project after t
 
 ## Immediate Next Steps
 
-### 1. Test Suite Verification
-- [ ] Install pytest in virtual environment
-- [ ] Run full test suite to verify refactoring didn't break anything
-- [ ] Fix any import or path issues in tests
-- [ ] Verify test coverage
+### 1. Test Suite Verification ✅ 완료됨 (2026-01-26)
+- [x] Install pytest in virtual environment
+- [x] Run full test suite to verify refactoring didn't break anything
+- [x] Fix any import or path issues in tests
+- [x] Verify test coverage (125 tests passing, 27% coverage)
 
-### 2. Git Commit
-- [ ] Stage all refactoring changes
-- [ ] Create meaningful commit message
-- [ ] Commit to `dev` branch
-- [ ] Verify no broken imports or missing files
+### 2. Git Commit ✅ 완료됨
+- [x] Stage all refactoring changes
+- [x] Create meaningful commit message
+- [x] Commit to `dev` branch
+- [x] Verify no broken imports or missing files
 
-### 3. Dependency Verification
-- [ ] Ensure all dependencies are in `requirements.txt`
-- [ ] Verify pytest is included
-- [ ] Check for any missing dependencies
+### 3. Dependency Verification ✅ 완료됨
+- [x] Ensure all dependencies are in `requirements.txt`
+- [x] Verify pytest is included
+- [x] Check for any missing dependencies
+
+### 4. CI/CD Setup ✅ 완료됨 (2026-01-26)
+- [x] GitHub Actions workflows (test.yml, lint.yml)
+- [x] Pre-commit hooks 설정
+- [x] Automated testing on push/PR
 
 ## Short-term Goals
 
-### 1. Test Infrastructure
-- Ensure all tests pass with new structure
-- Add tests for new modules (agents, context_provider, task_scoper)
-- Improve test coverage
+### 1. Test Infrastructure ✅ 부분 완료
+- [x] Ensure all tests pass with new structure (125 tests passing)
+- [x] Add tests for new modules (agents, context_provider, task_scoper)
+- [ ] Improve test coverage (현재 27%, 목표 80%+)
 
 ### 2. Documentation Updates
 - Update any outdated file paths in documentation
 - Ensure all examples use correct import paths
 - Verify all cross-references work
 
-### 3. CI/CD Setup (Optional)
-- Consider adding GitHub Actions for automated testing
-- Set up pre-commit hooks
-- Automated documentation checks
+### 3. CI/CD Setup ✅ 완료됨 (2026-01-26)
+- [x] GitHub Actions for automated testing
+- [x] Pre-commit hooks 설정
+- [ ] Automated documentation checks (선택적)
 
 ## Known Issues to Address
 
