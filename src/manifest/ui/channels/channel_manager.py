@@ -10,7 +10,8 @@ The ChannelManager was separated from ManifestApp to improve code organization
 and maintainability.
 """
 from typing import Dict, Any, Optional
-from textual.widgets import RichLog, Button, Horizontal, TabbedContent
+from textual.widgets import RichLog, Button, TabbedContent
+from textual.containers import Horizontal
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)

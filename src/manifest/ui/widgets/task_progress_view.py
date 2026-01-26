@@ -7,8 +7,8 @@ Displays detailed progress information for a selected task, including:
 - Git diff information
 """
 from typing import Dict, Any, Optional, List
-from textual.widgets import Static, VerticalScroll, RichLog
-from textual.containers import Vertical
+from textual.widgets import Static, RichLog
+from textual.containers import Vertical, VerticalScroll
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)

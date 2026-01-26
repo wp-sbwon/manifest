@@ -4,8 +4,8 @@ Agent Channels View Widget.
 Displays agent communication channels with channel selection and log output.
 """
 from typing import Dict, Any, Optional, List
-from textual.widgets import Static, RichLog, Button, Horizontal
-from textual.containers import Vertical, VerticalScroll
+from textual.widgets import Static, RichLog, Button
+from textual.containers import Vertical, VerticalScroll, Horizontal
 from textual.message import Message
 from manifest.core.logger import get_logger
 
