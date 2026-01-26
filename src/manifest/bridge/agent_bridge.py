@@ -484,12 +484,37 @@ class AgentBridge:
             # Save immediately for complete messages to ensure persistence
             await self.channel_manager.handle_agent_output(channel, content, "assistant", save_immediately=True)
 
+            # Mark agent as completed immediately when complete chunk is received
+            # Extract task_id from channel (format: "squad-{task_id}-{agent_type}" or "sprint-{sprint_id}-{agent_type}")
+            task_id = None
+            if channel.startswith("squad-"):
+                parts = channel.split("-")
+                if len(parts) >= 2:
+                    task_id = parts[1]
+            elif channel.startswith("sprint-"):
+                # For sprint channels, we might not have task_id in channel
+                # Try to find task_id from active_agents
+                for tid, agent_info in self._active_agents.items():
+                    if agent_info.get("channel") == channel:
+                        task_id = tid
+                        break
+
+            if task_id and task_id in self._active_agents:
+                # Mark as completed immediately when complete chunk is received
+                self._active_agents[task_id]["completed"] = True
+                self._active_agents[task_id]["status"] = "completed"
+                # Add completion timestamp
+                import time
+                self._active_agents[task_id]["completed_at"] = time.time()
+                logger.debug(f"Agent {task_id} marked as completed (complete chunk received)")
+
             # Extract tool execution summary if available (for next stage)
             tool_execution_summary = chunk.get("tool_execution_summary")
             if tool_execution_summary:
                 # Store tool execution summary in task state for next stage
                 # This will be used by test/debug agents to know what was modified
-                task_id = channel.split("-")[1] if "-" in channel else None
+                if not task_id:
+                    task_id = channel.split("-")[1] if "-" in channel and len(channel.split("-")) >= 2 else None
                 if task_id:
                     tasks = self.state_manager.get_task_checklist()
                     for task in tasks:

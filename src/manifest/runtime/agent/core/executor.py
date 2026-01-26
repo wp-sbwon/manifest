@@ -146,9 +146,19 @@ class AgentExecutor:
                 yield {"type": "error", "content": f"Unsupported provider: {provider}"}
         except Exception as e:
             yield {"type": "error", "content": str(e)}
-        finally:
+            # Mark session as failed on error
             if agent_id in self.active_sessions:
-                self.active_sessions[agent_id]["status"] = "completed"
+                self.active_sessions[agent_id]["status"] = "failed"
+                self.active_sessions[agent_id]["error"] = str(e)
+        finally:
+            # Mark session as completed when execution finishes (successfully or not)
+            if agent_id in self.active_sessions:
+                if self.active_sessions[agent_id].get("status") != "failed":
+                    self.active_sessions[agent_id]["status"] = "completed"
+                # Add completion timestamp
+                import time
+                self.active_sessions[agent_id]["completed_at"] = time.time()
+                logger.debug(f"AgentExecutor session {agent_id} marked as {self.active_sessions[agent_id]['status']}")
 
     def _prepare_messages(
         self,
