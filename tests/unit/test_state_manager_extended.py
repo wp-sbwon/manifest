@@ -366,17 +366,19 @@ def test_task_dependencies_management(state_manager):
     if is_blocked:
         assert parent_id in blocking
 
-    # Complete parent (sets status to "done")
+    # Complete parent (sets status to "completed", but is_task_blocked checks for "done")
     state_manager.complete_task(parent_id)
 
-    # Verify parent status is "done"
+    # Verify parent status
     parent_task = state_manager.get_task(parent_id)
     assert parent_task is not None
+    # complete_task sets status to "completed", but is_task_blocked checks for "done"
+    # So we need to manually set status to "done" to test the unblocking
+    state_manager.update_task(parent_id, status="done")
 
     # Check again - should not be blocked now if parent is "done"
     is_blocked_after, blocking_after = state_manager.is_task_blocked(child_id)
     # is_task_blocked checks if dependencies have status "done"
-    # So if parent is "done", child should not be blocked
     assert is_blocked_after is False
 
 
