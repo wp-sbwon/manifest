@@ -303,6 +303,75 @@ Manages task scope and file boundaries.
 
 Runtime agent system modules.
 
+#### `manifest.runtime.agent.core.executor_factory`
+
+**Location**: `src/manifest/runtime/agent/core/executor_factory.py`
+
+**Purpose**: Factory for creating LLM execution backends.
+
+##### `ExecutorFactory`
+
+Creates appropriate executor backend based on configuration.
+
+**Methods**:
+- `create_executor(config_manager, state_manager, backend=None)`: Create executor
+- `get_available_backends()`: Get list of available backends
+
+**Supported Backends**:
+- `"direct"`: Direct LLM API calls
+- `"opencode"`: OpenCode HTTP API (default)
+
+#### `manifest.runtime.agent.core.base_executor`
+
+**Location**: `src/manifest/runtime/agent/core/base_executor.py`
+
+**Purpose**: Abstract base class for all LLM executors.
+
+##### `BaseAgentExecutor`
+
+Abstract interface that all executors must implement.
+
+**Methods**:
+- `execute_agent(...)`: Execute agent and stream responses
+- `get_session_status(agent_id)`: Get session status
+- `stop_session(agent_id)`: Stop session
+
+#### `manifest.runtime.agent.core.executor`
+
+**Location**: `src/manifest/runtime/agent/core/executor.py`
+
+**Purpose**: Direct LLM API executor implementation.
+
+##### `AgentExecutor`
+
+Direct LLM API calls executor (implements `BaseAgentExecutor`).
+
+**Methods**:
+- `execute_agent(...)`: Direct API calls with hooks
+- `get_session_status(agent_id)`: Get session status
+- `stop_session(agent_id)`: Stop session
+
+#### `manifest.runtime.opencode_llm_adapter`
+
+**Location**: `src/manifest/runtime/opencode_llm_adapter.py`
+
+**Purpose**: OpenCode HTTP API adapter for LLM execution.
+
+##### `OpenCodeLLMAdapter`
+
+Adapter for using OpenCode server (implements `BaseAgentExecutor`).
+
+**Methods**:
+- `execute_agent(...)`: HTTP API calls to OpenCode server
+- `get_session_status(agent_id)`: Get session status
+- `stop_session(agent_id)`: Stop session
+- `_ensure_server_running()`: Ensure OpenCode server is running
+- `_create_session(model, provider)`: Create OpenCode session
+
+**Configuration**:
+- Server host/port via `opencode.server_host` and `opencode.server_port`
+- Auto-start via `opencode.auto_start`
+
 #### `manifest.runtime.router.terminal_router`
 
 **Location**: `src/manifest/runtime/router/terminal_router.py`
@@ -336,9 +405,14 @@ Agent orchestration system.
 
 ##### `AgentManager`
 
-**Location**: `src/manifest/runtime/agent/manager.py`
+**Location**: `src/manifest/runtime/agent/core/manager.py`
 
 Manages agent lifecycle.
+
+**Initialization**:
+```python
+AgentManager(state_manager: StateManager, executor: BaseAgentExecutor)
+```
 
 **Methods**:
 - `create_agent(agent_type, context, model_config, task_id)`: Create a new agent
@@ -347,6 +421,8 @@ Manages agent lifecycle.
 - `get_agent(agent_id)`: Get agent information
 - `list_agents()`: List all agent IDs
 - `shutdown()`: Shutdown all agents
+
+**Note**: `AgentManager` uses `BaseAgentExecutor` interface, allowing any backend to be used.
 
 ### `manifest.agents.container_manager`
 

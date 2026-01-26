@@ -176,6 +176,109 @@ TaskScoper.validate_task_scope(task_id: str, file_path: str) -> bool
 TaskScoper.get_files_in_scope(task_id: str) -> List[str]
 ```
 
+## Runtime Modules
+
+### `manifest.runtime.agent.core.executor_factory`
+
+**Purpose**: Factory for creating LLM execution backends.
+
+**Classes**:
+- `ExecutorFactory`: Creates appropriate executor backend based on configuration
+
+**Key Methods**:
+```python
+ExecutorFactory.create_executor(
+    config_manager: ConfigManager,
+    state_manager: StateManager,
+    backend: Optional[str] = None
+) -> BaseAgentExecutor
+
+ExecutorFactory.get_available_backends() -> List[str]
+```
+
+**Supported Backends**:
+- `"direct"`: Direct LLM API calls via `AgentExecutor`
+- `"opencode"`: OpenCode HTTP API via `OpenCodeLLMAdapter` (default)
+
+**Usage**:
+```python
+from manifest.runtime.agent.core.executor_factory import ExecutorFactory
+from manifest.core.config import ConfigManager
+from manifest.core.state_manager import StateManager
+
+config = ConfigManager()
+state = StateManager()
+
+# Create executor (defaults to "opencode")
+executor = ExecutorFactory.create_executor(config, state)
+
+# Explicitly use direct backend
+executor = ExecutorFactory.create_executor(config, state, backend="direct")
+```
+
+### `manifest.runtime.agent.core.base_executor`
+
+**Purpose**: Abstract base class for all LLM executors.
+
+**Classes**:
+- `BaseAgentExecutor`: Abstract interface for agent executors
+
+**Key Methods**:
+```python
+@abstractmethod
+async def execute_agent(
+    agent_id: str,
+    agent_type: str,
+    prompt: Optional[str],
+    model_config: Dict[str, Any],
+    context: Optional[Dict[str, Any]] = None,
+    message_history: Optional[List[Dict[str, Any]]] = None,
+    tools: Optional[List[Dict[str, Any]]] = None
+) -> AsyncIterator[Dict[str, Any]]
+
+@abstractmethod
+def get_session_status(agent_id: str) -> Optional[Dict[str, Any]]
+
+@abstractmethod
+def stop_session(agent_id: str) -> bool
+```
+
+**Chunk Format**:
+```python
+{
+    "type": str,  # "chunk", "complete", "tool_use", "error"
+    "content": str,  # Text content (for "chunk" and "complete")
+    "tool_call": Dict[str, Any],  # Tool call info (for "tool_use")
+}
+```
+
+### `manifest.runtime.opencode_llm_adapter`
+
+**Purpose**: OpenCode HTTP API adapter for LLM execution.
+
+**Classes**:
+- `OpenCodeLLMAdapter`: Adapter for OpenCode server
+
+**Key Methods**:
+```python
+OpenCodeLLMAdapter.__init__(
+    config_manager: ConfigManager,
+    state_manager: StateManager,
+    server_host: str = "localhost",
+    server_port: int = 4096,
+    auto_start: bool = True
+)
+
+async def execute_agent(...) -> AsyncIterator[Dict[str, Any]]
+def get_session_status(agent_id: str) -> Optional[Dict[str, Any]]
+def stop_session(agent_id: str) -> bool
+```
+
+**Configuration**:
+- `opencode.server_host`: Server hostname (default: "localhost")
+- `opencode.server_port`: Server port (default: 4096)
+- `opencode.auto_start`: Auto-start server if not running (default: true)
+
 ## Bridge Modules
 
 ### `manifest.bridge.agent_bridge`
@@ -199,6 +302,11 @@ AgentBridge.start_agent_mission(
 AgentBridge.stop_agent(task_id: str) -> Awaitable[bool]
 AgentBridge.get_agent_status(task_id: str) -> Awaitable[Optional[Dict[str, Any]]]
 ```
+
+**Executor Integration**:
+- Uses `ExecutorFactory` to create LLM executor
+- Backend selection via `agent.execution_backend` setting
+- Default: "opencode"
 
 **Message Protocol**:
 - JSON-based message format

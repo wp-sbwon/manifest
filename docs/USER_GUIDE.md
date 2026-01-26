@@ -47,22 +47,70 @@ Manifest uses a multi-agent system:
 - **Test**: Test writing and execution
 - **Review**: Code review
 
-All agents use the same terminal execution backend, which can optionally use OpenCode if available.
+### LLM Execution Backend
 
-#### OpenCode Integration
+Manifest supports two LLM execution backends:
+
+1. **OpenCode** (Default, Recommended)
+   - Uses OpenCode HTTP API for LLM interactions
+   - Handles context management and tool execution automatically
+   - Requires OpenCode server running (auto-started by default)
+
+2. **Direct API**
+   - Direct LLM API calls (Anthropic, OpenAI, etc.)
+   - Full control over prompts and context
+   - Requires API keys configured
+
+#### OpenCode Backend Configuration
+
+OpenCode is the default backend. Configure it in `.manifest/settings.json`:
+
+```json
+{
+  "agent": {
+    "execution_backend": "opencode"
+  },
+  "opencode": {
+    "server_host": "localhost",
+    "server_port": 4096,
+    "auto_start": true
+  }
+}
+```
+
+**Settings**:
+- `agent.execution_backend`: "opencode" or "direct" (default: "opencode")
+- `opencode.server_host`: OpenCode server hostname (default: "localhost")
+- `opencode.server_port`: OpenCode server port (default: 4096)
+- `opencode.auto_start`: Automatically start OpenCode server if not running (default: true)
+
+**Benefits of OpenCode**:
+- Automatic context management
+- Optimized tool execution
+- Better token usage
+- Focus on workflow orchestration
+
+#### Direct API Backend
+
+To use direct API calls instead:
+
+```json
+{
+  "agent": {
+    "execution_backend": "direct"
+  }
+}
+```
+
+**Note**: Direct backend requires API keys to be configured in `.manifest/keys.json`.
+
+#### Terminal Command Execution
 
 Manifest agents can optionally use OpenCode for terminal command execution:
 
 - **Automatic**: If OpenCode is installed, agents will automatically use it
 - **Seamless Fallback**: If OpenCode is not available, agents use the internal implementation
 - **No Configuration Needed**: Works out of the box with or without OpenCode
-- **Version Compatibility**: Manifest is designed to work with future OpenCode versions
-
-To check if OpenCode is being used:
-```python
-from manifest.runtime.opencode_adapter import get_opencode_status
-status = get_opencode_status()
-```
 
 ## Commands
 
@@ -97,6 +145,30 @@ Configure API keys in `.manifest/keys.json`:
   "google": "..."
 }
 ```
+
+**Note**: API keys are only required for the "direct" backend. OpenCode backend uses its own API key configuration.
+
+### Execution Backend Settings
+
+Configure LLM execution backend in `.manifest/settings.json`:
+
+```json
+{
+  "agent": {
+    "execution_backend": "opencode"
+  },
+  "opencode": {
+    "server_host": "localhost",
+    "server_port": 4096,
+    "auto_start": true
+  }
+}
+```
+
+**Changing Backend**:
+1. Edit `.manifest/settings.json`
+2. Set `agent.execution_backend` to "opencode" or "direct"
+3. Restart Manifest application
 
 ### Agent Models
 

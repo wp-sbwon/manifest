@@ -36,6 +36,9 @@ Manifest는 다음과 같은 핵심 가치를 제공합니다:
 - JSON 기반 메시지 프로토콜
 - 비동기 메시지 처리
 - 명령 인터페이스: `start_mission()`, `get_status()`, `promote_task()`
+- **ExecutorFactory**: LLM execution backend 선택 및 생성
+  - "direct": 직접 LLM API 호출 (AgentExecutor)
+  - "opencode": OpenCode HTTP API (OpenCodeLLMAdapter) - 기본값
 
 #### 5. Drift Auditor
 - **drift_auditor.py**: 아키텍처 드리프트 감지
@@ -130,7 +133,18 @@ Manifest는 다음과 같은 핵심 가치를 제공합니다:
                        │
             ┌──────────▼──────────┐
             │   Agent System      │
-            │  (External)         │
+            │                     │
+            │  ┌──────────────┐   │
+            │  │ExecutorFactory│  │
+            │  └──────┬───────┘   │
+            │    ┌────┴────┐      │
+            │    │         │      │
+            │ AgentExecutor│OpenCode│
+            │ (Direct API) │Adapter│
+            │    │         │      │
+            │    └────┬────┘      │
+            │         │           │
+            │    LLM APIs         │
             └─────────────────────┘
 ```
 
@@ -169,13 +183,14 @@ Manifest는 다음과 같은 핵심 가치를 제공합니다:
 
 #### `agent_bridge.py` - Agent System Integration
 - **책임**: Agent 시스템과의 직접 통합
-- **의존성**: `state_manager`
+- **의존성**: `state_manager`, `executor_factory`
 - **주요 클래스**: `AgentBridge`
 - **주요 메서드**:
   - `start()`: Agent 시스템 초기화
   - `get_status()`: 상태 조회
   - `start_mission()`: 미션 시작
   - `promote_task()`: 작업 승격
+- **Executor 통합**: `ExecutorFactory`를 통해 LLM execution backend 선택
 
 #### `drift_auditor.py` - Architecture Drift Detection
 - **책임**: 코드와 Blueprint 간 불일치 감지
@@ -308,8 +323,14 @@ manifest/
 - **aiofiles**: 비동기 파일 I/O
 - **cryptography**: API 키 암호화
 - **GitPython**: Git 통합
-- **httpx**: HTTP 클라이언트 (API 검증)
+- **httpx**: HTTP 클라이언트 (API 검증, OpenCode 통신)
 - **pytest**: 테스트 프레임워크
+
+### LLM Execution Backends
+- **Direct API**: `AgentExecutor` - 직접 LLM API 호출 (Anthropic, OpenAI 등)
+- **OpenCode**: `OpenCodeLLMAdapter` - OpenCode HTTP API를 통한 실행 (기본값)
+  - Context 관리, Tool execution을 OpenCode에 위임
+  - 서버 자동 감지 및 시작 지원
 
 ## 향후 개선 사항
 
