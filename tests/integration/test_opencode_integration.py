@@ -141,15 +141,19 @@ async def test_retry_logic(adapter):
     """Test retry logic for connection failures."""
     # Temporarily set wrong port to test retry
     original_port = adapter.server_port
+    original_base_url = adapter.base_url
     adapter.server_port = 9999  # Unlikely to be in use
+    adapter.base_url = f"http://{adapter.server_host}:9999"
 
     try:
         # Should retry and eventually fail (server won't be accessible on wrong port)
         result = await adapter._check_server_health(timeout=1.0)
         # Result should be False (server not accessible on wrong port)
-        assert result is False
+        # Note: If a server happens to be running on 9999, this might pass, but that's unlikely
+        assert result is False, f"Expected False but got {result} - server may be running on port 9999"
     finally:
         adapter.server_port = original_port
+        adapter.base_url = original_base_url
 
 
 @pytest.mark.asyncio
