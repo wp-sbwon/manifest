@@ -10,7 +10,7 @@ Tasks go through various stages (planning, implementation, testing, review)
 and have statuses (pending, in_progress, done, blocked, etc.). The manager
 also handles Worker Squad stage results and Git diff tracking for tasks.
 """
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 from pathlib import Path
 from manifest.core.state_manager import StateManager
