@@ -61,10 +61,11 @@ Welcome to the Manifest documentation! This directory contains comprehensive doc
   - Code statistics
   - Performance metrics
 
-- **[Implementation Summary](./IMPLEMENTATION_SUMMARY.md)** - Implementation details
-  - Phase 1 completion summary
-  - Feature breakdown
-  - Technical decisions
+- **[Project Structure](./PROJECT_STRUCTURE.md)** - Project structure overview
+  - Component organization by zones
+  - Module structure
+  - Dependency graph
+  - Update methods
 
 ### Contributing
 
@@ -140,7 +141,9 @@ docs/
 ├── SETUP_GITHUB.md              # GitHub setup
 ├── REFACTORING.md               # Refactoring history
 ├── DOCUMENTATION_POLICY.md      # Documentation policy
-└── NEXT_STEPS.md                # Next steps and roadmap
+├── NEXT_STEPS.md                # Next steps and roadmap
+└── archive/                     # Archived documents (v1.0)
+    └── README.md                # Archive index
 ```
 
 ## Documentation Principles
