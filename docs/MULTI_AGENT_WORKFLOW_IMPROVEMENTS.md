@@ -17,7 +17,8 @@
 
 ### Multi-Agent Workflow의 범위
 - **Agent 간 협업**: Planner → Coder → Test 등의 워크플로우 조정
-- **Agent 완료 감지**: AgentExecutor의 chunk 처리, 상태 관리
+- **Agent 완료 감지**: BaseAgentExecutor 인터페이스의 chunk 처리, 상태 관리
+  - AgentExecutor (Direct API) 또는 OpenCodeLLMAdapter (OpenCode) 사용
 - **결과 파싱**: Agent 출력에서 구조화된 데이터 추출
 - **이벤트 기반 자동화**: WorkflowEventBus를 통한 stage 자동 트리거
 - **Agent 간 메시지 전달**: Agent 간 직접 통신 프로토콜
