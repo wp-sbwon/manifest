@@ -67,7 +67,7 @@ class ManifestApp(App):
     TabbedContent { background: #161b22; height: 100%; }
     ContentSwitcher { background: #0d1117; height: 100%; }
     TabPane { height: 100%; padding: 1; }
-    
+
     #global-input {
         dock: bottom;
         border: none;
@@ -145,7 +145,7 @@ class ManifestApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        
+
         with Horizontal():
             # 1. Mission Control
             with Vertical(id="sidebar"):
@@ -164,7 +164,7 @@ class ManifestApp(App):
                                     yield Label("🔐 Auth System", classes="card-title")
                                     yield Label("✔ REQ-01: Login UI", classes="req-item req-done")
                                     yield Label("⚡ REQ-02: OAuth Widget", classes="req-item")
-                        
+
                         with TabPane("Blueprint (구조)", id="tab-blueprint"):
                             with Grid(classes="blueprint-grid"):
                                 with Vertical(classes="zone-box"):
@@ -180,7 +180,7 @@ class ManifestApp(App):
                 # 2-B. Inspector Side (Verification)
                 with Vertical(id="inspector-side"):
                     yield Label("INSPECTOR (검증)", classes="side-title")
-                    
+
                     # Context-sensitive Content
                     with Container(id="inspector-content"):
                         # Visual Mode (default for Architect)
@@ -190,7 +190,7 @@ class ManifestApp(App):
                                 yield Label("------------------\n|  [ Google ]   |\n|  Login Here   |\n------------------", classes="visual-preview")
                                 # Fixed: Moved style to .match-status class
                                 yield Label("✅ Design Match: 100%", classes="match-status")
-                        
+
                         # Data Mode (for Blueprint)
                         # Fixed: Moved 'display: none' to CSS #insp-data selector
                         with Vertical(id="insp-data"):
@@ -205,7 +205,7 @@ class ManifestApp(App):
                         yield RichLog(id="log-main", markup=True)
                     with TabPane("Squad: Auth", id="tab-auth"):
                         yield RichLog(id="log-auth", markup=True)
-                
+
                 yield Input(placeholder="명령을 입력하세요...", id="global-input")
 
         yield Footer()
@@ -215,7 +215,7 @@ class ManifestApp(App):
         tree.root.expand()
         t101 = tree.root.add("[bold green]🚀 TASK-101: Social Login[/]", expand=True)
         t101.data = "tab-auth"
-        
+
         self.query_one("#log-main").write("[bold green]Manifest AI[/] initialized.\n[Tab]으로 설계/구조를 전환하고 [I]로 인스펙터를 토글하세요.")
         self.query_one("#global-input").focus()
 
@@ -224,7 +224,7 @@ class ManifestApp(App):
         """설계 탭 전환에 따라 인스펙터의 내용을 자동으로 동기화합니다."""
         visual_pane = self.query_one("#insp-visual")
         data_pane = self.query_one("#insp-data")
-        
+
         if event.pane.id == "tab-architect":
             visual_pane.styles.display = "block"
             data_pane.styles.display = "none"
@@ -242,10 +242,10 @@ class ManifestApp(App):
         user_input = event.value.strip()
         if not user_input: return
         self.query_one("#global-input").value = ""
-        
+
         log = self.query_one("#log-main", RichLog)
         log.write(f"[bold blue]User:[/]{user_input}")
-        
+
         # AI 응답 시뮬레이션
         await self.process_ai(user_input, log)
 

@@ -37,11 +37,11 @@ class RecoveryStrategy(Enum):
 
 class FailureAnalyzer:
     """Analyzes agent failures to determine cause and recovery strategy.
-    
+
     Examines error messages, agent output, and failure context to identify
     the root cause and suggest appropriate recovery strategies.
     """
-    
+
     @staticmethod
     def analyze_failure(
         error: str,
@@ -51,14 +51,14 @@ class FailureAnalyzer:
         context: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Analyze a failure to determine cause and recovery strategy.
-        
+
         Args:
             error: Error message or description.
             agent_output: Agent's output before failure (if available).
             agent_type: Type of agent that failed.
             stage: Stage in workflow where failure occurred.
             context: Additional context about the failure.
-        
+
         Returns:
             Dictionary with:
             - failure_type: FailureType enum value
@@ -68,12 +68,12 @@ class FailureAnalyzer:
         """
         error_lower = error.lower()
         output_lower = agent_output.lower() if agent_output else ""
-        
+
         failure_type = FailureType.UNKNOWN
         cause = "Unknown failure"
         recovery_strategies = [RecoveryStrategy.RETRY]
         error_details = {}
-        
+
         # Check for timeout
         if any(keyword in error_lower for keyword in ["timeout", "timed out", "time limit"]):
             failure_type = FailureType.TIMEOUT
@@ -84,7 +84,7 @@ class FailureAnalyzer:
                 RecoveryStrategy.RETRY
             ]
             error_details["timeout_duration"] = _extract_timeout_duration(error)
-        
+
         # Check for API errors
         elif any(keyword in error_lower for keyword in ["api", "rate limit", "quota", "429", "500", "503"]):
             failure_type = FailureType.API_ERROR
@@ -97,7 +97,7 @@ class FailureAnalyzer:
             if "rate limit" in error_lower or "429" in error:
                 error_details["rate_limited"] = True
                 recovery_strategies.insert(0, RecoveryStrategy.RETRY)  # Add retry with delay
-        
+
         # Check for context overflow
         elif any(keyword in error_lower for keyword in ["context", "token", "too long", "exceed"]):
             failure_type = FailureType.CONTEXT_OVERFLOW
@@ -108,7 +108,7 @@ class FailureAnalyzer:
                 RecoveryStrategy.MANUAL_INTERVENTION
             ]
             error_details["context_overflow"] = True
-        
+
         # Check for parsing errors
         elif any(keyword in error_lower for keyword in ["parse", "json", "invalid", "malformed"]):
             failure_type = FailureType.PARSING_ERROR
@@ -119,7 +119,7 @@ class FailureAnalyzer:
                 RecoveryStrategy.MANUAL_INTERVENTION
             ]
             error_details["parsing_error"] = True
-        
+
         # Check for validation errors
         elif any(keyword in error_lower for keyword in ["validation", "invalid", "rejected", "not allowed"]):
             failure_type = FailureType.VALIDATION_ERROR
@@ -130,7 +130,7 @@ class FailureAnalyzer:
                 RecoveryStrategy.MANUAL_INTERVENTION
             ]
             error_details["validation_error"] = True
-        
+
         # Check for execution errors
         elif any(keyword in error_lower for keyword in ["execution", "runtime", "exception", "error"]):
             failure_type = FailureType.EXECUTION_ERROR
@@ -141,7 +141,7 @@ class FailureAnalyzer:
                 RecoveryStrategy.MANUAL_INTERVENTION
             ]
             error_details["execution_error"] = True
-        
+
         return {
             "failure_type": failure_type,
             "cause": cause,
@@ -153,10 +153,10 @@ class FailureAnalyzer:
 
 def _extract_timeout_duration(error: str) -> Optional[float]:
     """Extract timeout duration from error message.
-    
+
     Args:
         error: Error message.
-    
+
     Returns:
         Timeout duration in seconds, or None if not found.
     """
@@ -168,21 +168,21 @@ def _extract_timeout_duration(error: str) -> Optional[float]:
 
 class FailureRecoveryManager:
     """Manages failure recovery for agent workflows.
-    
+
     Analyzes failures, attempts recovery using various strategies, and
     provides clear error messages to users.
     """
-    
+
     def __init__(self, coordinator: Any):
         """Initialize the failure recovery manager.
-        
+
         Args:
             coordinator: AgentCoordinator instance for retrying agents.
         """
         self.coordinator = coordinator
         self.analyzer = FailureAnalyzer()
         self.recovery_attempts: Dict[str, List[Dict[str, Any]]] = {}  # task_id -> attempts
-    
+
     async def attempt_recovery(
         self,
         task_id: str,
@@ -192,17 +192,17 @@ class FailureRecoveryManager:
         previous_stages: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Attempt to recover from a stage failure.
-        
+
         Analyzes the failure and tries recovery strategies in order until
         one succeeds or all strategies are exhausted.
-        
+
         Args:
             task_id: ID of the task that failed.
             stage: Stage name where failure occurred.
             agent_type: Type of agent that failed.
             failure_result: Result dictionary from failed stage execution.
             previous_stages: Results from previous stages.
-        
+
         Returns:
             Dictionary with:
             - recovered: Boolean indicating if recovery succeeded
@@ -212,7 +212,7 @@ class FailureRecoveryManager:
         """
         error = failure_result.get("error", "Unknown error")
         output = failure_result.get("output", "")
-        
+
         # Analyze failure
         analysis = self.analyzer.analyze_failure(
             error=error,
@@ -220,21 +220,21 @@ class FailureRecoveryManager:
             agent_type=agent_type,
             stage=stage
         )
-        
+
         failure_type = analysis["failure_type"]
         recovery_strategies = analysis["recovery_strategies"]
-        
+
         # Track recovery attempts
         if task_id not in self.recovery_attempts:
             self.recovery_attempts[task_id] = []
-        
+
         # Try each recovery strategy in order
         for strategy in recovery_strategies:
             logger.info(
                 f"Attempting recovery for task {task_id} stage {stage} "
                 f"using strategy: {strategy.value}"
             )
-            
+
             attempt_result = await self._apply_recovery_strategy(
                 task_id=task_id,
                 stage=stage,
@@ -243,7 +243,7 @@ class FailureRecoveryManager:
                 failure_analysis=analysis,
                 previous_stages=previous_stages
             )
-            
+
             # Record attempt
             self.recovery_attempts[task_id].append({
                 "stage": stage,
@@ -251,7 +251,7 @@ class FailureRecoveryManager:
                 "success": attempt_result.get("success", False),
                 "timestamp": __import__("time").time()
             })
-            
+
             if attempt_result.get("success"):
                 logger.info(
                     f"Recovery successful for task {task_id} stage {stage} "
@@ -263,11 +263,11 @@ class FailureRecoveryManager:
                     "result": attempt_result,
                     "error": None
                 }
-        
+
         # All recovery strategies failed
         error_message = self._generate_error_message(analysis, recovery_strategies)
         logger.error(f"All recovery attempts failed for task {task_id} stage {stage}")
-        
+
         return {
             "recovered": False,
             "strategy_used": None,
@@ -275,7 +275,7 @@ class FailureRecoveryManager:
             "error": error_message,
             "failure_analysis": analysis
         }
-    
+
     async def _apply_recovery_strategy(
         self,
         task_id: str,
@@ -286,7 +286,7 @@ class FailureRecoveryManager:
         previous_stages: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Apply a specific recovery strategy.
-        
+
         Args:
             task_id: Task ID.
             stage: Stage name.
@@ -294,7 +294,7 @@ class FailureRecoveryManager:
             strategy: Recovery strategy to apply.
             failure_analysis: Failure analysis result.
             previous_stages: Previous stage results.
-        
+
         Returns:
             Result dictionary with success flag and result data.
         """
@@ -303,25 +303,25 @@ class FailureRecoveryManager:
             return await self._retry_stage(
                 task_id, stage, agent_type, previous_stages
             )
-        
+
         elif strategy == RecoveryStrategy.RETRY_WITH_SIMPLIFIED_PROMPT:
             # Retry with simplified prompt (reduce context)
             return await self._retry_with_simplified_prompt(
                 task_id, stage, agent_type, previous_stages
             )
-        
+
         elif strategy == RecoveryStrategy.FALLBACK_MODEL:
             # Try with a different model (e.g., faster/cheaper model)
             return await self._retry_with_fallback_model(
                 task_id, stage, agent_type, previous_stages
             )
-        
+
         elif strategy == RecoveryStrategy.FALLBACK_APPROACH:
             # Try a different approach (e.g., different method)
             return await self._retry_with_fallback_approach(
                 task_id, stage, agent_type, previous_stages
             )
-        
+
         elif strategy == RecoveryStrategy.SKIP_STAGE:
             # Skip this stage and continue
             return {
@@ -330,7 +330,7 @@ class FailureRecoveryManager:
                 "output": f"Stage {stage} skipped due to failure",
                 "parsed_data": {}
             }
-        
+
         elif strategy == RecoveryStrategy.MANUAL_INTERVENTION:
             # Mark for manual intervention
             return {
@@ -338,9 +338,9 @@ class FailureRecoveryManager:
                 "requires_manual_intervention": True,
                 "error": "Manual intervention required"
             }
-        
+
         return {"success": False, "error": "Unknown recovery strategy"}
-    
+
     async def _retry_stage(
         self,
         task_id: str,
@@ -349,22 +349,22 @@ class FailureRecoveryManager:
         previous_stages: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Retry the stage with same configuration.
-        
+
         Args:
             task_id: Task ID.
             stage: Stage name.
             agent_type: Agent type.
             previous_stages: Previous stage results.
-        
+
         Returns:
             Result from retry attempt.
         """
         logger.info(f"Retrying stage {stage} for task {task_id}")
-        
+
         # Wait a bit before retry (exponential backoff)
         import asyncio
         await asyncio.sleep(2.0)
-        
+
         # Retry using coordinator
         result = await self.coordinator.start_worker_agent_and_wait(
             task_id=task_id,
@@ -373,9 +373,9 @@ class FailureRecoveryManager:
             previous_stages=previous_stages or {},
             timeout=600.0
         )
-        
+
         return result
-    
+
     async def _retry_with_simplified_prompt(
         self,
         task_id: str,
@@ -384,23 +384,23 @@ class FailureRecoveryManager:
         previous_stages: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Retry with simplified prompt (reduced context).
-        
+
         Args:
             task_id: Task ID.
             stage: Stage name.
             agent_type: Agent type.
             previous_stages: Previous stage results.
-        
+
         Returns:
             Result from retry attempt.
         """
         logger.info(f"Retrying stage {stage} for task {task_id} with simplified prompt")
-        
+
         # For now, just retry (simplified prompt would require prompt modification)
         # This is a placeholder for future enhancement
         import asyncio
         await asyncio.sleep(2.0)
-        
+
         result = await self.coordinator.start_worker_agent_and_wait(
             task_id=task_id,
             agent_type=agent_type,
@@ -408,9 +408,9 @@ class FailureRecoveryManager:
             previous_stages=previous_stages or {},
             timeout=600.0
         )
-        
+
         return result
-    
+
     async def _retry_with_fallback_model(
         self,
         task_id: str,
@@ -419,23 +419,23 @@ class FailureRecoveryManager:
         previous_stages: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Retry with a fallback model.
-        
+
         Args:
             task_id: Task ID.
             stage: Stage name.
             agent_type: Agent type.
             previous_stages: Previous stage results.
-        
+
         Returns:
             Result from retry attempt.
         """
         logger.info(f"Retrying stage {stage} for task {task_id} with fallback model")
-        
+
         # Get fallback model config
         # For now, use same model (fallback model selection would require config)
         import asyncio
         await asyncio.sleep(2.0)
-        
+
         result = await self.coordinator.start_worker_agent_and_wait(
             task_id=task_id,
             agent_type=agent_type,
@@ -443,9 +443,9 @@ class FailureRecoveryManager:
             previous_stages=previous_stages or {},
             timeout=600.0
         )
-        
+
         return result
-    
+
     async def _retry_with_fallback_approach(
         self,
         task_id: str,
@@ -454,22 +454,22 @@ class FailureRecoveryManager:
         previous_stages: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Retry with a different approach.
-        
+
         Args:
             task_id: Task ID.
             stage: Stage name.
             agent_type: Agent type.
             previous_stages: Previous stage results.
-        
+
         Returns:
             Result from retry attempt.
         """
         logger.info(f"Retrying stage {stage} for task {task_id} with fallback approach")
-        
+
         # For now, just retry (different approach would require method changes)
         import asyncio
         await asyncio.sleep(2.0)
-        
+
         result = await self.coordinator.start_worker_agent_and_wait(
             task_id=task_id,
             agent_type=agent_type,
@@ -477,41 +477,41 @@ class FailureRecoveryManager:
             previous_stages=previous_stages or {},
             timeout=600.0
         )
-        
+
         return result
-    
+
     def _generate_error_message(
         self,
         analysis: Dict[str, Any],
         strategies_tried: List[RecoveryStrategy]
     ) -> str:
         """Generate a clear error message for the user.
-        
+
         Args:
             analysis: Failure analysis result.
             strategies_tried: List of recovery strategies that were attempted.
-        
+
         Returns:
             Human-readable error message with suggestions.
         """
         failure_type = analysis["failure_type"]
         cause = analysis["cause"]
-        
+
         message_parts = [
             f"Stage failed: {cause}",
             f"Failure type: {failure_type.value}",
             "",
             "Recovery attempts:"
         ]
-        
+
         for strategy in strategies_tried:
             message_parts.append(f"  - {strategy.value}: Attempted")
-        
+
         message_parts.extend([
             "",
             "Suggestions:"
         ])
-        
+
         # Add suggestions based on failure type
         if failure_type == FailureType.TIMEOUT:
             message_parts.extend([
@@ -539,15 +539,15 @@ class FailureRecoveryManager:
             ])
         else:
             message_parts.append("  - Review error details and try manual intervention")
-        
+
         return "\n".join(message_parts)
-    
+
     def get_recovery_history(self, task_id: str) -> List[Dict[str, Any]]:
         """Get recovery attempt history for a task.
-        
+
         Args:
             task_id: Task ID.
-        
+
         Returns:
             List of recovery attempts.
         """

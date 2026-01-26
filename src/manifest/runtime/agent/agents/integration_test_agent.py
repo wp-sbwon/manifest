@@ -155,22 +155,22 @@ Task Description: {task_description}
 
 class IntegrationTestAgent:
     """Integration test agent for writing and executing integration tests.
-    
+
     Handles Sprint-level integration testing which verifies that components
     communicate correctly with each other. Integration tests ensure APIs,
     services, and modules work together as expected.
-    
+
     The agent supports TDD mode (write tests before implementation) and
     execution mode (run tests after implementation). Test results are saved
     to Sprint data for tracking.
-    
+
     Attributes:
         agent_id: Unique identifier for this agent instance.
         executor: AgentExecutor for making LLM API calls.
         state_manager: StateManager for persisting test results.
         message_history: List of conversation messages for context.
     """
-    
+
     def __init__(
         self,
         agent_id: str,
@@ -178,7 +178,7 @@ class IntegrationTestAgent:
         state_manager: StateManager
     ):
         """Initialize the integration test agent.
-        
+
         Args:
             agent_id: Unique identifier for this agent.
             executor: Executor instance for LLM API calls.
@@ -189,7 +189,7 @@ class IntegrationTestAgent:
         self.state_manager = state_manager
         self.terminal_router = terminal_router
         self.message_history: List[Dict[str, str]] = []
-    
+
     async def write_tdd_tests(
         self,
         sprint_id: str,
@@ -197,18 +197,18 @@ class IntegrationTestAgent:
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
         """Write integration tests in TDD mode for a Sprint.
-        
+
         In TDD mode, integration tests are written before implementation.
         The agent analyzes the Sprint scope, blueprint components, and
         contracts to create comprehensive integration tests that define
         expected component interactions. These tests should initially fail.
-        
+
         Args:
             sprint_id: ID of the sprint to write integration tests for.
             context: Tiered context including PRD, architecture, blueprint,
                 and Sprint task/component information.
             model_config: Dictionary with provider, model, and api_key.
-        
+
         Yields:
             Dictionaries with type "chunk" (streaming) or "complete" (finished).
             Content contains integration test code. Test information is extracted
@@ -216,7 +216,7 @@ class IntegrationTestAgent:
         """
         # Generate TDD integration test prompt
         prompt = self._generate_sprint_tdd_integration_test_prompt(sprint_id, context)
-        
+
         # Execute agent
         async for chunk in self.executor.execute_agent(
             agent_id=self.agent_id,
@@ -234,9 +234,9 @@ class IntegrationTestAgent:
             elif chunk.get("type") == "complete":
                 # Save complete response and extract test information
                 await self._save_tdd_integration_test_results(sprint_id, chunk.get("content", ""))
-            
+
             yield chunk
-    
+
     async def run_integration_tests(
         self,
         sprint_id: str,
@@ -245,18 +245,18 @@ class IntegrationTestAgent:
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
         """Run integration tests after a task completes.
-        
+
         Executes the integration test suite to verify that component
         integrations still work correctly after the task's changes. This
         ensures the implementation doesn't break component communication.
-        
+
         Args:
             sprint_id: ID of the sprint the task belongs to.
             task_id: ID of the task that just completed.
             context: Tiered context including implementation details and
                 test file locations from TDD stage.
             model_config: Dictionary with provider, model, and api_key.
-        
+
         Yields:
             Dictionaries with type "chunk" (streaming) or "complete" (finished).
             Content contains test execution output. Results are parsed and
@@ -264,7 +264,7 @@ class IntegrationTestAgent:
         """
         # Generate integration test execution prompt
         prompt = self._generate_integration_test_execution_prompt(sprint_id, task_id, context)
-        
+
         # Execute agent
         async for chunk in self.executor.execute_agent(
             agent_id=self.agent_id,
@@ -282,9 +282,9 @@ class IntegrationTestAgent:
             elif chunk.get("type") == "complete":
                 # Save test results
                 await self._save_integration_test_execution_results(sprint_id, task_id, chunk.get("content", ""))
-            
+
             yield chunk
-    
+
     def _generate_sprint_tdd_integration_test_prompt(self, sprint_id: str, context: Dict[str, Any]) -> str:
         """Generate Sprint-level TDD integration test prompt."""
         # Get Sprint information
@@ -293,41 +293,41 @@ class IntegrationTestAgent:
         sprint_data = sprint_manager.load_sprint(sprint_id)
         sprint_name = sprint_data.get("name", "") if sprint_data else ""
         sprint_description = sprint_data.get("description", "") if sprint_data else ""
-        
+
         # Get Sprint tasks
         tasks = self.state_manager.get_task_checklist()
         sprint_tasks = [t for t in tasks if t.get("sprint_id") == sprint_id]
         task_list = "\n".join([f"- {t.get('name', t.get('id', ''))}: {t.get('description', '')}" for t in sprint_tasks])
-        
+
         # Extract component and API information from context
         blueprint = context.get("tier_1", {}).get("blueprint", {})
         components = blueprint.get("components", [])
         component_list = "\n".join([f"- {c.get('name', c.get('id', ''))}" for c in components[:10]])  # Limit to first 10
-        
+
         # Extract APIs from contracts
         contracts = blueprint.get("contracts", [])
         api_list = "\n".join([f"- {c.get('name', c.get('id', ''))}" for c in contracts[:10]])
-        
+
         # Get Architecture info
         architecture = context.get("tier_1", {}).get("architecture", {})
         architecture_info = f"""
 Architecture:
 {self._format_architecture(architecture)}
 """
-        
+
         # Get Blueprint info
         blueprint_info = f"""
 Blueprint:
 {self._format_blueprint(blueprint)}
 """
-        
+
         # Get PRD info
         prd_data = context.get("tier_1", {}).get("prd", {})
         prd_info = f"""
 PRD:
 {self._format_prd(prd_data)}
 """
-        
+
         return SPRINT_TDD_INTEGRATION_TEST_PROMPT_TEMPLATE.format(
             INTEGRATION_TEST_IDENTITY=INTEGRATION_TEST_IDENTITY,
             sprint_id=sprint_id,
@@ -340,7 +340,7 @@ PRD:
             blueprint_info=blueprint_info,
             prd_info=prd_info
         )
-    
+
     def _generate_integration_test_execution_prompt(self, sprint_id: str, task_id: str, context: Dict[str, Any]) -> str:
         """Generate integration test execution prompt."""
         # Get Sprint information
@@ -348,13 +348,13 @@ PRD:
         sprint_manager = SprintManager(self.state_manager)
         sprint_data = sprint_manager.load_sprint(sprint_id)
         sprint_name = sprint_data.get("name", "") if sprint_data else ""
-        
+
         # Get Task information
         tasks = self.state_manager.get_task_checklist()
         task = next((t for t in tasks if t.get("id") == task_id), None)
         task_name = task.get("name", "") if task else ""
         task_description = task.get("description", "") if task else ""
-        
+
         # Get implementation details from context
         worker_squad_stages = task.get("worker_squad_stages", {}) if task else {}
         coder_output = worker_squad_stages.get("coder", {}).get("output", "")
@@ -363,12 +363,12 @@ PRD:
 Coder Output: {coder_output[:500]}...
 Files Modified: {', '.join(files_modified) if files_modified else 'None'}
 """
-        
+
         # Get test files from Sprint data
         integration_tests = sprint_data.get("integration_tests", {}) if sprint_data else {}
         test_files = integration_tests.get("test_files", [])
         test_files_str = "\n".join(test_files) if test_files else "Integration test files from Sprint TDD stage"
-        
+
         return INTEGRATION_TEST_EXECUTION_PROMPT_TEMPLATE.format(
             INTEGRATION_TEST_IDENTITY=INTEGRATION_TEST_IDENTITY,
             sprint_id=sprint_id,
@@ -379,72 +379,72 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
             implementation_details=implementation_details,
             test_files=test_files_str
         )
-    
+
     def _format_architecture(self, architecture: Dict[str, Any]) -> str:
         """Format architecture data for prompt."""
         if not architecture:
             return "No architecture data available"
-        
+
         features = architecture.get("features", [])
         requirements = architecture.get("requirements", [])
-        
+
         formatted = []
         if features:
             formatted.append("Features:")
             for feature in features[:5]:  # Limit to first 5
                 formatted.append(f"  - {feature.get('name', feature.get('id', ''))}")
-        
+
         if requirements:
             formatted.append("\nRequirements:")
             for req in requirements[:5]:
                 formatted.append(f"  - {req.get('desc', req.get('id', ''))}")
-        
+
         return "\n".join(formatted) if formatted else "No architecture details"
-    
+
     def _format_blueprint(self, blueprint: Dict[str, Any]) -> str:
         """Format blueprint data for prompt."""
         if not blueprint:
             return "No blueprint data available"
-        
+
         components = blueprint.get("components", [])
         contracts = blueprint.get("contracts", [])
-        
+
         formatted = []
         if components:
             formatted.append("Components:")
             for comp in components[:10]:  # Limit to first 10
                 formatted.append(f"  - {comp.get('name', comp.get('id', ''))}")
-        
+
         if contracts:
             formatted.append("\nContracts:")
             for contract in contracts[:5]:
                 formatted.append(f"  - {contract.get('name', contract.get('id', ''))}")
-        
+
         return "\n".join(formatted) if formatted else "No blueprint details"
-    
+
     def _format_prd(self, prd_data: Dict[str, Any]) -> str:
         """Format PRD data for prompt."""
         if not prd_data:
             return "No PRD data available"
-        
+
         title = prd_data.get("title", "")
         overview = prd_data.get("overview", "")
-        
+
         formatted = []
         if title:
             formatted.append(f"Title: {title}")
         if overview:
             formatted.append(f"Overview: {overview[:200]}...")
-        
+
         return "\n".join(formatted) if formatted else "No PRD details"
-    
+
     async def _save_tdd_integration_test_results(self, sprint_id: str, content: str):
         """Save TDD integration test writing results to Sprint data."""
         # Extract test information from content
         import re
         test_files = []
         test_cases = []
-        
+
         # Look for test file paths
         file_patterns = [
             r"test_integration[_\w]*\.py",
@@ -454,7 +454,7 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
         for pattern in file_patterns:
             matches = re.findall(pattern, content, re.IGNORECASE)
             test_files.extend(matches)
-        
+
         # Look for test case names
         test_case_patterns = [
             r"def test_\w+",
@@ -464,7 +464,7 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
         for pattern in test_case_patterns:
             matches = re.findall(pattern, content, re.IGNORECASE)
             test_cases.extend([m if isinstance(m, str) else m[0] if m else "" for m in matches])
-        
+
         test_results = {
             "status": "written",
             "output": content,
@@ -475,7 +475,7 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
             "tdd_mode": True,
             "written_at": self._get_timestamp()
         }
-        
+
         # Update Sprint data
         from manifest.core.sprint_manager import SprintManager
         sprint_manager = SprintManager(self.state_manager)
@@ -486,7 +486,7 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
             sprint_manager = SprintManager(self.state_manager)
             sprint_manager.save_sprint(sprint_data)
             await self.state_manager.save_state()
-    
+
     async def _save_integration_test_execution_results(self, sprint_id: str, task_id: str, content: str):
         """Save integration test execution results."""
         # Parse test results from content
@@ -499,7 +499,7 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
             "details": [],
             "executed_at": self._get_timestamp()
         }
-        
+
         # Extract test results
         passed_patterns = [
             r"(\d+)\s+passed",
@@ -511,19 +511,19 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
             r"(\d+)\s+tests?\s+failed",
             r"FAILED[:\s]+(\d+)",
         ]
-        
+
         for pattern in passed_patterns:
             match = re.search(pattern, content, re.IGNORECASE)
             if match:
                 test_results["tests_passed"] = int(match.group(1))
                 break
-        
+
         for pattern in failed_patterns:
             match = re.search(pattern, content, re.IGNORECASE)
             if match:
                 test_results["tests_failed"] = int(match.group(1))
                 break
-        
+
         # Determine overall status
         if test_results["tests_failed"] > 0:
             test_results["status"] = "failed"
@@ -533,7 +533,7 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
             test_results["status"] = "passed"
         elif "failed" in content.lower() or "error" in content.lower():
             test_results["status"] = "failed"
-        
+
         # Update Sprint data - append to execution_results
         from manifest.core.sprint_manager import SprintManager
         sprint_manager = SprintManager(self.state_manager)
@@ -543,17 +543,17 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
                 sprint_data["integration_tests"] = {}
             if "execution_results" not in sprint_data["integration_tests"]:
                 sprint_data["integration_tests"]["execution_results"] = []
-            
+
             # Add task_id to result
             test_results["task_id"] = task_id
             sprint_data["integration_tests"]["execution_results"].append(test_results)
             sprint_data["integration_tests"]["status"] = "executed"
-            
+
             from manifest.core.sprint_manager import SprintManager
             sprint_manager = SprintManager(self.state_manager)
             sprint_manager.save_sprint(sprint_data)
             await self.state_manager.save_state()
-    
+
     def _extract_test_plan(self, content: str) -> str:
         """Extract test plan summary from content."""
         import re
@@ -567,7 +567,7 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
             if match:
                 return match.group(1) if match.groups() else match.group(0)
         return "Integration test plan extracted from test code"
-    
+
     def _get_timestamp(self) -> str:
         """Get current timestamp."""
         from datetime import datetime

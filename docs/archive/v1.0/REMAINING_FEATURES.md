@@ -1,6 +1,6 @@
 # 남은 기능 구현 목록
 
-**작성일**: 2026-01-24  
+**작성일**: 2026-01-24
 **기준**: MANIFEST_REQUIREMENTS.md, PROJECT_STATUS.md
 
 ## 🔴 Critical Priority (즉시 필요)
@@ -61,7 +61,7 @@
 - ⚠️ Agent 완료 대기 및 결과 파싱 로직
 - ⚠️ Agent 출력에서 다음 stage 트리거 자동화
 
-**위치**: 
+**위치**:
 - `src/manifest/agents/worker_squad_executor.py` - 구조는 완전하나 Agent 완료 대기 로직 필요
 - `src/manifest/agents/agent_coordinator.py:427` - TODO 주석 (Blueprint 충돌 시 Planner 전달)
 

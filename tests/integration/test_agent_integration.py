@@ -18,7 +18,7 @@ def temp_manifest_dir(tmp_path):
     """Create temporary manifest directory with test data."""
     manifest_dir = tmp_path / ".manifest"
     manifest_dir.mkdir()
-    
+
     # Create blueprint.json
     blueprint = {
         "version": "1.0",
@@ -34,7 +34,7 @@ def temp_manifest_dir(tmp_path):
     }
     with open(manifest_dir / "blueprint.json", "w") as f:
         json.dump(blueprint, f)
-    
+
     # Create intent.json
     intent = {
         "version": "1.0",
@@ -50,7 +50,7 @@ def temp_manifest_dir(tmp_path):
     }
     with open(manifest_dir / "intent.json", "w") as f:
         json.dump(intent, f)
-    
+
     # Create architecture.json
     architecture = {
         "version": "1.0",
@@ -60,13 +60,13 @@ def temp_manifest_dir(tmp_path):
     }
     with open(manifest_dir / "architecture.json", "w") as f:
         json.dump(architecture, f)
-    
+
     # Create policy file
     policy_dir = tmp_path / ".claude" / "rules"
     policy_dir.mkdir(parents=True)
     with open(policy_dir / "manifest-policy.md", "w") as f:
         f.write("# Test Policy")
-    
+
     return manifest_dir
 
 
@@ -76,17 +76,17 @@ def mock_agent_bridge():
     # Mock terminal router
     terminal_router = Mock()
     terminal_router.active_commands = {}
-    
+
     # Mock orchestrator and agent manager
     orchestrator = Mock()
     orchestrator.start_mission = AsyncMock(return_value=True)
-    
+
     agent_manager = Mock()
     agent_manager.create_agent = AsyncMock(return_value={"id": "task-1", "type": "coder", "status": "created"})
     agent_manager.start_agent = AsyncMock(return_value=True)
     agent_manager.stop_agent = AsyncMock(return_value=True)
     agent_manager.get_agent = Mock(return_value={"id": "task-1", "type": "coder", "status": "active"})
-    
+
     bridge = Mock(spec=AgentBridge)
     bridge.terminal_router = terminal_router
     bridge.orchestrator = orchestrator
@@ -117,12 +117,12 @@ async def test_full_agent_flow(temp_manifest_dir, mock_agent_bridge, mock_config
     state_manager = StateManager(temp_manifest_dir)
     task_scoper = TaskScoper(temp_manifest_dir)
     context_provider = ContextProvider(temp_manifest_dir, task_scoper)
-    
+
     # Add task to state
     state_manager.set_task_checklist([
         {"id": "task-1", "name": "Test Task", "status": "pending"}
     ])
-    
+
     # Create coordinator
     coordinator = AgentCoordinator(
         mock_agent_bridge,
@@ -131,13 +131,13 @@ async def test_full_agent_flow(temp_manifest_dir, mock_agent_bridge, mock_config
         mock_config_manager,
         state_manager
     )
-    
+
     # Start worker agent
     success = await coordinator.start_worker_agent("task-1", "coder")
-    
+
     assert success == True
     assert "task-1" in coordinator.active_agents
-    
+
     # Verify context was provided
     mock_agent_bridge.start_agent_mission.assert_called_once()
     call_args = mock_agent_bridge.start_agent_mission.call_args
@@ -145,7 +145,7 @@ async def test_full_agent_flow(temp_manifest_dir, mock_agent_bridge, mock_config
     assert call_args[1]["agent_type"] == "coder"
     assert "context" in call_args[1]
     assert "model_config" in call_args[1]
-    
+
     # Verify task was updated
     tasks = state_manager.get_task_checklist()
     task = next((t for t in tasks if t.get("id") == "task-1"), None)
@@ -161,7 +161,7 @@ async def test_orchestrator_flow(temp_manifest_dir, mock_agent_bridge, mock_conf
     state_manager = StateManager(temp_manifest_dir)
     task_scoper = TaskScoper(temp_manifest_dir)
     context_provider = ContextProvider(temp_manifest_dir, task_scoper)
-    
+
     coordinator = AgentCoordinator(
         mock_agent_bridge,
         context_provider,
@@ -169,13 +169,13 @@ async def test_orchestrator_flow(temp_manifest_dir, mock_agent_bridge, mock_conf
         mock_config_manager,
         state_manager
     )
-    
+
     # Start orchestrator
     success = await coordinator.start_orchestrator("Test mission description")
-    
+
     assert success == True
     assert "orchestrator" in coordinator.active_agents
-    
+
     # Verify context includes mission description
     mock_agent_bridge.start_agent_mission.assert_called_once()
     call_args = mock_agent_bridge.start_agent_mission.call_args

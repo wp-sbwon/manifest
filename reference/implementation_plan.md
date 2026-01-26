@@ -10,7 +10,7 @@ Manifest is an **AI-Native Orchestration IDE** designed to solve "Code Blindness
 > - The IDE functionality is **completely blocked** until valid keys are detected and verified via a simple ping test.
 
 > [!IMPORTANT]
-> **Manifest Context Engine (Tiered Orchestration)**: 
+> **Manifest Context Engine (Tiered Orchestration)**:
 > Context is no longer a dump of all files. Manifest manages what an agent sees based on the Mission Stage.
 > - **Tier 0 (The Law)**: `.claude/rules/manifest-policy.md` is forced into EVERY agent.
 > - **Tier 1 (The Intent)**: `architecture.json` and high-level goals are provided to the **Planner**.
@@ -37,7 +37,7 @@ The central Python engine that manages state, IPC, and agent squads.
 
 #### [NEW] [agent_bridge.py](file:///Users/wonseongbae/Documents/GoogleAG/Manifest/agent_bridge.py)
 - **Agent System Integration**: Direct integration with agent system for maximum speed.
-- **State Persistence (Continuation Enforcer)**: 
+- **State Persistence (Continuation Enforcer)**:
     - Serialize Mission Tree, Task Checklist, and Chat History to `.manifest/state.json`.
     - Handle session resumption with "Next Action" prompts.
 - **Drift Auditor**: Use **AST-Grep** to compare code structure against `blueprint.md` in real-time.
@@ -49,17 +49,17 @@ The central Python engine that manages state, IPC, and agent squads.
 A modular interface built with the Textual library, supporting the PRD's vision.
 
 #### [MODIFY] [app.py](file:///Users/wonseongbae/Documents/GoogleAG/Manifest/app.py)
-- **View 1: Architect (Intention)**: 
+- **View 1: Architect (Intention)**:
     - **Visual Intent Map**: Renders \`architecture/intent.md\` showing Features, Requirements, and User Goals.
     - Powered by \`intent.json\`.
-- **View 2: Blueprint (Design)**: 
+- **View 2: Blueprint (Design)**:
     - **Visual Translation**: Renders \`architecture/blueprint.md\` showing the technical API contract (Classes/Methods).
     - Powered by \`blueprint.json\`.
-- **View 3: Inspector (Verification)**: 
+- **View 3: Inspector (Verification)**:
     - **Visual Mode**: UI Match (Figma vs Mock).
     - **Data Mode**: Execution trace and input/output flow.
     - **Drift Mode**: Architecture vs Code conflict resolution UI.
-- **View 4: Mission Control (Management)**: 
+- **View 4: Mission Control (Management)**:
     - Hierarchical **Task Tree** with status rings.
     - **Approval Gates**: Command buttons to promote tasks between stages.
 - **View 5: History (Timeline)**: Git-linked timeline to roll back design and code simultaneously.

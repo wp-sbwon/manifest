@@ -20,7 +20,7 @@
   - Architecture Status (Features, completion %)
   - Implementation Status (Implemented, Ghost, Drift components)
   - Current Task Status
-- **장점**: 
+- **장점**:
   - 에이전트가 전체 코드를 읽지 않고도 프로젝트 상태 파악 가능
   - 구조화된 정보로 컨텍스트 효율적 사용
 
@@ -40,7 +40,7 @@
   - Tier 1: Architecture & Intent (architecture.json, intent.json)
   - Tier 2: Blueprint (scoped to task)
   - Tier 3: Code files (scoped to task)
-- **장점**: 
+- **장점**:
   - 계층적 컨텍스트 제공으로 효율적 정보 전달
   - Task별 스코핑으로 불필요한 정보 제거
 
@@ -87,7 +87,7 @@
   - Task별 File 필터링
   - Allowed modifications 제한
   - Requirements 스코핑
-- **장점**: 
+- **장점**:
   - Task별로 필요한 컨텍스트만 제공
   - 전체 코드베이스 대신 관련 부분만 전달
 

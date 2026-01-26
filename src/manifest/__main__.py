@@ -13,7 +13,7 @@ if __name__ == "__main__":
         # Run bootstrap UI to configure keys
         # This runs in its own event loop and finishes before ManifestApp starts
         run_bootstrap()
-    
+
     # Start the main application
     app = ManifestApp()
     app.run()

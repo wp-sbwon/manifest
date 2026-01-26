@@ -1,6 +1,6 @@
 # 코드베이스 전체 검토 요약
 
-**검토일**: 2026-01-24  
+**검토일**: 2026-01-24
 **검토 범위**: 전체 코드베이스 (81개 Python 파일)
 
 ## ✅ 완료된 리팩토링 상태
@@ -33,7 +33,7 @@
 - `src/manifest/agents/container_api.py`: `Message`, `MessageResponse` 클래스에 docstring 없음
 - `src/manifest/audit/code/code_extractor.py`: `count_nesting()` 함수에 docstring 없음
 
-**권장 조치**: 
+**권장 조치**:
 - 각 메서드/클래스에 Google-style docstring 추가
 - Args, Returns, Raises 섹션 포함
 

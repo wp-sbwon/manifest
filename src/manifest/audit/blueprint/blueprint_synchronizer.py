@@ -22,11 +22,11 @@ from manifest.audit.code.drift_auditor import Severity
 @dataclass
 class ConflictReport:
     """Represents a conflict report for blueprint synchronization workflow.
-    
+
     Contains all information about conflicts between top-down and bottom-up
     blueprints, including the conflicts themselves, both blueprint versions,
     and the resolution workflow status.
-    
+
     Attributes:
         task_id: ID of the task where conflicts were detected.
         conflicts: List of BlueprintConflict objects describing the mismatches.
@@ -49,13 +49,13 @@ class ConflictReport:
     planner_flag: Optional[str] = None  # "necessary", "violation"
     user_decision: Optional[str] = None  # "approved", "rejected"
     resolution_note: Optional[str] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert the conflict report to a dictionary.
-        
+
         Useful for serialization to JSON or storage. Converts nested
         BlueprintConflict objects to dictionaries as well.
-        
+
         Returns:
             Dictionary representation of the conflict report.
         """
@@ -74,20 +74,20 @@ class ConflictReport:
 
 class BlueprintSynchronizer:
     """Enforces synchronization between top-down and bottom-up blueprints.
-    
+
     Detects conflicts when code structure (bottom-up) doesn't match the
     intended design (top-down). Manages the conflict resolution workflow
     through planner review and user approval stages.
-    
+
     Attributes:
         manifest_dir: Path to .manifest directory.
         conflicts_dir: Directory where conflict reports are stored.
         comparator: BlueprintComparator instance for comparing blueprints.
     """
-    
+
     def __init__(self, manifest_dir: Path = None, conflicts_dir: Path = None):
         """Initialize the blueprint synchronizer.
-        
+
         Args:
             manifest_dir: Path to .manifest directory. Defaults to .manifest.
             conflicts_dir: Optional custom directory for conflict reports.
@@ -97,41 +97,41 @@ class BlueprintSynchronizer:
         self.conflicts_dir = conflicts_dir or (self.manifest_dir / "conflicts")
         self.conflicts_dir.mkdir(parents=True, exist_ok=True)
         self.comparator = BlueprintComparator()
-    
+
     def detect_mismatch(
         self,
         top_down: Dict[str, Any],
         bottom_up: Dict[str, Any]
     ) -> Optional[ConflictReport]:
         """Detect conflicts between two blueprints and create a conflict report.
-        
+
         Compares the top-down (intended) blueprint against the bottom-up
         (extracted from code) blueprint. Only significant conflicts (ERROR or
         WARNING severity) are included in the report; INFO-level conflicts
         are filtered out.
-        
+
         Args:
             top_down: Dictionary containing the intended design blueprint.
             bottom_up: Dictionary containing the blueprint extracted from code.
-        
+
         Returns:
             ConflictReport if conflicts are found, None if blueprints match
             or only minor (INFO) conflicts exist.
         """
         conflicts = self.comparator.compare_blueprints(top_down, bottom_up)
-        
+
         if not conflicts:
             return None
-        
+
         # Filter out INFO level conflicts for mismatch detection
         significant_conflicts = [
             c for c in conflicts
             if c.severity in [Severity.ERROR, Severity.WARNING]
         ]
-        
+
         if not significant_conflicts:
             return None
-        
+
         # Create conflict report
         report = ConflictReport(
             task_id="",  # Will be set when task is known
@@ -140,9 +140,9 @@ class BlueprintSynchronizer:
             bottom_up_blueprint=bottom_up,
             timestamp=datetime.utcnow().isoformat()
         )
-        
+
         return report
-    
+
     def create_conflict_issue(
         self,
         conflicts: List[BlueprintConflict],
@@ -150,7 +150,7 @@ class BlueprintSynchronizer:
     ) -> Dict[str, Any]:
         """Generate structured conflict issue for worker squad."""
         grouped = self.comparator.get_conflicts_by_severity(conflicts)
-        
+
         issue = {
             "type": "blueprint_conflict",
             "task_id": task_id,
@@ -164,27 +164,27 @@ class BlueprintSynchronizer:
             "conflicts": [c.to_dict() for c in conflicts],
             "action_required": "review_and_resolve"
         }
-        
+
         return issue
-    
+
     def save_conflict_report(self, report: ConflictReport) -> Path:
         """Save conflict report to file."""
         timestamp = report.timestamp.replace(":", "-").replace(".", "-")
         task_id = report.task_id or "unknown"
         filename = f"conflict_{timestamp}_{task_id}.json"
         file_path = self.conflicts_dir / filename
-        
+
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(report.to_dict(), f, indent=2, ensure_ascii=False)
-        
+
         return file_path
-    
+
     def load_conflict_report(self, file_path: Path) -> Optional[ConflictReport]:
         """Load conflict report from file."""
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            
+
             # Reconstruct conflicts
             conflicts = []
             for c_dict in data.get("conflicts", []):
@@ -201,7 +201,7 @@ class BlueprintSynchronizer:
                         )
                 else:
                     conflict_type = conflict_type_str
-                
+
                 conflict = BlueprintConflict(
                     severity=Severity(c_dict["severity"]),
                     type=conflict_type,
@@ -212,7 +212,7 @@ class BlueprintSynchronizer:
                     component_id=c_dict.get("component_id")
                 )
                 conflicts.append(conflict)
-            
+
             report = ConflictReport(
                 task_id=data.get("task_id", ""),
                 conflicts=conflicts,
@@ -224,11 +224,11 @@ class BlueprintSynchronizer:
                 user_decision=data.get("user_decision"),
                 resolution_note=data.get("resolution_note")
             )
-            
+
             return report
         except Exception:
             return None
-    
+
     def resend_to_worker_squad(
         self,
         task_id: str,
@@ -244,7 +244,7 @@ class BlueprintSynchronizer:
                 "requires_resolution": True
             }
         }
-    
+
     def request_planner_review(
         self,
         conflict_issue: Dict[str, Any]
@@ -259,7 +259,7 @@ class BlueprintSynchronizer:
                 "options": ["necessary", "violation"]
             }
         }
-    
+
     def request_user_approval(
         self,
         conflict_issue: Dict[str, Any],
@@ -272,7 +272,7 @@ class BlueprintSynchronizer:
                 "planner_flag": planner_flag,
                 "message": "Planner flagged as violation, no user approval needed"
             }
-        
+
         return {
             "action": "user_approval",
             "conflict_issue": conflict_issue,
@@ -283,7 +283,7 @@ class BlueprintSynchronizer:
                 "options": ["approved", "rejected"]
             }
         }
-    
+
     def update_conflict_status(
         self,
         report: ConflictReport,
@@ -300,10 +300,10 @@ class BlueprintSynchronizer:
             report.user_decision = user_decision
         if resolution_note:
             report.resolution_note = resolution_note
-        
+
         self.save_conflict_report(report)
         return True
-    
+
     def sync_blueprints(
         self,
         top_down: Dict[str, Any],
@@ -323,7 +323,7 @@ class BlueprintSynchronizer:
                     "message": "Synchronization blocked due to conflicts"
                 }
             return {"success": True, "blocked": False}
-        
+
         elif mode == "workflow":
             # Trigger conflict workflow
             report = self.detect_mismatch(top_down, bottom_up)
@@ -334,7 +334,7 @@ class BlueprintSynchronizer:
                     "conflict_report": report.to_dict()
                 }
             return {"success": True, "workflow_triggered": False}
-        
+
         elif mode == "merge":
             # Auto-merge compatible changes (future enhancement)
             # For now, just return conflicts
@@ -344,9 +344,9 @@ class BlueprintSynchronizer:
                 "merged": False,  # Not implemented yet
                 "conflicts": len(conflicts)
             }
-        
+
         return {"success": False, "error": f"Unknown mode: {mode}"}
-    
+
     def calculate_implementation_status(
         self,
         top_down: Dict[str, Any],
@@ -356,17 +356,17 @@ class BlueprintSynchronizer:
         """
         Calculate implementation status for components (Ghost/Drift/Implemented).
         Also calculates completion percentage for features.
-        
+
         Args:
             top_down: Top-down blueprint (design)
             bottom_up: Bottom-up blueprint (code)
             architecture: Architecture data (optional, for feature-level completion)
-        
+
         Returns:
             Dict with component statuses and feature completion percentages
         """
         from manifest.audit.blueprint.blueprint_metadata import load_blueprint_with_metadata
-        
+
         # Build component lookup
         td_components_by_id: Dict[str, Dict[str, Any]] = {}
         td_components_by_name: Dict[str, Dict[str, Any]] = {}
@@ -377,7 +377,7 @@ class BlueprintSynchronizer:
                 td_components_by_id[comp_id] = comp
             if comp_name:
                 td_components_by_name[comp_name] = comp
-        
+
         bu_components_by_id: Dict[str, Dict[str, Any]] = {}
         bu_components_by_name: Dict[str, Dict[str, Any]] = {}
         for comp in bottom_up.get("components", []):
@@ -387,19 +387,19 @@ class BlueprintSynchronizer:
                 bu_components_by_id[comp_id] = comp
             if comp_name:
                 bu_components_by_name[comp_name] = comp
-        
+
         # Calculate status for each top-down component
         component_statuses: Dict[str, str] = {}
         component_drifts: Dict[str, List[str]] = {}
-        
+
         for comp_id, td_comp in td_components_by_id.items():
             comp_name = td_comp.get("name", "")
-            
+
             # Try to find in bottom-up by ID first, then by name
             bu_comp = bu_components_by_id.get(comp_id)
             if not bu_comp and comp_name:
                 bu_comp = bu_components_by_name.get(comp_name)
-            
+
             if not bu_comp:
                 # Component not found in code - Ghost
                 component_statuses[comp_id] = "ghost"
@@ -411,7 +411,7 @@ class BlueprintSynchronizer:
                     c for c in conflicts
                     if c.severity in [Severity.ERROR, Severity.WARNING]
                 ]
-                
+
                 if significant_conflicts:
                     # Has drift
                     component_statuses[comp_id] = "drift"
@@ -419,7 +419,7 @@ class BlueprintSynchronizer:
                 else:
                     # Implemented and matches
                     component_statuses[comp_id] = "implemented"
-        
+
         # Also mark extra components (in code but not in design)
         for comp_id, bu_comp in bu_components_by_id.items():
             comp_name = bu_comp.get("name", "")
@@ -428,7 +428,7 @@ class BlueprintSynchronizer:
                 if comp_name not in td_components_by_name:
                     # Extra component - mark as such
                     component_statuses[comp_id] = "extra"
-        
+
         # Calculate feature completion percentages if architecture is provided
         feature_completions: Dict[str, float] = {}
         if architecture:
@@ -436,15 +436,15 @@ class BlueprintSynchronizer:
             for feature in features:
                 feature_id = feature.get("id", "")
                 feature_components = feature.get("components", [])
-                
+
                 if not feature_components:
                     feature_completions[feature_id] = 0.0
                     continue
-                
+
                 # Count implemented components
                 implemented_count = 0
                 total_count = len(feature_components)
-                
+
                 for comp_id in feature_components:
                     status = component_statuses.get(comp_id, "ghost")
                     if status == "implemented":
@@ -452,20 +452,20 @@ class BlueprintSynchronizer:
                     elif status == "drift":
                         # Drift counts as partial (0.5)
                         implemented_count += 0.5
-                
+
                 # Calculate percentage
                 if total_count > 0:
                     completion = (implemented_count / total_count) * 100
                     feature_completions[feature_id] = round(completion, 1)
                 else:
                     feature_completions[feature_id] = 0.0
-        
+
         return {
             "component_statuses": component_statuses,
             "component_drifts": component_drifts,
             "feature_completions": feature_completions
         }
-    
+
     def update_architecture_with_status(
         self,
         architecture: Dict[str, Any],
@@ -473,23 +473,23 @@ class BlueprintSynchronizer:
     ) -> Dict[str, Any]:
         """
         Update architecture.json with implementation status and completion percentages.
-        
+
         Args:
             architecture: Architecture dictionary
             status_info: Status information from calculate_implementation_status
-        
+
         Returns:
             Updated architecture dictionary
         """
         component_statuses = status_info.get("component_statuses", {})
         component_drifts = status_info.get("component_drifts", {})
         feature_completions = status_info.get("feature_completions", {})
-        
+
         # Update component statuses in architecture
         # First, ensure components list exists in architecture
         if "components" not in architecture:
             architecture["components"] = []
-        
+
         # Update component status
         for comp in architecture.get("components", []):
             comp_id = comp.get("id", "")
@@ -497,13 +497,13 @@ class BlueprintSynchronizer:
                 comp["status"] = component_statuses[comp_id]
                 if comp_id in component_drifts:
                     comp["drift_details"] = component_drifts[comp_id]
-        
+
         # Update feature completion percentages
         for feature in architecture.get("features", []):
             feature_id = feature.get("id", "")
             if feature_id in feature_completions:
                 feature["completion_percentage"] = feature_completions[feature_id]
-            
+
             # Update status based on completion
             completion = feature.get("completion_percentage", 0)
             if completion == 100:
@@ -512,5 +512,5 @@ class BlueprintSynchronizer:
                 feature["status"] = "wip"
             else:
                 feature["status"] = "pending"
-        
+
         return architecture

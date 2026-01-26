@@ -26,7 +26,7 @@ def sample_code_file(temp_dir):
 class TestClass:
     def method1(self):
         pass
-    
+
     def method2(self):
         pass
 
@@ -44,12 +44,12 @@ def test_extract_single_file(sample_code_file, temp_dir):
     """Test extracting structure from a single file."""
     extractor = CodeExtractor(temp_dir)
     blueprint = extractor.extract_project_structure(temp_dir)
-    
+
     assert blueprint["version"] == "1.0"
     assert blueprint["source"] == "code_extraction"
     assert "components" in blueprint
     assert "contracts" in blueprint
-    
+
     # Check that classes are extracted
     component_names = [c["name"] for c in blueprint["components"]]
     assert "TestClass" in component_names
@@ -60,7 +60,7 @@ def test_extract_methods(sample_code_file, temp_dir):
     """Test that methods are extracted from classes."""
     extractor = CodeExtractor(temp_dir)
     blueprint = extractor.extract_project_structure(temp_dir)
-    
+
     test_class = next(
         (c for c in blueprint["components"] if c["name"] == "TestClass"),
         None
@@ -74,7 +74,7 @@ def test_extract_inheritance(sample_code_file, temp_dir):
     """Test that inheritance relationships are extracted."""
     extractor = CodeExtractor(temp_dir)
     blueprint = extractor.extract_project_structure(temp_dir)
-    
+
     # Check for inheritance contract
     inheritance_contracts = [
         c for c in blueprint["contracts"]
@@ -95,10 +95,10 @@ class TestClass:
         os.path.join("a", "b")
         Path("test")
 """)
-    
+
     extractor = CodeExtractor(temp_dir)
     blueprint = extractor.extract_project_structure(temp_dir)
-    
+
     # Check for dependency contracts
     dependency_contracts = [
         c for c in blueprint["contracts"]
@@ -111,13 +111,13 @@ def test_save_blueprint(temp_dir):
     """Test saving blueprint to file."""
     extractor = CodeExtractor(temp_dir)
     blueprint = extractor.extract_project_structure(temp_dir)
-    
+
     output_file = temp_dir / "test_blueprint.json"
     result = extractor.save_blueprint(blueprint, output_file)
-    
+
     assert result is True
     assert output_file.exists()
-    
+
     # Verify content
     with open(output_file, "r") as f:
         loaded = json.load(f)
@@ -131,10 +131,10 @@ def test_skip_hidden_directories(temp_dir):
     hidden_dir = temp_dir / ".hidden"
     hidden_dir.mkdir()
     (hidden_dir / "test.py").write_text("class Hidden: pass")
-    
+
     extractor = CodeExtractor(temp_dir)
     blueprint = extractor.extract_project_structure(temp_dir)
-    
+
     # Hidden class should not be extracted
     component_names = [c["name"] for c in blueprint["components"]]
     assert "Hidden" not in component_names

@@ -1,6 +1,6 @@
 # 재검토된 우선순위 계획
 
-**작성일**: 2026-01-24  
+**작성일**: 2026-01-24
 **기준**: 새로운 Tool System, OpenCode 통합, Permission System 구조 반영
 
 ---
@@ -58,7 +58,7 @@
 # 이 정보를 다음 stage (test, debug)에 전달
 ```
 
-**위치**: 
+**위치**:
 - `src/manifest/runtime/agent/agents/coder_agent.py`
 - `src/manifest/agents/worker_squad_executor.py`
 
@@ -94,7 +94,7 @@
    - 명령 실행 실패
    - 컨텍스트 오버플로우
 
-**위치**: 
+**위치**:
 - `src/manifest/runtime/tools/tool_executor.py`
 - `src/manifest/runtime/permissions/permission_manager.py`
 - `src/manifest/ui/app.py` (승인 UI)
@@ -133,7 +133,7 @@
    - 모델별 최대 토큰 수 설정
    - 컨텍스트 초과 시 자동 정리
 
-**위치**: 
+**위치**:
 - `src/manifest/runtime/agent/core/executor.py`
 - `src/manifest/runtime/agent/agents/coder_agent.py`
 - `src/manifest/agents/context_provider.py`
@@ -168,7 +168,7 @@
    - 관련 테스트만 실행
    - Tool execution 결과를 테스트 컨텍스트에 포함
 
-**위치**: 
+**위치**:
 - `src/manifest/runtime/tools/tool_executor.py`
 - `src/manifest/runtime/agent/agents/coder_agent.py`
 - `src/manifest/runtime/agent/agents/test_agent.py`
@@ -196,7 +196,7 @@
    - 거부 시 tool execution 취소
    - 승인/거부 기록 저장
 
-**위치**: 
+**위치**:
 - `src/manifest/runtime/permissions/permission_manager.py`
 - `src/manifest/ui/app.py`
 
@@ -229,7 +229,7 @@
    - 명령 결과
    - 실행 시점
 
-**위치**: 
+**위치**:
 - `src/manifest/runtime/tools/tool_executor.py`
 - `src/manifest/core/state_manager.py`
 

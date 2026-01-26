@@ -63,7 +63,7 @@ logger = get_logger(__name__)
 
 class DashboardHeader(Static):
     """Header widget showing real-time project metrics."""
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.metrics = {
@@ -82,7 +82,7 @@ class DashboardHeader(Static):
         """Render the dashboard header."""
         m = self.metrics
         match_color = "green" if m["match_pct"] > 90 else "yellow" if m["match_pct"] > 70 else "red"
-        
+
         return (
             f"[bold cyan]Manifest Dashboard[/] | "
             f"Architecture Match: [bold {match_color}]{m['match_pct']}%[/] | "
@@ -93,12 +93,12 @@ class DashboardHeader(Static):
 
 class ContextBar(RichLog):
     """Context bar showing real-time agent activity streaming."""
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.max_lines = 1
         self.activities: List[Dict[str, Any]] = []
-    
+
     def add_activity(self, task_id: str, agent_type: str, activity: str):
         """Add or update an agent activity."""
         # Remove existing activity for this task/agent
@@ -113,12 +113,12 @@ class ContextBar(RichLog):
         # Keep only recent activities (last 3)
         self.activities = self.activities[-3:]
         self.update_display()
-    
+
     def remove_activity(self, task_id: str, agent_type: str):
         """Remove an activity."""
         self.activities = [a for a in self.activities if not (a.get("task_id") == task_id and a.get("agent_type") == agent_type)]
         self.update_display()
-    
+
     def update_display(self):
         """Update the displayed activities."""
         self.clear()
@@ -139,16 +139,16 @@ class ContextBar(RichLog):
 
 class ManifestApp(App):
     """Main application class for the Manifest TUI.
-    
+
     This is the root application class that manages the entire user interface.
     It provides a 5-view workspace with sidebar navigation, main workspace area,
     and bottom panel for commands and logs. The app handles user interactions,
     displays project data, and coordinates with agents through the AgentBridge.
-    
+
     The application uses Textual framework for the TUI and follows a modular
     architecture with separate handlers for commands, data loading, and channel
     management.
-    
+
     Attributes:
         manifest_dir: Path to the .manifest directory for project data.
         state_manager: Manages application state persistence.
@@ -204,7 +204,7 @@ class ManifestApp(App):
     TabbedContent { background: #161b22; height: 100%; }
     ContentSwitcher { background: #0d1117; height: 100%; }
     TabPane { height: 100%; padding: 1; }
-    
+
     #global-input {
         dock: bottom;
         border: none;
@@ -316,7 +316,7 @@ class ManifestApp(App):
 
     def __init__(self):
         """Initialize the Manifest application.
-        
+
         Sets up all managers, coordinators, and handlers needed for the
         application to function. Initializes state management, agent
         coordination, command processing, data loading, and channel
@@ -329,7 +329,7 @@ class ManifestApp(App):
         self.drift_auditor = DriftAuditor()
         self.blueprint_synchronizer = BlueprintSynchronizer()
         self.blueprint_comparator = BlueprintComparator()
-        
+
         # Structure Manager for Spec-First Management
         from manifest.audit.monitoring.structure_manager import StructureManager
         self.structure_manager = StructureManager(self.manifest_dir, Path.cwd())
@@ -339,43 +339,43 @@ class ManifestApp(App):
         self.project_data = {}
         self.current_view = "architect"
         self.inspector_mode = "visual"
-        
+
         # Pending suggestions for approval
         self._pending_blueprint_suggestions: List = []
         self._pending_code_suggestions: List = []
-        
+
         # Initialize agent coordination components
         self.task_scoper = TaskScoper(self.manifest_dir)
         self.context_provider = ContextProvider(self.manifest_dir, self.task_scoper)
         self.agent_coordinator: Optional[AgentCoordinator] = None
-        
+
         # Command handler for processing user commands
         self.command_handler: Optional[CommandHandler] = None
-        
+
         # Data loader for loading project data
         self.data_loader = DataLoader(self.manifest_dir)
-        
+
         # Git manager for version control integration
         self.git_manager = GitManager(Path.cwd())
-        
+
         # Channel manager for agent output channels
         self.channel_manager: Optional[ChannelManager] = None
 
     def compose(self) -> ComposeResult:
         """Compose the UI layout with all widgets and containers.
-        
+
         This method is called by Textual to build the initial UI structure.
         It creates the sidebar, main workspace, bottom panel, and all
         nested widgets. The layout uses Textual's container system for
         organization.
-        
+
         Returns:
             ComposeResult containing all widgets to be mounted.
         """
         yield Header(show_clock=True)
         yield DashboardHeader(id="dashboard-header")
         yield ContextBar(id="context-bar")
-        
+
         with Horizontal():
             # 1. Mission Control (Sidebar)
             with Vertical(id="sidebar"):
@@ -397,7 +397,7 @@ class ManifestApp(App):
                                 with TabPane("Hierarchy", id="tab-structure-hierarchy"):
                                     with VerticalScroll(id="structure-hierarchy-scroll"):
                                         yield StructureHierarchyView(id="structure-hierarchy-view")
-                                
+
                                 # Graph Tab
                                 with TabPane("Graph", id="tab-structure-graph"):
                                     with VerticalScroll(id="structure-graph-scroll"):
@@ -406,21 +406,21 @@ class ManifestApp(App):
                                     with VerticalScroll(id="structure-graph-component-list"):
                                         yield Static("[bold]Component List (Click to select):[/]", id="component-list-header")
                                         # Component buttons will be added dynamically
-                        
+
                         # View 2: Project (Tasks + History)
                         with TabPane("Project", id="tab-project"):
                             yield ProjectView(id="project-view")
-                        
+
                         # View 3: Agent Status
                         with TabPane("Agent Status", id="tab-agent-status"):
                             from manifest.ui.widgets.agent_status_view import AgentStatusView
                             yield AgentStatusView(id="agent-status-view")
-                        
+
                         # View 4: Task Progress
                         with TabPane("Task Progress", id="tab-task-progress"):
                             from manifest.ui.widgets.task_progress_view import TaskProgressView
                             yield TaskProgressView(id="task-progress-view")
-                        
+
                         # View 5: Agent Channels
                         with TabPane("Agent Channels", id="tab-agent-channels"):
                             from manifest.ui.widgets.agent_channels_view import AgentChannelsView
@@ -429,7 +429,7 @@ class ManifestApp(App):
                 # 2-B. Inspector Side (Verification)
                 with Vertical(id="inspector-side"):
                     yield Label("INSPECTOR (Verification)", classes="side-title")
-                    
+
                     with Container(id="inspector-content"):
                         # Visual Mode (default for Architect)
                         with Vertical(id="insp-visual"):
@@ -437,13 +437,13 @@ class ManifestApp(App):
                                 yield Label("LIVE UI PREVIEW", classes="insp-header")
                                 yield Static("", id="visual-preview", classes="visual-preview")
                                 yield Label("", id="match-status", classes="match-status")
-                        
+
                         # Data Mode (for Blueprint)
                         with Vertical(id="insp-data"):
                             with Vertical(classes="inspector-card"):
                                 yield Label("EXECUTION TRACE", classes="insp-header")
                                 yield RichLog(id="data-trace", markup=True)
-                        
+
                         # Drift Mode (for conflicts)
                         with Vertical(id="insp-drift"):
                             with Vertical(classes="inspector-card"):
@@ -456,12 +456,12 @@ class ManifestApp(App):
                     with TabPane("Manifest AI", id="tab-main"):
                         yield RichLog(id="log-main", markup=True)
                     # Squad channels will be added dynamically when missions start
-                
+
                 # Channel selector (horizontal container with buttons)
                 with Horizontal(id="channel-selector"):
                     yield Button("Manifest AI", id="btn-channel-main", variant="primary")
                     # Squad channel buttons will be added dynamically
-                
+
                 yield Input(placeholder="Enter command...", id="global-input")
 
         yield Footer()
@@ -475,7 +475,7 @@ class ManifestApp(App):
 
         self._api_thread = threading.Thread(target=run_server, daemon=True)
         self._api_thread.start()
-        
+
         # Give the server a moment to start
         await asyncio.sleep(1.0)
         self.query_one("#log-main", RichLog).write("[bold green]Container API server started on port 8000.[/]")
@@ -488,7 +488,7 @@ class ManifestApp(App):
 
     async def on_mount(self) -> None:
         """Initialize the application after UI is mounted.
-        
+
         This method is called by Textual after the UI is composed and mounted.
         It performs all initialization tasks including:
         - Checking API key configuration
@@ -497,44 +497,44 @@ class ManifestApp(App):
         - Setting up command handler and channel manager
         - Loading initial views and data
         - Starting background drift audit
-        
+
         If API keys are missing, the app continues in demo mode with warnings.
         """
         # Start Container API server for inter-container communication
         await self._start_container_api()
-        
+
         # Check API keys
         if not self.config.has_all_keys():
             log = self.query_one("#log-main", RichLog)
             log.write("[bold yellow]API keys not configured.[/]")
             log.write("[bold yellow]Continuing in demo mode. Configure keys manually in .manifest/keys.json[/]")
             log.write("[bold yellow]Or set environment variables: ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY[/]")
-        
+
         # Load data
         self.intent_data = await self.data_loader.load_intent_data()
         self.blueprint_data = await self.data_loader.load_blueprint_data()
         self.project_data = await self.data_loader.load_project_data()
-        
+
         # Initialize task tree
         await self.update_task_tree()
-        
+
         # Initialize permission approval manager
         self.approval_manager = PermissionApprovalManager()
-        
+
         # Initialize channel manager first (needed for agent_bridge)
         self.channel_manager = ChannelManager(self, self.state_manager)
-        
+
         # Hide permission approval widget initially
         try:
             self.query_one("#permission-approval-widget").styles.display = "none"
         except Exception:
             pass  # Widget might not be mounted yet
-        
+
         # Initialize agent bridge
         if self.agent_bridge is None:
             config_manager = get_config_manager()
             self.agent_bridge = AgentBridge(
-                self.state_manager, 
+                self.state_manager,
                 config_manager,
                 channel_manager=self.channel_manager,  # Pass channel_manager for real-time UI updates
                 approval_manager=self.approval_manager  # Pass approval_manager for permission requests
@@ -544,7 +544,7 @@ class ManifestApp(App):
                 self.query_one("#log-main", RichLog).write("[bold green]Agent bridge initialized.[/]")
             else:
                 self.query_one("#log-main", RichLog).write("[bold yellow]Agent bridge initialization failed.[/]")
-        
+
         # Initialize agent coordinator
         if self.agent_bridge and self.agent_bridge.is_connected:
             self.agent_coordinator = AgentCoordinator(
@@ -556,15 +556,15 @@ class ManifestApp(App):
             )
             # Start agent coordinator (this will start container state sync if enabled)
             await self.agent_coordinator.start()
-        
+
         # Initialize command handler
         self.command_handler = CommandHandler(self)
-        
+
         # Load state
         state = self.state_manager.get_state()
         if state.get("last_action"):
             self.query_one("#log-main", RichLog).write(f"[bold blue]Resuming: {state.get('last_action')}[/]")
-        
+
         # Set app references for widgets
         try:
             hierarchy_view = self.query_one("#structure-hierarchy-view", raise_if_missing=False)
@@ -572,25 +572,25 @@ class ManifestApp(App):
                 hierarchy_view.set_app(self)
         except Exception:
             pass
-        
+
         try:
             task_progress_view = self.query_one("#task-progress-view", raise_if_missing=False)
             if task_progress_view:
                 task_progress_view.set_app(self)
         except Exception:
             pass
-        
+
         try:
             agent_channels_view = self.query_one("#agent-channels-view", raise_if_missing=False)
             if agent_channels_view:
                 agent_channels_view.set_app(self)
         except Exception:
             pass
-        
+
         # Update squad channels based on active tasks
         if self.channel_manager:
             await self.channel_manager.update_squad_channels(self.agent_coordinator)
-            
+
             # Update agent channels view with available channels
             try:
                 agent_channels_view = self.query_one("#agent-channels-view", raise_if_missing=False)
@@ -599,7 +599,7 @@ class ManifestApp(App):
                     await agent_channels_view.update_channels(channels)
             except Exception as e:
                 logger.debug(f"Could not update agent channels view: {e}")
-            
+
             # Set up main channel button click handler
             try:
                 main_button = self.query_one("#btn-channel-main", Button)
@@ -608,33 +608,33 @@ class ManifestApp(App):
                 main_button.on_click = lambda: asyncio.create_task(switch_to_main())
             except Exception as e:
                 logger.debug(f"Could not set up main channel button: {e}")
-            
+
             # Activate main channel and refresh display
             await self.channel_manager.switch_channel("main")
-        
+
         # Initialize views
         await self._load_structure_data()
         await self._load_project_data()
-        
+
         # Start drift audit (non-blocking to avoid blocking UI)
         asyncio.create_task(self.audit_drift())
-        
+
         # Initialize dashboard metrics
         await self.update_dashboard_metrics()
-        
+
         # Set up periodic dashboard updates
         self.set_interval(5.0, self.update_dashboard_metrics)
         # Set up periodic context bar updates
         self.set_interval(2.0, self.update_context_bar)
         # Set up periodic agent status updates
         self.set_interval(3.0, self.update_agent_status)
-        
+
         # Focus input field after everything is loaded
         self.query_one("#global-input").focus()
 
     async def load_intent_data(self) -> None:
         """Load intent.json data into the application.
-        
+
         Delegates to DataLoader to load the intent file which contains
         project goals, sprints, and features. Updates self.intent_data.
         """
@@ -642,7 +642,7 @@ class ManifestApp(App):
 
     async def load_blueprint_data(self) -> None:
         """Load blueprint.json data with metadata.
-        
+
         Delegates to DataLoader to load the blueprint file which contains
         architecture components and zones. Updates self.blueprint_data.
         """
@@ -650,36 +650,36 @@ class ManifestApp(App):
 
     async def load_project_data(self) -> None:
         """Load project.json data.
-        
+
         Delegates to DataLoader to load project metadata. For the Manifest
         project itself, this is in docs/project-manifest/. For user projects,
         it would be in .manifest/ directory.
-        
+
         Updates self.project_data with project information.
         """
         self.project_data = await self.data_loader.load_project_data()
 
     async def update_architect_view(self) -> None:
         """Update the Architect view with current intent data.
-        
+
         Refreshes the architect diagram showing features, requirements,
         and sprint information. Calculates and displays progress metrics.
         """
         sprint = self.intent_data.get("sprint", "")
         features = self.intent_data.get("features", [])
-        
+
         # Calculate progress
         total_reqs = sum(len(f.get("reqs", [])) for f in features)
         done_reqs = sum(sum(1 for r in f.get("reqs", []) if r.get("state") == "done") for f in features)
         progress = int((done_reqs / total_reqs * 100)) if total_reqs > 0 else 0
-        
+
         title = self.query_one("#architect-title", Label)
         title.update(f"📊 Sprint: {sprint} | Progress: {progress}%")
-        
+
         # Update requirement map
         req_map = self.query_one("#requirement-map", RequirementMap)
         req_map.update_data({"features": features})
-        
+
         # Update content
         content = self.query_one("#architect-content", Static)
         content_lines = []
@@ -691,12 +691,12 @@ class ManifestApp(App):
 
     async def update_feature_explorer(self) -> None:
         """Update the Feature Explorer view with current feature data.
-        
+
         Refreshes the feature tree widget to show the current list of
         features from intent data.
         """
         features = self.intent_data.get("features", [])
-        
+
         # Update feature tree
         try:
             feature_tree = self.query_one("#feature-tree", FeatureTree)
@@ -704,7 +704,7 @@ class ManifestApp(App):
         except Exception:
             # Feature tree might not be visible yet
             pass
-        
+
         # Update feature details (will be populated when feature is selected)
         try:
             details = self.query_one("#feature-details", Static)
@@ -717,20 +717,20 @@ class ManifestApp(App):
 
     async def update_blueprint_view(self) -> None:
         """Update the Blueprint view with current blueprint data.
-        
+
         Refreshes the blueprint diagram showing components organized by
         zones. Updates component status and visual representation.
         """
         components = self.blueprint_data.get("components", [])
         zones = self.blueprint_data.get("zones", {})
-        
+
         title = self.query_one("#blueprint-title", Label)
         title.update(f"Blueprint: {len(components)} components")
-        
+
         # Update architecture graph
         arch_graph = self.query_one("#architecture-graph", ArchitectureGraph)
         arch_graph.update_data({"components": components})
-        
+
         # Update content with zone-based layout
         content = self.query_one("#blueprint-content", Static)
         content_lines = []
@@ -744,23 +744,23 @@ class ManifestApp(App):
 
     async def update_project_view(self) -> None:
         """Update the Project Info view with current project data.
-        
+
         Displays project metadata, status, and information from project.json.
         This view shows high-level project information and documentation.
         """
         if not self.project_data:
             return
-        
+
         project_log = self.query_one("#project-log", RichLog)
         project_content = self.query_one("#project-content", Static)
-        
+
         # Display project metadata
         metadata = self.project_data.get("metadata", {})
         project_log.write(f"[bold green]Project:[/] {metadata.get('name', 'Manifest')}")
         project_log.write(f"[bold green]Version:[/] {metadata.get('version', '1.0.0')}")
         project_log.write(f"[bold green]Status:[/] {metadata.get('status', 'unknown')}")
         project_log.write("")
-        
+
         # Display architecture layers
         architecture = self.project_data.get("architecture", {})
         layers = architecture.get("layers", [])
@@ -775,7 +775,7 @@ class ManifestApp(App):
                 status_color = "green" if module_status == "complete" else "yellow"
                 project_log.write(f"    - {module_name} [{status_color}]{module_status}[/]")
         project_log.write("")
-        
+
         # Display implementation status
         impl_status = self.project_data.get("implementation_status", {})
         phase = impl_status.get("phase", "unknown")
@@ -783,7 +783,7 @@ class ManifestApp(App):
         project_log.write(f"[bold cyan]Implementation Status:[/]")
         project_log.write(f"  Phase: [yellow]{phase}[/]")
         project_log.write(f"  Completion: [green]{completion}%[/]")
-        
+
         # Display views
         views = self.project_data.get("views", [])
         project_log.write("")
@@ -793,7 +793,7 @@ class ManifestApp(App):
             view_status = view.get("status", "unknown")
             status_color = "green" if view_status == "complete" else "yellow"
             project_log.write(f"  - {view_name} [{status_color}]{view_status}[/]")
-        
+
         # Format content for static display
         content_lines = []
         content_lines.append(f"Project: {metadata.get('name', 'Manifest')}")
@@ -807,11 +807,11 @@ class ManifestApp(App):
         sprints = self.state_manager.list_sprints()
         history_log = self.query_one("#history-log", RichLog)
         history_log.clear()
-        
+
         if not sprints:
             history_log.write("[bold yellow]No Sprint history found.[/]")
             return
-        
+
         history_log.write(f"[bold]Sprint History ({len(sprints)} sprints)[/]")
         for sprint_id in sprints:
             sprint_data = self.state_manager.load_sprint(sprint_id)
@@ -821,26 +821,26 @@ class ManifestApp(App):
                 created = sprint_data.get("created_at", "unknown")
                 tasks = sprint_data.get("tasks", [])
                 completed_tasks = sum(1 for t in tasks if t.get("status") == "completed")
-                
+
                 history_log.write(f"\n[bold]{name}[/] ({sprint_id})")
                 history_log.write(f"  Status: {status}")
                 history_log.write(f"  Created: {created}")
                 history_log.write(f"  Tasks: {completed_tasks}/{len(tasks)} completed")
-    
+
     async def show_orchestrator_chat(self):
         """Show Orchestrator chat channel."""
         # Create or show Orchestrator channel
         channel_name = "orchestrator"
         if self.channel_manager and channel_name not in self.channel_manager.squad_channels:
             await self.channel_manager.create_squad_channel("orchestrator", "orchestrator")
-        
+
         # Switch to Orchestrator tab
         chat_tabs = self.query_one("#chat-tabs", TabbedContent)
         try:
             chat_tabs.active = f"tab-{channel_name}"
         except Exception:
             pass
-    
+
     async def show_sprint_approval_ui(self, sprint_id: str):
         """Show Sprint plan approval UI."""
         sprint_data = self.state_manager.load_sprint(sprint_id)
@@ -848,16 +848,16 @@ class ManifestApp(App):
             log = self.query_one("#log-main", RichLog)
             log.write(f"[bold red]Sprint {sprint_id} not found.[/]")
             return
-        
+
         # Show Sprint plan in main log
         log = self.query_one("#log-main", RichLog)
         log.write(f"[bold]Sprint Plan: {sprint_data.get('name', sprint_id)}[/]")
         log.write(f"Status: {sprint_data.get('status', 'planned')}")
         log.write(f"Tasks: {len(sprint_data.get('tasks', []))}")
-        
+
         # Permission approval widgets are now implemented (PermissionApprovalWidget)
         # For now, user can approve via command: /approve_sprint {sprint_id}
-    
+
     async def _update_task_inspector(self, task_id: str, task: Dict[str, Any]) -> None:
         """Update inspector with task logs and diff."""
         try:
@@ -869,21 +869,21 @@ class ManifestApp(App):
             drift_pane.styles.display = "none"
             data_pane.styles.display = "block"
             self.inspector_mode = "data"
-            
+
             data_trace = self.query_one("#data-trace", RichLog)
             data_trace.clear()
-            
+
             # Show task header
             task_name = task.get("name", task_id)
             task_status = task.get("status", "unknown")
             data_trace.write(f"[bold cyan]Task: {task_name} ({task_id})[/]")
             data_trace.write(f"Status: [bold]{task_status}[/]")
             data_trace.write("")
-            
+
             # Show task logs from channels
             worker_squad = task.get("worker_squad", {})
             stages = worker_squad.get("stages", {})
-            
+
             if stages:
                 data_trace.write("[bold yellow]Worker Squad Logs:[/]")
                 for stage_name, stage_data in stages.items():
@@ -897,7 +897,7 @@ class ManifestApp(App):
                         else:
                             data_trace.write(output)
                 data_trace.write("")
-            
+
             # Also check agent channels
             if self.agent_coordinator:
                 agent_info = self.agent_coordinator.get_active_agents().get(task_id)
@@ -917,12 +917,12 @@ class ManifestApp(App):
                                 elif role == "system":
                                     data_trace.write(f"[yellow]System:[/] {content[:200]}")
                             data_trace.write("")
-            
+
             # Show Git diff if available
             from manifest.core.task_manager import TaskManager
             task_manager = TaskManager(self.state_manager)
             git_diff = task_manager.get_task_git_diff(task_id)
-            
+
             if git_diff:
                 data_trace.write("[bold green]Git Diff:[/]")
                 # Truncate very long diffs
@@ -956,20 +956,20 @@ class ManifestApp(App):
             drift_pane.styles.display = "none"
             data_pane.styles.display = "block"
             self.inspector_mode = "data"
-            
+
             data_trace = self.query_one("#data-trace", RichLog)
             data_trace.clear()
-            
+
             # Get full component data from blueprint
             component = None
             if self.blueprint_data:
                 components = self.blueprint_data.get("components", [])
                 component = next((c for c in components if c.get("id") == component_id), None)
-            
+
             # If not found in blueprint_data, use component_data from message
             if not component:
                 component = component_data
-            
+
             # Show component header
             comp_name = component.get("name", "Unknown")
             comp_type = component.get("type", "unknown")
@@ -977,7 +977,7 @@ class ManifestApp(App):
             comp_file = component.get("file", "")
             comp_line = component.get("line", 0)
             comp_module = component.get("module_path", "")
-            
+
             data_trace.write(f"[bold cyan]Component: {comp_name}[/]")
             data_trace.write(f"Type: [bold]{comp_type}[/] | Status: {comp_status}")
             if comp_file:
@@ -985,7 +985,7 @@ class ManifestApp(App):
             if comp_module:
                 data_trace.write(f"Module: {comp_module}")
             data_trace.write("")
-            
+
             # Show metadata
             metadata_items = []
             if component.get("algorithm"):
@@ -996,13 +996,13 @@ class ManifestApp(App):
                 metadata_items.append(f"Complexity: {component['complexity']}")
             if component.get("notes"):
                 metadata_items.append(f"Notes: {component['notes']}")
-            
+
             if metadata_items:
                 data_trace.write("[bold yellow]Metadata:[/]")
                 for item in metadata_items:
                     data_trace.write(f"  • {item}")
                 data_trace.write("")
-            
+
             # Show methods
             methods = component.get("methods", [])
             if methods:
@@ -1012,7 +1012,7 @@ class ManifestApp(App):
                 if len(methods) > 20:
                     data_trace.write(f"  ... (+{len(methods) - 20} more)")
                 data_trace.write("")
-            
+
             # Show attributes
             attributes = component.get("attributes", [])
             if attributes:
@@ -1022,7 +1022,7 @@ class ManifestApp(App):
                 if len(attributes) > 20:
                     data_trace.write(f"  ... (+{len(attributes) - 20} more)")
                 data_trace.write("")
-            
+
             # Show contracts
             contracts = []
             if self.blueprint_data:
@@ -1032,10 +1032,10 @@ class ManifestApp(App):
                 # Find incoming contracts
                 incoming = [c for c in all_contracts if c.get("to") == component_id]
                 contracts = {"outgoing": outgoing, "incoming": incoming}
-            
+
             if contracts.get("outgoing") or contracts.get("incoming"):
                 data_trace.write("[bold yellow]Contracts:[/]")
-                
+
                 if contracts.get("outgoing"):
                     data_trace.write(f"  [bold]Outgoing ({len(contracts['outgoing'])}):[/]")
                     for contract in contracts["outgoing"][:10]:  # Show first 10
@@ -1043,14 +1043,14 @@ class ManifestApp(App):
                         contract_type = contract.get("type", "unknown")
                         symbols = contract.get("symbols", [])
                         contract_file = contract.get("file", "")
-                        
+
                         # Try to get target component name
                         target_name = to_id.split("-")[-1] if "-" in to_id else to_id
                         if self.blueprint_data:
                             target_comp = next((c for c in self.blueprint_data.get("components", []) if c.get("id") == to_id), None)
                             if target_comp:
                                 target_name = target_comp.get("name", target_name)
-                        
+
                         contract_line = f"    → {target_name} ({contract_type})"
                         if symbols:
                             symbols_str = ", ".join(symbols[:3])
@@ -1063,7 +1063,7 @@ class ManifestApp(App):
                         data_trace.write(contract_line)
                     if len(contracts["outgoing"]) > 10:
                         data_trace.write(f"    ... (+{len(contracts['outgoing']) - 10} more)")
-                
+
                 if contracts.get("incoming"):
                     data_trace.write(f"  [bold]Incoming ({len(contracts['incoming'])}):[/]")
                     for contract in contracts["incoming"][:10]:  # Show first 10
@@ -1071,14 +1071,14 @@ class ManifestApp(App):
                         contract_type = contract.get("type", "unknown")
                         symbols = contract.get("symbols", [])
                         contract_file = contract.get("file", "")
-                        
+
                         # Try to get source component name
                         source_name = from_id.split("-")[-1] if "-" in from_id else from_id
                         if self.blueprint_data:
                             source_comp = next((c for c in self.blueprint_data.get("components", []) if c.get("id") == from_id), None)
                             if source_comp:
                                 source_name = source_comp.get("name", source_name)
-                        
+
                         contract_line = f"    ← {source_name} ({contract_type})"
                         if symbols:
                             symbols_str = ", ".join(symbols[:3])
@@ -1091,9 +1091,9 @@ class ManifestApp(App):
                         data_trace.write(contract_line)
                     if len(contracts["incoming"]) > 10:
                         data_trace.write(f"    ... (+{len(contracts['incoming']) - 10} more)")
-                
+
                 data_trace.write("")
-            
+
             # Show related tasks
             if comp_file:
                 # Use StructureHierarchyView's method to find tasks
@@ -1126,24 +1126,24 @@ class ManifestApp(App):
         """Update context bar with current agent activities."""
         try:
             context_bar = self.query_one("#context-bar", ContextBar)
-            
+
             if not self.agent_coordinator:
                 context_bar.clear()
                 context_bar.write("[dim]No agent coordinator[/]")
                 return
-            
+
             # Get active agents
             active_agents = self.agent_coordinator.get_active_agents()
-            
+
             # Clear existing activities
             context_bar.activities = []
-            
+
             # Add activities for each active agent
             for task_id, agent_info in active_agents.items():
                 if agent_info.get("status") == "active":
                     agent_type = agent_info.get("agent_type", "agent")
                     stage = agent_info.get("stage", "working")
-                    
+
                     # Get more detailed activity from state
                     task = self.state_manager.get_task(task_id)
                     if task:
@@ -1154,16 +1154,16 @@ class ManifestApp(App):
                             if stage_data.get("status") == "in_progress":
                                 current_stage = stage_name
                                 break
-                        
+
                         if current_stage:
                             activity = f"{current_stage}"
                         else:
                             activity = stage
                     else:
                         activity = stage
-                    
+
                     context_bar.add_activity(task_id, agent_type, activity)
-            
+
             context_bar.update_display()
         except Exception:
             # Silently fail if context bar not available
@@ -1173,7 +1173,7 @@ class ManifestApp(App):
         """Update dashboard header with current project metrics."""
         try:
             dashboard = self.query_one("#dashboard-header", DashboardHeader)
-            
+
             # Calculate architecture match percentage
             match_pct = 0
             try:
@@ -1184,13 +1184,13 @@ class ManifestApp(App):
                     default_source="llm_design"
                 )
                 bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
-                
+
                 status_info = self.blueprint_synchronizer.calculate_implementation_status(
                     top_down,
                     bottom_up,
                     getattr(self, 'architecture_data', None)
                 )
-                
+
                 # Calculate match percentage from component statuses
                 component_statuses = status_info.get("component_statuses", {})
                 if component_statuses:
@@ -1199,12 +1199,12 @@ class ManifestApp(App):
                     match_pct = int((matched / total) * 100) if total > 0 else 0
             except Exception:
                 pass
-            
+
             # Get task counts
             tasks = self.state_manager.get_task_checklist()
             active_tasks = sum(1 for t in tasks if t.get("status") in ["pending", "in_progress"])
             completed_tasks = sum(1 for t in tasks if t.get("status") == "done")
-            
+
             # Count running agents
             running_agents = 0
             if self.agent_coordinator:
@@ -1217,7 +1217,7 @@ class ManifestApp(App):
                     for stage_data in stages.values():
                         if stage_data.get("status") == "in_progress":
                             running_agents += 1
-            
+
             dashboard.update_metrics({
                 "match_pct": match_pct,
                 "active_tasks": active_tasks,
@@ -1227,7 +1227,7 @@ class ManifestApp(App):
         except Exception:
             # Silently fail if dashboard not available
             pass
-    
+
     async def update_agent_status(self) -> None:
         """Update agent status view with current agent information."""
         try:
@@ -1243,7 +1243,7 @@ class ManifestApp(App):
 
     async def update_task_tree(self) -> None:
         """Update the task tree widget with current tasks from state.
-        
+
         Refreshes the sidebar task tree to show all current tasks with
         their status and hierarchy. If no tasks exist, shows a default
         empty structure.
@@ -1260,14 +1260,14 @@ class ManifestApp(App):
                     "subtasks": []
                 }
             ]
-        
+
         # Update sidebar task tree
         try:
             task_tree = self.query_one("#task-tree", TaskTree)
             task_tree.load_tasks(tasks)
         except Exception:
             pass
-        
+
         # Update project view task tree
         try:
             project_view = self.query_one("#project-view", ProjectView)
@@ -1277,7 +1277,7 @@ class ManifestApp(App):
 
     async def update_history_view(self) -> None:
         """Update the History view with Git commit timeline.
-        
+
         Displays recent Git commits in chronological order. Requires
         GitPython to be installed. Shows a warning if GitPython is
         not available.
@@ -1286,14 +1286,14 @@ class ManifestApp(App):
             history_log = self.query_one("#history-log", RichLog)
             history_log.write("[bold yellow]GitPython not available. Install with: pip install GitPython[/]")
             return
-        
+
         try:
             repo = git.Repo(".")
             commits = list(repo.iter_commits(max_count=20))
-            
+
             history_log = self.query_one("#history-log", RichLog)
             timeline = self.query_one("#history-timeline", Static)
-            
+
             timeline_lines = []
             for commit in commits:
                 date = commit.committed_datetime.strftime("%Y-%m-%d %H:%M")
@@ -1301,7 +1301,7 @@ class ManifestApp(App):
                 message = commit.message.split("\n")[0]
                 timeline_lines.append(f"[{date}] {author}: {message}")
                 history_log.write(f"[bold blue]{date}[/] [dim]{author}[/]: {message}")
-            
+
             timeline.update("\n".join(timeline_lines[:10]) if timeline_lines else "No git history")
         except Exception as e:
             history_log = self.query_one("#history-log", RichLog)
@@ -1311,7 +1311,7 @@ class ManifestApp(App):
         """Run drift audit and update inspector."""
         # Generate bottom-up blueprint from code
         bottom_up_blueprint = self.drift_auditor.generate_bottom_up_blueprint(Path("src"))
-        
+
         # Load top-down blueprint
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         top_down_blueprint = BlueprintLoader.load_blueprint(
@@ -1319,16 +1319,16 @@ class ManifestApp(App):
             with_metadata=True,
             default_source="llm_design"
         )
-        
+
         # Compare blueprints
         blueprint_conflicts = self.blueprint_comparator.compare_blueprints(
             top_down_blueprint,
             bottom_up_blueprint
         )
-        
+
         # Also run traditional drift audit
         drift_conflicts = self.drift_auditor.audit_project()
-        
+
         # Combine conflicts for display
         from manifest.audit.code.drift_auditor import DriftConflict as DriftConflictClass
         all_conflicts = drift_conflicts + [
@@ -1341,18 +1341,18 @@ class ManifestApp(App):
             )
             for bc in blueprint_conflicts
         ]
-        
+
         if all_conflicts:
             drift_log = self.query_one("#drift-log", RichLog)
             grouped = self.drift_auditor.get_conflicts_by_severity(all_conflicts)
-            
+
             for severity, conflict_list in grouped.items():
                 if conflict_list:
                     color = {"error": "red", "warning": "yellow", "info": "blue"}.get(severity, "white")
                     drift_log.write(f"[bold {color}]{severity.upper()}: {len(conflict_list)} conflicts[/]")
                     for conflict in conflict_list[:10]:  # Show first 10
                         drift_log.write(f"  • {conflict.message}")
-        
+
         # Check for blueprint mismatches and trigger workflow if needed
         if blueprint_conflicts:
             mismatch_report = self.blueprint_synchronizer.detect_mismatch(
@@ -1362,7 +1362,7 @@ class ManifestApp(App):
             if mismatch_report:
                 # Trigger conflict workflow (will be handled by agent coordinator)
                 await self.handle_blueprint_conflict(mismatch_report)
-        
+
         # Check for structural changes and suggest Blueprint updates
         try:
             suggestions = self.structure_manager.check_and_suggest_updates()
@@ -1372,14 +1372,14 @@ class ManifestApp(App):
                     drift_log.write(f"  • {suggestion.suggestion_type}: {suggestion.reason}")
                 if len(suggestions) > 5:
                     drift_log.write(f"  ... and {len(suggestions) - 5} more suggestions")
-                
+
                 # Store suggestions for potential approval
                 self._pending_blueprint_suggestions = suggestions
                 drift_log.write(f"[bold cyan]Use /apply_blueprint_updates to apply all suggestions, or /apply_blueprint_update <index> for specific one[/]")
         except Exception as e:
             # Silently fail if structure manager has issues
             pass
-        
+
         # Check for Blueprint changes and suggest code updates
         try:
             code_suggestions, impact = self.structure_manager.check_blueprint_and_suggest_code_changes()
@@ -1390,28 +1390,28 @@ class ManifestApp(App):
                     drift_log.write(f"    Reason: {suggestion.reason}")
                 if len(code_suggestions) > 5:
                     drift_log.write(f"  ... and {len(code_suggestions) - 5} more suggestions")
-                
+
                 # Show impact analysis
                 if impact:
                     affected_files = impact.get("affected_files", [])
                     breaking_changes = impact.get("breaking_changes", [])
                     migration_steps = impact.get("migration_steps", [])
-                    
+
                     if affected_files:
                         drift_log.write(f"[bold yellow]Affected Files: {len(affected_files)}[/]")
                         for file_path in affected_files[:5]:
                             drift_log.write(f"  • {file_path}")
-                    
+
                     if breaking_changes:
                         drift_log.write(f"[bold red]Breaking Changes: {len(breaking_changes)}[/]")
                         for change in breaking_changes[:3]:
                             drift_log.write(f"  • {change.get('description', 'Unknown')}")
-                    
+
                     if migration_steps:
                         drift_log.write(f"[bold green]Migration Plan: {len(migration_steps)} steps[/]")
                         for step in migration_steps:
                             drift_log.write(f"  Step {step.get('step', '?')}: {step.get('action', 'Unknown')} (Priority: {step.get('priority', 'unknown')})")
-                
+
                 # Store code suggestions for potential approval
                 self._pending_code_suggestions = code_suggestions
                 if code_suggestions:
@@ -1419,7 +1419,7 @@ class ManifestApp(App):
         except Exception as e:
             # Silently fail if structure manager has issues
             pass
-        
+
         # Show drift mode if there are conflicts
         if all_conflicts:
             visual_pane = self.query_one("#insp-visual")
@@ -1433,27 +1433,27 @@ class ManifestApp(App):
     async def sync_blueprints(self):
         """Synchronize blueprints using blueprint_synchronizer."""
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
-        
+
         top_down_blueprint = BlueprintLoader.load_blueprint(
             self.manifest_dir,
             with_metadata=True,
             default_source="llm_design"
         )
         bottom_up_blueprint = BlueprintLoader.load_code_blueprint(self.manifest_dir)
-        
+
         # Use workflow mode by default
         result = self.blueprint_synchronizer.sync_blueprints(
             top_down_blueprint,
             bottom_up_blueprint,
             mode="workflow"
         )
-        
+
         return result
-    
+
     async def resolve_conflict(self, conflict_id: str, action: str):
         """
         Resolve a blueprint conflict.
-        
+
         Args:
             conflict_id: Conflict identifier
             action: Resolution action ("approved" or "rejected")
@@ -1467,7 +1467,7 @@ class ManifestApp(App):
                 report.status = "resolved" if action == "approved" else "rejected"
                 report.user_decision = action
                 self.blueprint_synchronizer.save_conflict_report(report, conflict_file)
-                
+
                 # If approved and agent coordinator available, handle the resolution
                 if action == "approved" and self.agent_coordinator:
                     # Get task_id from report
@@ -1478,11 +1478,11 @@ class ManifestApp(App):
                             report.to_dict(),
                             task_id
                         )
-    
+
     async def handle_blueprint_conflict(self, mismatch_report: ConflictReport):
         """
         Handle blueprint conflict by delegating to agent coordinator.
-        
+
         Args:
             mismatch_report: ConflictReport from blueprint synchronizer
         """
@@ -1499,7 +1499,7 @@ class ManifestApp(App):
         visual_pane = self.query_one("#insp-visual")
         data_pane = self.query_one("#insp-data")
         drift_pane = self.query_one("#insp-drift")
-        
+
         if event.pane.id == "tab-structure":
             visual_pane.styles.display = "block"
             data_pane.styles.display = "none"
@@ -1526,37 +1526,37 @@ class ManifestApp(App):
         """Switch to project view."""
         tabs = self.query_one("#design-tabs", TabbedContent)
         tabs.active = "tab-project"
-    
+
     async def _load_structure_data(self):
         """Load and update structure view data."""
         # Load architecture
         architecture_file = self.manifest_dir / "architecture.json"
         self.architecture_data = load_architecture_with_metadata(architecture_file)
-        
+
         # Calculate status using BlueprintSynchronizer
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
-        
+
         top_down_blueprint = BlueprintLoader.load_blueprint(
             self.manifest_dir,
             with_metadata=True,
             default_source="llm_design"
         )
         bottom_up_blueprint = BlueprintLoader.load_code_blueprint(self.manifest_dir)
-        
+
         # Calculate implementation status
         status_info = self.blueprint_synchronizer.calculate_implementation_status(
             top_down_blueprint,
             bottom_up_blueprint,
             self.architecture_data
         )
-        
+
         # Use bottom_up_blueprint (code-extracted) if top_down_blueprint is empty
         # This allows viewing the actual project structure even without a design blueprint
         display_blueprint = top_down_blueprint
         if not top_down_blueprint.get("components") and bottom_up_blueprint.get("components"):
             display_blueprint = bottom_up_blueprint
             logger.debug("Using code-extracted blueprint for display (top-down blueprint is empty)")
-        
+
         # Update hierarchy view
         try:
             hierarchy_view = self.query_one("#structure-hierarchy-view", StructureHierarchyView)
@@ -1564,7 +1564,7 @@ class ManifestApp(App):
             hierarchy_view.load_data(self.architecture_data, display_blueprint, status_info)
         except Exception:
             pass
-        
+
         # Update graph view
         try:
             graph_view = self.query_one("#structure-graph-view", StructureGraphView)
@@ -1573,7 +1573,7 @@ class ManifestApp(App):
             self._update_graph_component_list(display_blueprint, status_info)
         except Exception:
             pass
-    
+
     def _update_graph_component_list(self, blueprint: Dict[str, Any], status_info: Dict[str, Any]) -> None:
         """Update the component list in graph view with clickable buttons."""
         try:
@@ -1582,27 +1582,27 @@ class ManifestApp(App):
             for widget in list(component_list.query(Button)):
                 if widget.id and widget.id.startswith("comp-btn-"):
                     widget.remove()
-            
+
             # Get component statuses
             component_statuses = status_info.get("component_statuses", {}) if status_info else {}
-            
+
             # Add component buttons
             components = blueprint.get("components", [])
             for comp in components:
                 comp_id = comp.get("id", "")
                 if not comp_id:
                     continue
-                
+
                 comp_name = comp.get("name", "Unknown")
                 comp_type = comp.get("type", "unknown")
                 status = component_statuses.get(comp_id, comp.get("status", "pending"))
-                
+
                 # Get status icon
                 status_icon = "●" if status == "implemented" else "⚠️" if status == "drift" else "○" if status == "ghost" else "➕" if status == "extra" else "○"
-                
+
                 button_id = f"comp-btn-{comp_id.replace(':', '-').replace('.', '-').replace(' ', '-')}"
                 button_label = f"{status_icon} {comp_name} [{comp_type}]"
-                
+
                 button = Button(button_label, id=button_id, variant="default")
                 button.data = {
                     "component_id": comp_id,
@@ -1612,7 +1612,7 @@ class ManifestApp(App):
         except Exception as e:
             # Silently fail if component list doesn't exist
             logger.debug(f"Could not update graph component list: {e}")
-    
+
     @on(Button.Pressed, "#structure-graph-component-list Button")
     async def on_graph_component_button_clicked(self, event: Button.Pressed) -> None:
         """Handle component button click from graph view."""
@@ -1620,21 +1620,21 @@ class ManifestApp(App):
         if button_data and button_data.get("component_id"):
             component_id = button_data["component_id"]
             component_data = button_data.get("component_data", {})
-            
+
             log = self.query_one("#log-main", RichLog)
             log.write(f"[bold cyan]Component Selected: {component_data.get('name', 'Unknown')}[/]")
             log.write(f"ID: {component_id}")
-            
+
             # Update inspector with component details
             await self._update_component_inspector(component_id, component_data)
-    
+
     async def _load_project_data(self):
         """Load and update project view data."""
         # Load tasks from state
         state = self.state_manager.get_state()
         tasks = state.get("tasks", [])
         sprints = state.get("sprints", [])
-        
+
         # Update project view
         try:
             project_view = self.query_one("#project-view", ProjectView)
@@ -1642,7 +1642,7 @@ class ManifestApp(App):
             project_view.load_sprints(sprints)
         except Exception:
             pass
-        
+
         # Load history (from git or state)
         history = []
         if GIT_AVAILABLE:
@@ -1657,14 +1657,14 @@ class ManifestApp(App):
                     })
             except Exception:
                 pass
-        
+
         # Update history view in project view
         try:
             project_view = self.query_one("#project-view", ProjectView)
             project_view.load_history(history)
         except Exception:
             pass
-    
+
     def action_open_settings(self, initial_tab: str = "api_keys") -> None:
         """Open settings screen."""
         settings_screen = SettingsScreen(
@@ -1679,57 +1679,57 @@ class ManifestApp(App):
         """Handle user input."""
         input_widget = event.input
         user_input = event.value.strip()
-        
+
         # Clear input immediately to prevent re-submission
         input_widget.value = ""
-        
+
         # Ignore empty input - just return (input field keeps focus naturally)
         if not user_input:
             return
-        
+
         log = self.query_one("#log-main", RichLog)
         log.write(f"[bold blue]User:[/] {user_input}")
-        
+
         # Save to state
         self.state_manager.add_chat_message("main", "user", user_input)
         self.state_manager.set_last_action(f"User command: {user_input}")
         await self.state_manager.save_state()
-        
+
         # Process command (non-blocking, will refocus in finally block)
         await self.process_command(user_input, log)
 
     @work(exclusive=False)
     async def process_command(self, user_input: str, log: RichLog) -> None:
         """Process a user command entered in the input field.
-        
+
         Delegates command processing to CommandHandler which routes commands
         to appropriate handlers. Commands can start agents, load data, audit
         drift, sync blueprints, and more.
-        
+
         Args:
             user_input: The command string entered by the user.
             log: RichLog widget to write output and feedback to.
         """
         try:
             await asyncio.sleep(0.1)  # Small delay for UI responsiveness
-            
+
             # Use command handler if available
             if user_input.startswith("/") and self.command_handler:
                 handled = await self.command_handler.handle(user_input, log)
                 if handled:
                     return
                 # If not handled, fall through to orchestrator
-            
+
             # Regular AI interaction - send to Orchestrator
             if not user_input.startswith("/"):
                 if self.agent_bridge and self.agent_bridge.is_connected and self.agent_coordinator:
                     # Get orchestrator context
                     context = self.context_provider.get_orchestrator_context()
-                    
+
                     # Get model config
                     config_manager = get_config_manager()
                     model_config = config_manager.get_agent_model_config("orchestrator")
-                    
+
                     # Create orchestrator agent
                     orchestrator_agent = await self.agent_bridge.agent_manager.create_agent(
                         agent_type="orchestrator",
@@ -1737,7 +1737,7 @@ class ManifestApp(App):
                         model_config=model_config,
                         task_id="main-orchestrator"
                     )
-                    
+
                     if orchestrator_agent and orchestrator_agent.get("instance"):
                         # Add user message to history via channel_manager
                         channel = "main-orchestrator"
@@ -1747,13 +1747,13 @@ class ManifestApp(App):
                             # Fallback to direct state manager
                             self.state_manager.add_chat_message(channel, "user", user_input)
                             await self.state_manager.save_state()
-                        
+
                         orchestrator_instance = orchestrator_agent["instance"]
                         orchestrator_instance.message_history.append({
                             "role": "user",
                             "content": user_input
                         })
-                        
+
                         # Process with orchestrator
                         if self.channel_manager:
                             await self.channel_manager.handle_agent_output(
@@ -1761,16 +1761,16 @@ class ManifestApp(App):
                             )
                         else:
                             log.write("[bold green]Processing with Orchestrator...[/]")
-                        
+
                         response_content = ""
-                        
+
                         async for chunk in orchestrator_instance.coordinate(
                             mission_description=user_input,
                             context=context,
                             model_config=model_config
                         ):
                             chunk_type = chunk.get("type")
-                            
+
                             if chunk_type == "chunk":
                                 content = chunk.get("content", "")
                                 response_content += content
@@ -1806,12 +1806,12 @@ class ManifestApp(App):
                                 tool_name = tool_call.get("name", "unknown")
                                 tool_id = tool_call.get("id", "unknown")
                                 tool_input = tool_call.get("input", {})
-                                
+
                                 import json
                                 tool_display = f"[cyan]🔧 Tool: {tool_name}[/] (id: {tool_id[:8]}...)\n"
                                 if tool_input:
                                     tool_display += f"  Input: {json.dumps(tool_input, indent=2)[:200]}...\n"
-                                
+
                                 if self.channel_manager:
                                     await self.channel_manager.handle_agent_output(
                                         channel, tool_display, "system", save_immediately=False
@@ -1824,7 +1824,7 @@ class ManifestApp(App):
                                 tool_call_id = chunk.get("tool_call_id", "unknown")
                                 result = chunk.get("result")
                                 error = chunk.get("error")
-                                
+
                                 if error:
                                     result_display = f"[red]❌ Tool {tool_name} failed:[/] {error}\n"
                                 else:
@@ -1835,7 +1835,7 @@ class ManifestApp(App):
                                         result_display += f"  Result: {result_str[:300]}...\n"
                                     else:
                                         result_display += f"  Result: {result_str}\n"
-                                
+
                                 if self.channel_manager:
                                     await self.channel_manager.handle_agent_output(
                                         channel, result_display, "system", save_immediately=False
@@ -1851,7 +1851,7 @@ class ManifestApp(App):
                                     )
                                 else:
                                     log.write(error_display)
-                        
+
                         # Try to extract and create tasks from orchestrator response
                         if response_content:
                             await self._process_orchestrator_response(response_content, log)
@@ -1876,13 +1876,13 @@ class ManifestApp(App):
                         error_msg = "[bold yellow]Agent system not connected. Use /start_agent to initialize.[/]"
                     elif not self.agent_coordinator:
                         error_msg = "[bold yellow]Agent coordinator not available.[/]"
-                    
+
                     if error_msg:
                         if self.channel_manager:
                             await self.channel_manager.handle_agent_output("main", error_msg, "system", save_immediately=True)
                         else:
                             log.write(error_msg)
-                    
+
                     # Save to state anyway
                     if self.channel_manager:
                         await self.channel_manager.handle_agent_output("main", user_input, "user", save_immediately=False)
@@ -1903,18 +1903,18 @@ class ManifestApp(App):
                     input_widget.focus()
             except Exception:
                 pass  # Ignore if widget not found
-    
+
     async def _process_orchestrator_response(self, response: str, log: RichLog):
         """
         Process orchestrator response and extract actionable items.
         Automatically creates tasks and starts worker squads when appropriate.
-        
+
         Args:
             response: Orchestrator response text
             log: Log widget for output
         """
         import re
-        
+
         # Look for task creation patterns
         # Pattern 1: "Create task: <name>" or "Task: <name>"
         # Pattern 2: JSON-like task definitions
@@ -1925,11 +1925,11 @@ class ManifestApp(App):
             r"^\s*[-*]\s*(.+?)(?:\n|$)",  # Bullet points
             r"^\s*\d+\.\s*(.+?)(?:\n|$)",  # Numbered list
         ]
-        
+
         tasks_found = []
         existing_tasks = self.state_manager.get_task_checklist()
         existing_names = [t.get("name", "").lower() for t in existing_tasks]
-        
+
         for pattern in task_patterns:
             matches = re.finditer(pattern, response, re.MULTILINE | re.IGNORECASE)
             for match in matches:
@@ -1940,10 +1940,10 @@ class ManifestApp(App):
                     task_name = re.sub(r'^(?:to|for|implement|create|add|build|develop|fix|refactor)\s+', '', task_name, flags=re.IGNORECASE).strip()
                     # Remove trailing punctuation
                     task_name = re.sub(r'[.:;]$', '', task_name).strip()
-                    
+
                     if task_name and task_name.lower() not in existing_names and task_name not in tasks_found:
                         tasks_found.append(task_name)
-        
+
         # Also look for JSON task definitions
         json_task_pattern = r'\{[^}]*"task"[^}]*"name"[^}]*\}'
         json_matches = re.finditer(json_task_pattern, response, re.IGNORECASE | re.DOTALL)
@@ -1957,12 +1957,12 @@ class ManifestApp(App):
                         tasks_found.append(task_name)
             except:
                 pass
-        
+
         # If tasks found, create them automatically
         if tasks_found:
             log.write(f"[bold cyan]Orchestrator suggested {len(tasks_found)} task(s). Creating tasks...[/]")
             created_tasks = []
-            
+
             for task_name in tasks_found[:10]:  # Limit to first 10
                 try:
                     # Create task
@@ -1976,19 +1976,19 @@ class ManifestApp(App):
                     log.write(f"[bold green]✓ Created task: {task_name} (ID: {task_id})[/]")
                 except Exception as e:
                     log.write(f"[bold red]✗ Failed to create task '{task_name}': {str(e)}[/]")
-            
+
             if len(tasks_found) > 10:
                 log.write(f"[bold yellow]... and {len(tasks_found) - 10} more tasks (limit reached)[/]")
-            
+
             # Update task tree in UI
             await self.update_task_tree()
             # Update dashboard metrics
             await self.update_dashboard_metrics()
-            
+
             # Optionally auto-start worker squads for created tasks
             # Check if orchestrator response suggests immediate execution
             auto_start = "start" in response.lower() or "execute" in response.lower() or "begin" in response.lower()
-            
+
             if created_tasks:
                 if auto_start and self.agent_coordinator:
                     # Auto-start worker squads
@@ -2004,15 +2004,15 @@ class ManifestApp(App):
                                 log.write(f"[bold yellow]⚠ Failed to start worker squad for task: {task_info['name']}[/]")
                         except Exception as e:
                             log.write(f"[bold red]✗ Error starting worker squad for task {task_info['name']}: {str(e)}[/]")
-                    
+
                     # Update task tree
                     await self.update_task_tree()
                 else:
                     # Manual start required
                     log.write(f"[bold cyan]Created {len(created_tasks)} task(s). Use /start_task <task_id> to start worker squad, or /start_sprint to start all tasks in a sprint.[/]")
-            
+
             await self.state_manager.save_state()
-    
+
     @on(GateController.Approved)
     async def on_task_approved(self, message: GateController.Approved):
         """Handle task approval."""
@@ -2022,7 +2022,7 @@ class ManifestApp(App):
         log = self.query_one("#log-main", RichLog)
         log.write(f"[bold green]Task {task_id} approved.[/]")
         await self.state_manager.save_state()
-    
+
     @on(GateController.Rejected)
     async def on_task_rejected(self, message: GateController.Rejected):
         """Handle task rejection."""
@@ -2030,33 +2030,33 @@ class ManifestApp(App):
         log = self.query_one("#log-main", RichLog)
         log.write(f"[bold red]Task {task_id} rejected.[/]")
         await self.state_manager.save_state()
-    
+
     @on(TaskSelected)
     async def on_task_selected(self, message: TaskSelected) -> None:
         """Handle task selection from TaskTreeView.
-        
+
         When a task is selected, shows task details in inspector with logs and diff,
         and allows status changes via keyboard shortcuts.
-        
+
         Args:
             message: TaskSelected message with task information.
         """
         task_id = message.task_id
         task = message.task
         current_status = message.current_status
-        
+
         log = self.query_one("#log-main", RichLog)
-        
+
         # Show task details
         task_desc = task.get("description", "No description")
         task_stage = task.get("stage", "unknown")
         worker_squad = task.get("worker_squad", {})
         stages = worker_squad.get("stages", {})
-        
+
         log.write(f"[bold cyan]Task Selected: {task_id}[/]")
         log.write(f"Status: [bold]{current_status}[/] | Stage: {task_stage}")
         log.write(f"Description: {task_desc[:100]}")
-        
+
         # Show worker squad progress if available
         if stages:
             completed = sum(1 for s in stages.values() if s.get("status") == "completed")
@@ -2066,10 +2066,10 @@ class ManifestApp(App):
             log.write("[dim]Press 's' to change status, 'Enter' to view details[/]")
         else:
             log.write("[dim]Press 's' to change status, 'Enter' to view details[/]")
-        
+
         # Update inspector with task logs and diff
         await self._update_task_inspector(task_id, task)
-        
+
         # Update Task Progress view
         try:
             task_progress_view = self.query_one("#task-progress-view", raise_if_missing=False)
@@ -2077,7 +2077,7 @@ class ManifestApp(App):
                 task_progress_view.update_task(task_id, task)
         except Exception as e:
             logger.debug(f"Could not update task progress view: {e}")
-        
+
         # Highlight related files and components in Structure Hierarchy View
         try:
             hierarchy_view = self.query_one("#structure-hierarchy-view", raise_if_missing=False)
@@ -2085,7 +2085,7 @@ class ManifestApp(App):
                 hierarchy_view.highlight_task_files_and_components(task)
         except Exception as e:
             logger.debug(f"Could not highlight task files/components: {e}")
-        
+
         # Store selected task for status change
         self._selected_task_id = task_id
         self._selected_task_status = current_status
@@ -2093,58 +2093,58 @@ class ManifestApp(App):
     @on(ComponentSelected)
     async def on_component_selected(self, message: ComponentSelected) -> None:
         """Handle component selection from StructureHierarchyView.
-        
+
         When a component is selected, shows component details in inspector with
         methods, attributes, contracts, and related tasks.
-        
+
         Args:
             message: ComponentSelected message with component information.
         """
         component_data = message.data
         component_id = component_data.get("id", "")
-        
+
         log = self.query_one("#log-main", RichLog)
         log.write(f"[bold cyan]Component Selected: {component_data.get('name', 'Unknown')}[/]")
         log.write(f"ID: {component_id}")
-        
+
         # Update inspector with component details
         await self._update_component_inspector(component_id, component_data)
-    
+
     @on(ComponentSelectedFromGraph)
     async def on_component_selected_from_graph(self, message: ComponentSelectedFromGraph) -> None:
         """Handle component selection from StructureGraphView.
-        
+
         When a component is selected from the graph view, shows component details
         in inspector with methods, attributes, contracts, and related tasks.
-        
+
         Args:
             message: ComponentSelectedFromGraph message with component information.
         """
         component_id = message.component_id
         component_data = message.component_data
-        
+
         log = self.query_one("#log-main", RichLog)
         log.write(f"[bold cyan]Component Selected: {component_data.get('name', 'Unknown')}[/]")
         log.write(f"ID: {component_id}")
-        
+
         # Update inspector with component details
         await self._update_component_inspector(component_id, component_data)
 
     @on(SprintSelected)
     async def on_sprint_selected(self, message: SprintSelected) -> None:
         """Handle sprint selection from SprintStatusView.
-        
+
         When a sprint is selected, shows sprint details and allows approval/start
         via the SprintApprovalWidget.
-        
+
         Args:
             message: SprintSelected message with sprint information.
         """
         sprint_id = message.sprint_id
         sprint = message.sprint
-        
+
         log = self.query_one("#log-main", RichLog)
-        
+
         # Show sprint details
         sprint_name = sprint.get("name", f"Sprint {sprint_id}")
         sprint_status = sprint.get("status", "pending")
@@ -2152,17 +2152,17 @@ class ManifestApp(App):
         completed = len([t for t in tasks if t.get("status") == "done"])
         total = len(tasks)
         progress = (completed / total * 100) if total > 0 else 0
-        
+
         log.write(f"[bold cyan]Sprint Selected: {sprint_name} ({sprint_id})[/]")
         log.write(f"Status: [bold]{sprint_status}[/] | Progress: {progress:.1f}% ({completed}/{total} tasks)")
-        
+
         # Show sprint approval widget
         try:
             approval_widget = self.query_one("#sprint-approval-widget", SprintApprovalWidget)
             approval_widget.sprint_id = sprint_id
             approval_widget.query_one("#sprint-label").update(f"Sprint: {sprint_name}")
             approval_widget.styles.display = "block"
-            
+
             # Hide gate controller if showing sprint approval
             self.query_one("#gate-controller").styles.display = "none"
         except Exception:
@@ -2173,7 +2173,7 @@ class ManifestApp(App):
         """Handle sprint approval."""
         sprint_id = message.sprint_id
         log = self.query_one("#log-main", RichLog)
-        
+
         # Promoting sprint status
         if hasattr(self.state_manager, 'update_sprint_status'):
             success = self.state_manager.update_sprint_status(sprint_id, "approved")
@@ -2183,7 +2183,7 @@ class ManifestApp(App):
                 await self._load_project_data()
             else:
                 log.write(f"[bold red]Failed to approve sprint {sprint_id}.[/]")
-        
+
         self.query_one("#sprint-approval-widget").styles.display = "none"
 
     @on(SprintApprovalWidget.Rejected)
@@ -2192,12 +2192,12 @@ class ManifestApp(App):
         sprint_id = message.sprint_id
         log = self.query_one("#log-main", RichLog)
         log.write(f"[bold red]Sprint {sprint_id} rejected.[/]")
-        
+
         if hasattr(self.state_manager, 'update_sprint_status'):
             self.state_manager.update_sprint_status(sprint_id, "rejected")
             await self.state_manager.save_state()
             await self._load_project_data()
-        
+
         self.query_one("#sprint-approval-widget").styles.display = "none"
 
     @on(SprintApprovalWidget.Started)
@@ -2205,7 +2205,7 @@ class ManifestApp(App):
         """Handle sprint start."""
         sprint_id = message.sprint_id
         log = self.query_one("#log-main", RichLog)
-        
+
         if self.agent_coordinator:
             log.write(f"[bold green]Starting sprint {sprint_id}...[/]")
             success = await self.agent_coordinator.start_sprint(sprint_id)
@@ -2213,13 +2213,13 @@ class ManifestApp(App):
                 log.write(f"[bold green]Sprint {sprint_id} started successfully.[/]")
             else:
                 log.write(f"[bold red]Failed to start sprint {sprint_id}.[/]")
-    
+
     @on(PermissionApprovalWidget.Approved)
     async def on_permission_approved(self, message: PermissionApprovalWidget.Approved):
         """Handle permission approval."""
         request_id = message.request_id
         log = self.query_one("#log-main", RichLog)
-        
+
         if self.approval_manager:
             success = await self.approval_manager.approve_request(request_id)
             if success:
@@ -2230,18 +2230,18 @@ class ManifestApp(App):
                     widget.styles.display = "none"
                 except Exception:
                     pass
-                
+
                 # Check for more pending requests
                 await self.check_pending_permissions()
             else:
                 log.write(f"[bold yellow]Permission request {request_id[:8]}... not found or already processed.[/]")
-    
+
     @on(PermissionApprovalWidget.Denied)
     async def on_permission_denied(self, message: PermissionApprovalWidget.Denied):
         """Handle permission denial."""
         request_id = message.request_id
         log = self.query_one("#log-main", RichLog)
-        
+
         if self.approval_manager:
             success = await self.approval_manager.deny_request(request_id)
             if success:
@@ -2252,24 +2252,24 @@ class ManifestApp(App):
                     widget.styles.display = "none"
                 except Exception:
                     pass
-                
+
                 # Check for more pending requests
                 await self.check_pending_permissions()
             else:
                 log.write(f"[bold yellow]Permission request {request_id[:8]}... not found or already processed.[/]")
-    
+
     async def check_pending_permissions(self):
         """Check for pending permission requests and display them in UI.
-        
+
         This method is called when a permission request is created or when
         a previous request is approved/denied. It displays the next pending
         request in the PermissionApprovalWidget.
         """
         if not self.approval_manager:
             return
-        
+
         pending_requests = self.approval_manager.get_pending_requests()
-        
+
         if pending_requests:
             # Show the first pending request
             request = pending_requests[0]
@@ -2277,7 +2277,7 @@ class ManifestApp(App):
                 widget = self.query_one("#permission-approval-widget", PermissionApprovalWidget)
                 widget.set_request(request)
                 widget.styles.display = "block"
-                
+
                 # Log to main log
                 log = self.query_one("#log-main", RichLog)
                 log.write(
@@ -2296,22 +2296,22 @@ class ManifestApp(App):
             except Exception:
                 pass
                 log.write(f"[bold red]Failed to start sprint {sprint_id}.[/]")
-        
+
         self.query_one("#sprint-approval-widget").styles.display = "none"
-    
+
     def action_change_task_status(self) -> None:
         """Change status of the currently selected task.
-        
+
         Cycles through status values: pending -> in_progress -> done -> blocked -> cancelled -> pending
         """
         if not hasattr(self, '_selected_task_id') or not self._selected_task_id:
             log = self.query_one("#log-main", RichLog)
             log.write("[bold yellow]No task selected. Select a task first.[/]")
             return
-        
+
         task_id = self._selected_task_id
         current_status = getattr(self, '_selected_task_status', 'pending')
-        
+
         # Status cycle
         status_cycle = ["pending", "in_progress", "done", "blocked", "cancelled"]
         try:
@@ -2320,20 +2320,20 @@ class ManifestApp(App):
             new_status = status_cycle[next_index]
         except ValueError:
             new_status = "pending"
-        
+
         # Update task status
         success = self.state_manager.update_task(task_id, status=new_status)
         if success:
             # Save state
             import asyncio
             asyncio.create_task(self.state_manager.save_state())
-            
+
             # Update UI
             asyncio.create_task(self.update_task_tree())
-            
+
             log = self.query_one("#log-main", RichLog)
             log.write(f"[bold green]Task {task_id} status changed: {current_status} → {new_status}[/]")
-            
+
             # Update selected status
             self._selected_task_status = new_status
         else:
@@ -2346,21 +2346,21 @@ class ManifestApp(App):
             log = self.query_one("#log-main", RichLog)
             log.write("[bold yellow]No task selected. Select a task first.[/]")
             return
-        
+
         task_id = self._selected_task_id
-        
+
         # Delete task
         success = self.state_manager.delete_task(task_id)
         if success:
             # Save state
             await self.state_manager.save_state()
-            
+
             # Update UI
             await self.update_task_tree()
-            
+
             log = self.query_one("#log-main", RichLog)
             log.write(f"[bold red]Task {task_id} deleted.[/]")
-            
+
             # Clear selection
             self._selected_task_id = None
             self._selected_task_status = None
@@ -2374,21 +2374,21 @@ class ManifestApp(App):
             log = self.query_one("#log-main", RichLog)
             log.write("[bold yellow]No task selected. Select a task first.[/]")
             return
-        
+
         task_id = self._selected_task_id
         task = self.state_manager.get_task(task_id)
-        
+
         if not task:
             log = self.query_one("#log-main", RichLog)
             log.write(f"[bold red]Task {task_id} not found.[/]")
             return
-            
+
         async def handle_edit_result(result: Optional[Dict[str, str]]):
             if result:
                 # Update task
                 success = self.state_manager.update_task(
-                    task_id, 
-                    name=result.get("name"), 
+                    task_id,
+                    name=result.get("name"),
                     description=result.get("description")
                 )
                 if success:
@@ -2399,24 +2399,24 @@ class ManifestApp(App):
                 else:
                     log = self.query_one("#log-main", RichLog)
                     log.write(f"[bold red]Failed to update task {task_id}.[/]")
-        
+
         self.push_screen(TaskEditScreen(task), handle_edit_result)
-    
+
     async def create_squad_channel(self, task_id: str, agent_type: str) -> Optional[str]:
         """Create a squad channel for agent output."""
         if self.channel_manager:
             return await self.channel_manager.create_squad_channel(task_id, agent_type)
         return None
-    
+
     async def update_squad_channels(self):
         """Update squad channels based on active tasks."""
         if self.channel_manager:
             await self.channel_manager.update_squad_channels(self.agent_coordinator)
-    
+
     async def handle_agent_output(self, channel: str, content: str, role: str = "assistant"):
         """
         Handle agent output and display in appropriate channel.
-        
+
         Args:
             channel: Channel name (e.g., "main", "squad-task-1-planner")
             content: Message content

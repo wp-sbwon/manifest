@@ -14,7 +14,7 @@ graph TB
         F7[Feature: 5-View Workspace]
         F8[Feature: Testing Framework]
     end
-    
+
     subgraph Requirements["Requirements"]
         R1[REQ-01: API Key Management]
         R2[REQ-02: State Persistence]
@@ -24,13 +24,13 @@ graph TB
         R6[REQ-06: Multi-View Interface]
         R7[REQ-07: Test Coverage]
     end
-    
+
     subgraph Modules["Modules"]
         M1[Module: Presentation Layer]
         M2[Module: Business Logic]
         M3[Module: Infrastructure]
     end
-    
+
     F1 --> R1
     F2 --> R1
     F3 --> R2
@@ -39,7 +39,7 @@ graph TB
     F6 --> R5
     F7 --> R6
     F8 --> R7
-    
+
     R1 --> M3
     R2 --> M2
     R3 --> M2
@@ -60,7 +60,7 @@ graph TD
         C1 --> M3[Method: add_chat_message]
         C1 --> M4[Method: set_last_action]
     end
-    
+
     subgraph Feature2["Feature: Agent Bridge"]
         C2[Class: AgentBridge]
         C2 --> M5[Method: start]
@@ -68,14 +68,14 @@ graph TD
         C2 --> M7[Method: send_message]
         C2 --> M8[Method: receive_message]
     end
-    
+
     subgraph Feature3["Feature: Drift Auditor"]
         C3[Class: DriftAuditor]
         C3 --> M9[Method: audit_project]
         C3 --> M10[Method: parse_python_file]
         C3 --> M11[Method: compare_with_blueprint]
     end
-    
+
     subgraph Feature4["Feature: Custom Widgets"]
         C4[Class: RequirementMap]
         C5[Class: ArchitectureGraph]
@@ -98,7 +98,7 @@ graph LR
         V6[Feature Explorer<br/>Feature → Class → Method]
         V7[Project Info<br/>Architecture]
     end
-    
+
     subgraph Data["Data Sources (strict doc)"]
         D1[intent.json<br/>Features & Requirements]
         D2[blueprint.json<br/>Components & Contracts]
@@ -107,7 +107,7 @@ graph LR
         D5[architecture.json<br/>Architecture Spec]
         D6[documentation.json<br/>Full Documentation]
     end
-    
+
     V1 --> D1
     V2 --> D2
     V4 --> D3
@@ -124,17 +124,17 @@ graph TD
     FT --> F1[Feature: Auth System]
     FT --> F2[Feature: Payment]
     FT --> F3[Feature: Order Management]
-    
+
     F1 --> C1[Class: AuthService]
     F1 --> C2[Class: OAuthHandler]
-    
+
     C1 --> M1[Method: login]
     C1 --> M2[Method: logout]
     C1 --> M3[Method: validate_token]
-    
+
     C2 --> M4[Method: handle_oauth]
     C2 --> M5[Method: get_user_info]
-    
+
     F2 --> C3[Class: PaymentProcessor]
     C3 --> M6[Method: process_payment]
     C3 --> M7[Method: refund]
@@ -148,18 +148,18 @@ graph TD
         F1[Feature: Custom Widgets]
         F2[Feature: 5-View Workspace]
     end
-    
+
     subgraph BusinessLogic["Business Logic Module"]
         F3[Feature: State Management]
         F4[Feature: Agent Bridge]
         F5[Feature: Drift Auditor]
     end
-    
+
     subgraph Infrastructure["Infrastructure Module"]
         F6[Feature: Configuration System]
         F7[Feature: Core Infrastructure]
     end
-    
+
     F2 --> F3
     F2 --> F4
     F2 --> F5
@@ -177,13 +177,13 @@ erDiagram
     FEATURE ||--o{ REQUIREMENT : "has"
     FEATURE ||--o{ CLASS : "implements"
     CLASS ||--o{ METHOD : "contains"
-    
+
     BLUEPRINT ||--o{ COMPONENT : "specifies"
     COMPONENT ||--o{ CONTRACT : "defines"
-    
+
     PROJECT ||--o{ MODULE : "organizes"
     MODULE ||--o{ FEATURE : "contains"
-    
+
     STATE ||--o{ MISSION_TREE : "tracks"
     STATE ||--o{ TASK_CHECKLIST : "tracks"
     STATE ||--o{ CHAT_HISTORY : "stores"
@@ -206,11 +206,11 @@ graph LR
     Features --> Feature1[Feature 1]
     Features --> Feature2[Feature 2]
     Features --> Feature3[Feature 3]
-    
+
     Feature1 --> Classes1[Classes]
     Classes1 --> Class1[Class A]
     Classes1 --> Class2[Class B]
-    
+
     Class1 --> Methods1[Methods]
     Methods1 --> Method1[method1]
     Methods1 --> Method2[method2]
@@ -226,11 +226,11 @@ sequenceDiagram
     participant AgentBridge[Agent Bridge Feature]
     participant DriftAudit[Drift Auditor Feature]
     participant FeatureExplorer[Feature Explorer]
-    
+
     User->>App: Enter Command
     App->>StateMgr: Save Chat Message
     App->>App: Process Command
-    
+
     alt Command is /audit
         App->>DriftAudit: audit_project()
         DriftAudit-->>App: Conflicts
@@ -243,7 +243,7 @@ sequenceDiagram
         App->>AgentBridge: Start Mission
         AgentBridge-->>App: Status
     end
-    
+
     App->>StateMgr: Save State
 ```
 
@@ -346,7 +346,7 @@ graph TB
         M2[Module: Business Logic]
         M3[Module: Infrastructure]
     end
-    
+
     subgraph Features["Features in Modules"]
         M1 --> F1[Feature: Custom Widgets]
         M1 --> F2[Feature: 5-View Workspace]

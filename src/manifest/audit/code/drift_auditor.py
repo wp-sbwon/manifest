@@ -27,13 +27,13 @@ class Severity(Enum):
 
 class DriftConflict:
     """Represents a single drift conflict."""
-    
+
     def __init__(self, severity: Severity, message: str, node_id: Optional[str] = None, file_path: Optional[str] = None):
         self.severity = severity
         self.message = message
         self.node_id = node_id
         self.file_path = file_path
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -46,20 +46,20 @@ class DriftConflict:
 
 class DriftAuditor:
     """Audits code structure against blueprint to detect drift.
-    
+
     Compares actual code structure (classes, functions, imports) extracted
     via AST parsing against the blueprint specification. Identifies missing
     components, extra components, and structural mismatches.
-    
+
     Attributes:
         manifest_dir: Path to .manifest directory.
         blueprint_file: Path to blueprint.json.
         blueprint: Loaded blueprint data dictionary.
     """
-    
+
     def __init__(self, manifest_dir: Path = None):
         """Initialize the drift auditor.
-        
+
         Args:
             manifest_dir: Path to .manifest directory. Defaults to .manifest.
         """
@@ -67,10 +67,10 @@ class DriftAuditor:
         self.blueprint_file = self.manifest_dir / "blueprint.json"
         self.blueprint: Dict[str, Any] = {}
         self._load_blueprint()
-    
+
     def _load_blueprint(self) -> None:
         """Load blueprint.json with metadata.
-        
+
         Uses BlueprintLoader to load the blueprint file. The blueprint
         is cached in the instance for use during auditing.
         """
@@ -78,25 +78,25 @@ class DriftAuditor:
         self.blueprint = BlueprintLoader.load_blueprint(
             self.manifest_dir, with_metadata=True
         )
-    
+
     def reload_blueprint(self) -> None:
         """Reload blueprint from disk.
-        
+
         Useful when the blueprint file has been updated and you want
         to refresh the cached blueprint data.
         """
         self._load_blueprint()
-    
+
     def parse_python_file(self, file_path: Path) -> Dict[str, Any]:
         """Parse a Python file and extract its structure using AST.
-        
+
         Extracts classes, functions, and imports from the file. This
         structural information is then compared against the blueprint
         to detect drift.
-        
+
         Args:
             file_path: Path to the Python file to parse.
-        
+
         Returns:
             Dictionary containing:
             - classes: List of class definitions with methods
@@ -108,13 +108,13 @@ class DriftAuditor:
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
-            
+
             tree = ast.parse(content)
-            
+
             classes = []
             functions = []
             imports = []
-            
+
             for node in ast.walk(tree):
                 if isinstance(node, ast.ClassDef):
                     methods = [n.name for n in node.body if isinstance(n, ast.FunctionDef)]
@@ -135,7 +135,7 @@ class DriftAuditor:
                         imports.extend([alias.name for alias in node.names])
                     else:
                         imports.append(node.module or "")
-            
+
             return {
                 "classes": classes,
                 "functions": functions,
@@ -147,7 +147,7 @@ class DriftAuditor:
                 "error": str(e),
                 "file_path": str(file_path)
             }
-    
+
     def find_python_files(self, root: Path = Path(".")) -> List[Path]:
         """Find all Python files in the project."""
         python_files = []
@@ -159,16 +159,16 @@ class DriftAuditor:
                 continue
             python_files.append(path)
         return python_files
-    
+
     def compare_with_blueprint(self, code_structure: Dict[str, Any]) -> List[DriftConflict]:
         """Compare code structure against blueprint and return conflicts."""
         conflicts = []
         components = self.blueprint.get("components", [])
-        
+
         # Check for missing classes
         blueprint_classes = {comp.get("name"): comp for comp in components if comp.get("type") == "class"}
         code_classes = {cls["name"]: cls for cls in code_structure.get("classes", [])}
-        
+
         for class_name, blueprint_comp in blueprint_classes.items():
             if class_name not in code_classes:
                 conflicts.append(DriftConflict(
@@ -183,7 +183,7 @@ class DriftAuditor:
                 code_methods = set(code_classes[class_name].get("methods", []))
                 missing_methods = blueprint_methods - code_methods
                 extra_methods = code_methods - blueprint_methods
-                
+
                 for method in missing_methods:
                     conflicts.append(DriftConflict(
                         Severity.WARNING,
@@ -191,7 +191,7 @@ class DriftAuditor:
                         node_id=blueprint_comp.get("id"),
                         file_path=code_structure.get("file_path")
                     ))
-                
+
                 for method in extra_methods:
                     conflicts.append(DriftConflict(
                         Severity.INFO,
@@ -199,7 +199,7 @@ class DriftAuditor:
                         node_id=blueprint_comp.get("id"),
                         file_path=code_structure.get("file_path")
                     ))
-        
+
         # Check for extra classes (not in blueprint)
         for class_name in code_classes:
             if class_name not in blueprint_classes:
@@ -208,22 +208,22 @@ class DriftAuditor:
                     f"Class '{class_name}' exists in code but not in blueprint",
                     file_path=code_structure.get("file_path")
                 ))
-        
+
         return conflicts
-    
+
     def audit_project(self, root: Path = Path(".")) -> List[DriftConflict]:
         """Audit entire project for drift."""
         all_conflicts = []
         python_files = self.find_python_files(root)
-        
+
         for file_path in python_files:
             structure = self.parse_python_file(file_path)
             if "error" not in structure:
                 conflicts = self.compare_with_blueprint(structure)
                 all_conflicts.extend(conflicts)
-        
+
         return all_conflicts
-    
+
     def get_conflicts_by_severity(self, conflicts: List[DriftConflict]) -> Dict[str, List[DriftConflict]]:
         """Group conflicts by severity."""
         grouped = {
@@ -231,26 +231,26 @@ class DriftAuditor:
             "warning": [],
             "info": []
         }
-        
+
         for conflict in conflicts:
             grouped[conflict.severity.value].append(conflict)
-        
+
         return grouped
-    
+
     def get_conflicts_for_node(self, conflicts: List[DriftConflict], node_id: str) -> List[DriftConflict]:
         """Get conflicts for a specific blueprint node."""
         return [c for c in conflicts if c.node_id == node_id]
-    
+
     def generate_bottom_up_blueprint(self, root: Path = None) -> Dict[str, Any]:
         """Generate bottom-up blueprint from code structure."""
         if root is None:
             root = Path(".")
-        
+
         extractor = CodeExtractor(root)
         blueprint = extractor.extract_project_structure(root)
-        
+
         # Save to blueprint_code.json
         blueprint_file = self.manifest_dir / "blueprint_code.json"
         extractor.save_blueprint(blueprint, blueprint_file)
-        
+
         return blueprint

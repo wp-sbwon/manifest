@@ -19,11 +19,11 @@ from dataclasses import dataclass, field
 @dataclass
 class Component:
     """Represents a code component extracted from source code.
-    
+
     A component can be a class, function, or variable. It contains
     structural information like location, methods, attributes, and
     optional metadata about algorithms, design patterns, and complexity.
-    
+
     Attributes:
         id: Unique identifier for the component.
         name: Name of the component (class/function/variable name).
@@ -56,11 +56,11 @@ class Component:
 @dataclass
 class Contract:
     """Represents a relationship or contract between two components.
-    
+
     Contracts describe how components interact: dependencies, function calls,
     inheritance relationships, etc. They form the edges in the component
     dependency graph.
-    
+
     Attributes:
         from_id: ID of the source component.
         to_id: ID of the target component.
@@ -77,21 +77,21 @@ class Contract:
 
 class CodeExtractor:
     """Extracts code structure and generates bottom-up blueprint from source code.
-    
+
     Scans Python files in a project, parses them with AST, and extracts
     components (classes, functions) and contracts (relationships) to build
     a blueprint that represents the actual code structure.
-    
+
     Attributes:
         root: Root directory of the project to extract from.
         components: Dictionary mapping component IDs to Component objects.
         contracts: List of Contract objects representing relationships.
         module_map: Dictionary mapping file paths to Python module paths.
     """
-    
+
     def __init__(self, root: Path = Path(".")):
         """Initialize the code extractor.
-        
+
         Args:
             root: Root directory of the project. Defaults to current directory.
         """
@@ -99,48 +99,48 @@ class CodeExtractor:
         self.components: Dict[str, Component] = {}
         self.contracts: List[Contract] = []
         self.module_map: Dict[str, str] = {}  # file_path -> module_path
-    
+
     def extract_project_structure(self, root: Path = None) -> Dict[str, Any]:
         """Extract structure from entire project and generate blueprint.
-        
+
         Scans all Python files in the project, extracts components and
         relationships, and generates a blueprint JSON structure that can
         be compared against the intended design blueprint.
-        
+
         Args:
             root: Optional root directory. Uses self.root if not provided.
-        
+
         Returns:
             Dictionary containing blueprint structure with components,
             contracts, and metadata.
         """
         if root is None:
             root = self.root
-        
+
         self.components.clear()
         self.contracts.clear()
         self.module_map.clear()
-        
+
         # Find all Python files
         python_files = self._find_python_files(root)
-        
+
         # Extract entities and relationships from each file
         for file_path in python_files:
             self._extract_file_structure(file_path, root)
-        
+
         # Generate blueprint JSON
         return self._generate_blueprint()
-    
+
     def _find_python_files(self, root: Path) -> List[Path]:
         """Find all Python files in the project directory.
-        
+
         Recursively searches for .py files, excluding virtual environments,
         hidden directories, and __pycache__ directories. Test files are
         included but can be identified by their location.
-        
+
         Args:
             root: Root directory to search from.
-        
+
         Returns:
             List of Path objects pointing to Python files.
         """
@@ -157,119 +157,119 @@ class CodeExtractor:
             elif "tests" not in path.parts:
                 python_files.append(path)
         return python_files
-    
+
     def extract_file_structure(self, file_path: Path, root: Path = None) -> List[Component]:
         """Extract structure from a single Python file.
-        
+
         Parses the file using AST and extracts all components (classes,
         functions, variables) found in it. This is useful for analyzing
         individual files without processing the entire project.
-        
+
         Args:
             file_path: Path to the Python file to extract from.
             root: Optional project root for calculating module paths.
                 Uses self.root if not provided.
-        
+
         Returns:
             List of Component objects found in the file. Returns empty
             list if file can't be parsed or contains no extractable components.
         """
         if root is None:
             root = self.root
-        
+
         components = []
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
-            
+
             tree = ast.parse(content, filename=str(file_path))
-            
+
             # Calculate module path
             rel_path = file_path.relative_to(root)
             module_path = str(rel_path).replace("/", ".").replace("\\", ".").replace(".py", "")
-            
+
             # Extract entities
             entities = self._identify_entities(tree, file_path, module_path)
-            
+
             # Extract metadata
             for entity in entities:
                 algorithm = self._extract_algorithm_from_code(tree, entity)
                 if algorithm:
                     entity.algorithm = algorithm
-                
+
                 design_pattern = self._extract_design_pattern_from_structure(tree, entity, entities)
                 if design_pattern:
                     entity.design_pattern = design_pattern
-                
+
                 complexity = self._analyze_complexity_from_code(tree, entity)
                 if complexity:
                     entity.complexity = complexity
-                
+
                 components.append(entity)
-        
+
         except Exception as e:
             # Return empty list if file can't be parsed
             pass
-        
+
         return components
-    
+
     def _extract_file_structure(self, file_path: Path, root: Path):
         """Extract structure from a single Python file."""
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 content = f.read()
-            
+
             tree = ast.parse(content, filename=str(file_path))
-            
+
             # Calculate module path
             rel_path = file_path.relative_to(root)
             module_path = str(rel_path).replace("/", ".").replace("\\", ".").replace(".py", "")
             self.module_map[str(file_path)] = module_path
-            
+
             # Extract entities
             entities = self._identify_entities(tree, file_path, module_path)
-            
+
             # Extract metadata (algorithm, design_pattern, complexity) for each entity
             for entity in entities:
                 # Extract algorithm from code structure
                 algorithm = self._extract_algorithm_from_code(tree, entity)
                 if algorithm:
                     entity.algorithm = algorithm
-                
+
                 # Extract design pattern from structure
                 design_pattern = self._extract_design_pattern_from_structure(tree, entity, entities)
                 if design_pattern:
                     entity.design_pattern = design_pattern
-                
+
                 # Analyze complexity
                 complexity = self._analyze_complexity_from_code(tree, entity)
                 if complexity:
                     entity.complexity = complexity
-            
+
             # Extract relationships
             relationships = self._infer_relationships(tree, file_path, module_path, entities)
-            
+
             # Store components
             for entity in entities:
                 self.components[entity.id] = entity
-            
+
             # Store contracts
             self.contracts.extend(relationships)
-            
+
         except Exception as e:
             # Skip files that can't be parsed
             pass
-    
+
     def _identify_entities(self, tree: ast.AST, file_path: Path, module_path: str) -> List[Component]:
         """Identify entities (classes, functions, variables) as components."""
         entities = []
-        
+
         for node in ast.walk(tree):
             if isinstance(node, ast.ClassDef):
                 # Extract class methods
                 methods = []
                 attributes = []
-                
+
                 for item in node.body:
                     if isinstance(item, ast.FunctionDef):
                         methods.append(item.name)
@@ -278,7 +278,7 @@ class CodeExtractor:
                         for target in item.targets:
                             if isinstance(target, ast.Name):
                                 attributes.append(target.id)
-                
+
                 comp_id = f"comp-{module_path}-{node.name}"
                 entity = Component(
                     id=comp_id,
@@ -291,7 +291,7 @@ class CodeExtractor:
                     module_path=module_path
                 )
                 entities.append(entity)
-            
+
             elif isinstance(node, ast.FunctionDef):
                 # Check if it's a module-level function (not inside a class)
                 is_module_level = True
@@ -300,7 +300,7 @@ class CodeExtractor:
                         if node in parent.body:
                             is_module_level = False
                             break
-                
+
                 if is_module_level:
                     comp_id = f"comp-{module_path}-{node.name}"
                     entity = Component(
@@ -312,33 +312,33 @@ class CodeExtractor:
                         module_path=module_path
                     )
                     entities.append(entity)
-        
+
         return entities
-    
-    def _infer_relationships(self, tree: ast.AST, file_path: Path, module_path: str, 
+
+    def _infer_relationships(self, tree: ast.AST, file_path: Path, module_path: str,
                            entities: List[Component]) -> List[Contract]:
         """Infer relationships between entities."""
         relationships = []
-        
+
         # Build entity lookup by name
         entity_by_name: Dict[str, Component] = {}
         for entity in entities:
             entity_by_name[entity.name] = entity
-        
+
         # Track imports to map external dependencies
         imports: Dict[str, str] = {}  # alias -> module
-        
+
         for node in ast.walk(tree):
             # Extract imports
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     imports[alias.asname or alias.name] = alias.name
-            
+
             elif isinstance(node, ast.ImportFrom):
                 if node.module:
                     for alias in node.names:
                         imports[alias.asname or alias.name] = f"{node.module}.{alias.name}"
-            
+
             # Extract function calls
             elif isinstance(node, ast.Call):
                 # Try to identify what's being called
@@ -367,13 +367,13 @@ class CodeExtractor:
                                 symbols=[called_name],
                                 file=str(file_path)
                             ))
-                
+
                 elif isinstance(node.func, ast.Attribute):
                     # Method call: obj.method()
                     if isinstance(node.func.value, ast.Name):
                         obj_name = node.func.value.id
                         method_name = node.func.attr
-                        
+
                         # Check if it's a call on an entity
                         if obj_name in entity_by_name:
                             from_entity = self._find_containing_entity(node, entities, module_path)
@@ -395,7 +395,7 @@ class CodeExtractor:
                                     symbols=[method_name],
                                     file=str(file_path)
                                 ))
-            
+
             # Extract class inheritance
             elif isinstance(node, ast.ClassDef):
                 if node.bases:
@@ -410,7 +410,7 @@ class CodeExtractor:
                                     type="inheritance",
                                     file=str(file_path)
                                 ))
-        
+
         # Extract import-based dependencies
         for alias, module in imports.items():
             # Create dependency contract for external imports
@@ -423,10 +423,10 @@ class CodeExtractor:
                     symbols=[alias],
                     file=str(file_path)
                 ))
-        
+
         return relationships
-    
-    def _find_containing_entity(self, node: ast.AST, entities: List[Component], 
+
+    def _find_containing_entity(self, node: ast.AST, entities: List[Component],
                                 module_path: str) -> Optional[Component]:
         """Find the entity that contains this AST node."""
         # This is a simplified version - in practice, we'd need to track
@@ -441,7 +441,7 @@ class CodeExtractor:
             if entity.module_path == module_path and entity.type == "function":
                 return entity
         return None
-    
+
     def _find_file_entity(self, module_path: str, entities: List[Component]) -> Optional[Component]:
         """Find a representative entity for a module (for import dependencies)."""
         # Return first class, or first function
@@ -450,7 +450,7 @@ class CodeExtractor:
                 return entity
         # If no entity found, return None (caller should handle)
         return None
-    
+
     def _extract_algorithm_from_code(self, tree: ast.AST, entity: Component) -> Optional[str]:
         """
         Extract algorithm from actual code structure patterns (conservative approach).
@@ -467,7 +467,7 @@ class CodeExtractor:
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     imports.add(alias.name)
-        
+
         # Check for algorithm-specific imports
         import_str = " ".join(imports).lower()
         if "dijkstra" in import_str or "networkx" in import_str:
@@ -477,7 +477,7 @@ class CodeExtractor:
                     if isinstance(node.func, ast.Attribute):
                         if "dijkstra" in node.func.attr.lower():
                             return "Dijkstra"
-        
+
         # Check function/class name patterns
         name_lower = entity.name.lower()
         if "dijkstra" in name_lower:
@@ -490,12 +490,12 @@ class CodeExtractor:
             return "Quicksort"
         if "mergesort" in name_lower or "merge_sort" in name_lower:
             return "Mergesort"
-        
+
         # Check for data structure patterns that indicate algorithms
         # Priority queue + distance dict -> Dijkstra-like
         has_heapq = "heapq" in import_str
         has_distance_tracking = False
-        
+
         # Look for distance/cost tracking patterns in the entity's code
         entity_node = None
         for node in ast.walk(tree):
@@ -503,7 +503,7 @@ class CodeExtractor:
                 if node.name == entity.name:
                     entity_node = node
                     break
-        
+
         if entity_node:
             # Check for distance/cost tracking
             for node in ast.walk(entity_node):
@@ -513,13 +513,13 @@ class CodeExtractor:
                             if "distance" in target.id.lower() or "cost" in target.id.lower():
                                 has_distance_tracking = True
                                 break
-            
+
             if has_heapq and has_distance_tracking:
                 return "Dijkstra"
-        
+
         return None
-    
-    def _extract_design_pattern_from_structure(self, tree: ast.AST, entity: Component, 
+
+    def _extract_design_pattern_from_structure(self, tree: ast.AST, entity: Component,
                                              all_entities: List[Component]) -> Optional[str]:
         """
         Extract design pattern from code structure analysis (conservative approach).
@@ -531,10 +531,10 @@ class CodeExtractor:
                 if node.name == entity.name:
                     entity_node = node
                     break
-        
+
         if not entity_node:
             return None
-        
+
         # Singleton Pattern: __new__ override
         if isinstance(entity_node, ast.ClassDef):
             has_new = False
@@ -544,7 +544,7 @@ class CodeExtractor:
                     break
             if has_new:
                 return "Singleton"
-            
+
             # Factory Pattern: create_* or make_* methods
             create_methods = []
             for item in entity_node.body:
@@ -553,7 +553,7 @@ class CodeExtractor:
                         create_methods.append(item.name)
             if len(create_methods) >= 2:
                 return "Factory"
-            
+
             # Strategy Pattern: Interface + multiple implementations
             # Check if this class has abstract methods (ABC)
             has_abstract = False
@@ -562,7 +562,7 @@ class CodeExtractor:
                     if "ABC" in base.id or "Abstract" in base.id:
                         has_abstract = True
                         break
-            
+
             if has_abstract:
                 # Check for abstract methods
                 for item in entity_node.body:
@@ -571,7 +571,7 @@ class CodeExtractor:
                             if isinstance(decorator, ast.Name):
                                 if "abstractmethod" in decorator.id.lower():
                                     return "Strategy"
-            
+
             # Check if multiple classes implement the same interface
             # (simplified check - would need more context in production)
             if entity.type == "class":
@@ -587,9 +587,9 @@ class CodeExtractor:
                                 similar_count += 1
                     if similar_count >= 2:
                         return "Strategy"
-        
+
         return None
-    
+
     def _analyze_complexity_from_code(self, tree: ast.AST, entity: Component) -> Optional[str]:
         """
         Analyze code complexity from loop structures (conservative approach).
@@ -601,21 +601,21 @@ class CodeExtractor:
                 if node.name == entity.name:
                     entity_node = node
                     break
-        
+
         if not entity_node:
             return None
-        
+
         # Count nested loops
         max_nesting = 0
         current_nesting = 0
-        
+
         def count_nesting(node: ast.AST, level: int = 0):
             """Count nesting level of control structures in AST node.
-            
+
             Recursively traverses the AST to count nested control structures
             (for, while loops) which indicate code complexity. Updates the
             max_nesting variable in the outer scope.
-            
+
             Args:
                 node: AST node to analyze.
                 level: Current nesting level (incremented for loops).
@@ -626,9 +626,9 @@ class CodeExtractor:
                 max_nesting = max(max_nesting, level)
             for child in ast.iter_child_nodes(node):
                 count_nesting(child, level)
-        
+
         count_nesting(entity_node)
-        
+
         # Simple heuristics
         if max_nesting == 0:
             # No loops - could be O(1) or O(n) depending on operations
@@ -643,9 +643,9 @@ class CodeExtractor:
             return "O(n²)"
         elif max_nesting >= 3:
             return "O(n³)"
-        
+
         return None
-    
+
     def _has_recursion(self, tree: ast.AST, entity: Component) -> bool:
         """Check for recursive function calls."""
         # Find the entity's AST node
@@ -655,25 +655,25 @@ class CodeExtractor:
                 if node.name == entity.name:
                     entity_node = node
                     break
-        
+
         if not entity_node:
             return False
-        
+
         # Get function names in this entity
         function_names = set()
         for node in ast.walk(entity_node):
             if isinstance(node, ast.FunctionDef):
                 function_names.add(node.name)
-        
+
         # Check for self-recursive calls
         for node in ast.walk(entity_node):
             if isinstance(node, ast.Call):
                 if isinstance(node.func, ast.Name):
                     if node.func.id in function_names:
                         return True
-        
+
         return False
-    
+
     def _generate_blueprint(self) -> Dict[str, Any]:
         """Generate blueprint.json from extracted components and contracts."""
         # Organize components by zone (simplified - can be enhanced)
@@ -682,7 +682,7 @@ class CodeExtractor:
             "server": [],
             "data": []
         }
-        
+
         # Convert components to blueprint format
         blueprint_components = []
         for comp in self.components.values():
@@ -694,12 +694,12 @@ class CodeExtractor:
                 "line": comp.line,
                 "module_path": comp.module_path
             }
-            
+
             if comp.methods:
                 comp_dict["methods"] = comp.methods
             if comp.attributes:
                 comp_dict["attributes"] = comp.attributes
-            
+
             # Add metadata fields if present (only product logic, not methodology)
             # Note: methodology is excluded as it's a development methodology, not product logic
             if comp.algorithm:
@@ -710,9 +710,9 @@ class CodeExtractor:
                 comp_dict["complexity"] = comp.complexity
             if comp.notes:
                 comp_dict["notes"] = comp.notes
-            
+
             blueprint_components.append(comp_dict)
-            
+
             # Simple zone assignment (can be enhanced with heuristics)
             if "ui" in comp.module_path or "widget" in comp.module_path:
                 zones["client"].append(comp.id)
@@ -720,7 +720,7 @@ class CodeExtractor:
                 zones["server"].append(comp.id)
             else:
                 zones["data"].append(comp.id)
-        
+
         # Convert contracts to blueprint format
         blueprint_contracts = []
         for contract in self.contracts:
@@ -733,9 +733,9 @@ class CodeExtractor:
             if contract.symbols:
                 contract_dict["symbols"] = contract.symbols
             blueprint_contracts.append(contract_dict)
-        
+
         from datetime import datetime
-        
+
         return {
             "version": "1.0",
             "source": "code_extraction",
@@ -746,7 +746,7 @@ class CodeExtractor:
             "components": blueprint_components,
             "contracts": blueprint_contracts
         }
-    
+
     def save_blueprint(self, blueprint: Dict[str, Any], output_path: Path) -> bool:
         """Save blueprint to file with metadata."""
         from manifest.audit.blueprint.blueprint_metadata import save_blueprint_with_metadata

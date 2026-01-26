@@ -1,6 +1,6 @@
 # 누락된 구현 사항 정리
 
-**작성일**: 2026-01-24  
+**작성일**: 2026-01-24
 **목적**: 문서에 계획되어 있거나 코드에 준비되어 있지만 실제로 구현되지 않은 기능들 정리
 
 ---
@@ -125,7 +125,7 @@ Contracts [▼ Expand]
 1. ❌ Contract 상세 정보 (symbols, file) - **미구현**
    - Graph View에 일부만 표시
    - Hierarchy View에 없음
-   
+
 2. ❌ Inspector 연동 (Component 선택 시 상세 표시) - **미구현**
    - ComponentSelected 핸들러 없음
    - Inspector 업데이트 메서드 없음
@@ -136,11 +136,11 @@ Contracts [▼ Expand]
 1. ⚠️ Graph View 관계 그래프 - **부분 구현**
    - Feature별 그룹화만 됨
    - 전체 관계 그래프 없음
-   
+
 2. ⚠️ Contract 방향성 시각화 - **부분 구현**
    - 인접 컴포넌트만 표시
    - 전체 관계 시각화 없음
-   
+
 3. ❌ Zone별 색상 구분 - **미구현**
 
 ---

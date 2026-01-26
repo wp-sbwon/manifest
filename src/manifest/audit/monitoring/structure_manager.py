@@ -52,17 +52,17 @@ class CodeChangeSuggestion:
 class StructureManager:
     """
     Manages structural changes and enforces Spec-First Development.
-    
+
     Responsibilities:
     1. Detect code changes and suggest Blueprint updates
     2. Detect Blueprint changes and suggest code changes
     3. Maintain consistency between Blueprint and code
     """
-    
+
     def __init__(self, manifest_dir: Path = None, project_root: Path = None):
         """
         Initialize Structure Manager.
-        
+
         Args:
             manifest_dir: Manifest directory (default: .manifest)
             project_root: Project root directory (default: current directory)
@@ -72,18 +72,18 @@ class StructureManager:
         self.code_extractor = CodeExtractor(manifest_dir)
         self.comparator = BlueprintComparator()
         self.file_watcher = FileWatcher(project_root)
-        
+
         # File paths
         self.blueprint_file = self.manifest_dir / "blueprint.json"
         self.blueprint_code_file = self.manifest_dir / "blueprint_code.json"
         self.architecture_file = self.manifest_dir / "architecture.json"
-        
+
         # Pending changes
         self._pending_changes: List[str] = []
-        
+
         # Register file change callback
         self.file_watcher.register_change_callback(self._on_files_changed)
-    
+
     def detect_code_changes(
         self,
         changed_files: List[str],
@@ -91,16 +91,16 @@ class StructureManager:
     ) -> List[StructuralChange]:
         """
         Detect structural changes in code files.
-        
+
         Args:
             changed_files: List of file paths that changed
             previous_blueprint: Previous blueprint for comparison (optional)
-            
+
         Returns:
             List of detected structural changes
         """
         changes = []
-        
+
         # Extract current structure from changed files
         for file_path in changed_files:
             path = Path(file_path)
@@ -111,15 +111,15 @@ class StructureManager:
                     file_path=str(path)
                 ))
                 continue
-            
+
             # Extract structure from file
             try:
                 file_components = self.code_extractor.extract_file_structure(path)
-                
+
                 for component in file_components:
                     # Check if component is new or modified
                     change_type = "added"  # Assume new for now
-                    
+
                     if previous_blueprint:
                         # Check if component exists in previous blueprint
                         existing = self._find_component_in_blueprint(
@@ -128,7 +128,7 @@ class StructureManager:
                         )
                         if existing:
                             change_type = "modified"
-                    
+
                     changes.append(StructuralChange(
                         change_type=change_type,
                         component_id=component.id,
@@ -144,9 +144,9 @@ class StructureManager:
                 # Skip files that can't be parsed
                 logger.debug(f"Error extracting structure from {file_path}: {e}")
                 continue
-        
+
         return changes
-    
+
     def suggest_blueprint_updates(
         self,
         code_changes: List[StructuralChange],
@@ -154,19 +154,19 @@ class StructureManager:
     ) -> List[BlueprintUpdateSuggestion]:
         """
         Generate suggestions to update Blueprint based on code changes.
-        
+
         Args:
             code_changes: List of detected code changes
             current_blueprint: Current blueprint (optional, will load if not provided)
-            
+
         Returns:
             List of Blueprint update suggestions
         """
         if current_blueprint is None:
             current_blueprint = self._load_blueprint()
-        
+
         suggestions = []
-        
+
         for change in code_changes:
             if change.change_type == "added" and change.component_data:
                 # Suggest adding new component to Blueprint
@@ -179,7 +179,7 @@ class StructureManager:
                         confidence=0.8,
                         affected_files=[change.file_path]
                     ))
-            
+
             elif change.change_type == "modified" and change.component_data:
                 # Suggest updating existing component
                 component = self._create_component_from_change(change)
@@ -191,7 +191,7 @@ class StructureManager:
                         confidence=0.9,
                         affected_files=[change.file_path]
                     ))
-            
+
             elif change.change_type == "deleted":
                 # Suggest removing component from Blueprint
                 if change.component_id:
@@ -201,9 +201,9 @@ class StructureManager:
                         confidence=0.7,
                         affected_files=[change.file_path]
                     ))
-        
+
         return suggestions
-    
+
     def detect_blueprint_changes(
         self,
         previous_blueprint: Optional[Dict[str, Any]] = None,
@@ -211,11 +211,11 @@ class StructureManager:
     ) -> Dict[str, Any]:
         """
         Detect changes between previous and current Blueprint.
-        
+
         Args:
             previous_blueprint: Previous Blueprint (optional, will load if not provided)
             current_blueprint: Current Blueprint (optional, will load if not provided)
-            
+
         Returns:
             Dict with detected changes:
             {
@@ -230,10 +230,10 @@ class StructureManager:
         if previous_blueprint is None:
             # Try to load from backup or use empty
             previous_blueprint = self._load_previous_blueprint() or {"components": [], "contracts": []}
-        
+
         if current_blueprint is None:
             current_blueprint = self._load_blueprint()
-        
+
         changes = {
             "new_components": [],
             "modified_components": [],
@@ -242,11 +242,11 @@ class StructureManager:
             "modified_contracts": [],
             "deleted_contracts": []
         }
-        
+
         # Compare components
         prev_components = {c.get("id"): c for c in previous_blueprint.get("components", [])}
         curr_components = {c.get("id"): c for c in current_blueprint.get("components", [])}
-        
+
         # Find new components
         for comp_id, comp in curr_components.items():
             if comp_id not in prev_components:
@@ -257,12 +257,12 @@ class StructureManager:
                 if (comp.get("methods") != prev_comp.get("methods") or
                     comp.get("attributes") != prev_comp.get("attributes")):
                     changes["modified_components"].append(comp)
-        
+
         # Find deleted components
         for comp_id in prev_components:
             if comp_id not in curr_components:
                 changes["deleted_components"].append(prev_components[comp_id])
-        
+
         # Compare contracts
         prev_contracts = {
             (c.get("from_id"), c.get("to_id"), c.get("type")): c
@@ -272,7 +272,7 @@ class StructureManager:
             (c.get("from_id"), c.get("to_id"), c.get("type")): c
             for c in current_blueprint.get("contracts", [])
         }
-        
+
         # Find new contracts
         for contract_key, contract in curr_contracts.items():
             if contract_key not in prev_contracts:
@@ -282,14 +282,14 @@ class StructureManager:
                 prev_contract = prev_contracts[contract_key]
                 if contract.get("symbols") != prev_contract.get("symbols"):
                     changes["modified_contracts"].append(contract)
-        
+
         # Find deleted contracts
         for contract_key in prev_contracts:
             if contract_key not in curr_contracts:
                 changes["deleted_contracts"].append(prev_contracts[contract_key])
-        
+
         return changes
-    
+
     def suggest_code_changes(
         self,
         blueprint_changes: Optional[Dict[str, Any]] = None,
@@ -297,22 +297,22 @@ class StructureManager:
     ) -> List[CodeChangeSuggestion]:
         """
         Generate suggestions to change code based on Blueprint changes.
-        
+
         Args:
             blueprint_changes: Dict with changed components/contracts (optional, will detect if not provided)
             current_code_blueprint: Current code-extracted blueprint (optional)
-            
+
         Returns:
             List of code change suggestions
         """
         if blueprint_changes is None:
             blueprint_changes = self.detect_blueprint_changes()
-        
+
         if current_code_blueprint is None:
             current_code_blueprint = self._load_code_blueprint()
-        
+
         suggestions = []
-        
+
         # Check for new components in Blueprint
         new_components = blueprint_changes.get("new_components", [])
         for component in new_components:
@@ -348,7 +348,7 @@ class StructureManager:
                     existing_methods = set(existing.get("methods", []))
                     blueprint_methods = set(component.get("methods", []))
                     missing_methods = blueprint_methods - existing_methods
-                    
+
                     if missing_methods:
                         suggestions.append(CodeChangeSuggestion(
                             suggestion_type="add_method",
@@ -358,7 +358,7 @@ class StructureManager:
                             reason=f"Component '{component.get('name', '')}' is missing methods defined in Blueprint",
                             affected_components=[component.get("id", "")]
                         ))
-        
+
         # Check for modified components
         modified_components = blueprint_changes.get("modified_components", [])
         for component in modified_components:
@@ -373,7 +373,7 @@ class StructureManager:
                     blueprint_methods = set(component.get("methods", []))
                     missing_methods = blueprint_methods - existing_methods
                     extra_methods = existing_methods - blueprint_methods
-                    
+
                     if missing_methods:
                         suggestions.append(CodeChangeSuggestion(
                             suggestion_type="add_method",
@@ -383,24 +383,24 @@ class StructureManager:
                             reason=f"Component '{component.get('name', '')}' needs methods from updated Blueprint",
                             affected_components=[component.get("id", "")]
                         ))
-        
+
         # Check for new contracts (dependencies)
         new_contracts = blueprint_changes.get("new_contracts", [])
         for contract in new_contracts:
             from_id = contract.get("from_id", "")
             to_id = contract.get("to_id", "")
             contract_type = contract.get("type", "dependency")
-            
+
             from_file = self._get_file_for_component(from_id)
             to_file = self._get_file_for_component(to_id)
-            
+
             if from_file and to_file:
                 # Determine import path
                 to_component = self._find_component_in_blueprint(to_id, self._load_blueprint())
                 if to_component:
                     module_path = to_component.get("module_path", "")
                     component_name = to_component.get("name", "")
-                    
+
                     suggestions.append(CodeChangeSuggestion(
                         suggestion_type="add_import",
                         file_path=from_file,
@@ -409,9 +409,9 @@ class StructureManager:
                         reason=f"Contract defined in Blueprint: {from_id} → {to_id} ({contract_type})",
                         affected_components=[from_id, to_id]
                     ))
-        
+
         return suggestions
-    
+
     def analyze_impact(
         self,
         blueprint_changes: Dict[str, Any],
@@ -419,11 +419,11 @@ class StructureManager:
     ) -> Dict[str, Any]:
         """
         Analyze impact of Blueprint changes on existing code.
-        
+
         Args:
             blueprint_changes: Dict with changed components/contracts
             current_code_blueprint: Current code-extracted blueprint (optional)
-            
+
         Returns:
             Dict with impact analysis:
             {
@@ -436,7 +436,7 @@ class StructureManager:
         """
         if current_code_blueprint is None:
             current_code_blueprint = self._load_code_blueprint()
-        
+
         impact = {
             "affected_files": set(),
             "affected_components": [],
@@ -444,7 +444,7 @@ class StructureManager:
             "safe_changes": [],
             "migration_steps": []
         }
-        
+
         # Analyze new components
         for component in blueprint_changes.get("new_components", []):
             file_path = component.get("file", "")
@@ -456,23 +456,23 @@ class StructureManager:
                 "component_id": component.get("id", ""),
                 "description": f"New component '{component.get('name', '')}' - safe to add"
             })
-        
+
         # Analyze modified components
         for component in blueprint_changes.get("modified_components", []):
             file_path = component.get("file", "")
             if file_path:
                 impact["affected_files"].add(file_path)
-            
+
             component_id = component.get("id", "")
             impact["affected_components"].append(component_id)
-            
+
             # Check if it's a breaking change (removed methods)
             existing = self._find_component_in_blueprint(component_id, current_code_blueprint)
             if existing:
                 existing_methods = set(existing.get("methods", []))
                 blueprint_methods = set(component.get("methods", []))
                 removed_methods = existing_methods - blueprint_methods
-                
+
                 if removed_methods:
                     impact["breaking_changes"].append({
                         "type": "removed_methods",
@@ -480,45 +480,45 @@ class StructureManager:
                         "methods": list(removed_methods),
                         "description": f"Component '{component.get('name', '')}' has removed methods: {', '.join(removed_methods)}"
                     })
-        
+
         # Analyze deleted components
         for component in blueprint_changes.get("deleted_components", []):
             file_path = component.get("file", "")
             if file_path:
                 impact["affected_files"].add(file_path)
-            
+
             component_id = component.get("id", "")
             impact["breaking_changes"].append({
                 "type": "deleted_component",
                 "component_id": component_id,
                 "description": f"Component '{component.get('name', '')}' was deleted from Blueprint"
             })
-        
+
         # Analyze new contracts
         for contract in blueprint_changes.get("new_contracts", []):
             from_file = self._get_file_for_component(contract.get("from_id", ""))
             to_file = self._get_file_for_component(contract.get("to_id", ""))
-            
+
             if from_file:
                 impact["affected_files"].add(from_file)
             if to_file:
                 impact["affected_files"].add(to_file)
-            
+
             impact["safe_changes"].append({
                 "type": "new_contract",
                 "from_id": contract.get("from_id", ""),
                 "to_id": contract.get("to_id", ""),
                 "description": f"New dependency: {contract.get('from_id', '')} → {contract.get('to_id', '')}"
             })
-        
+
         # Convert sets to lists for JSON serialization
         impact["affected_files"] = list(impact["affected_files"])
-        
+
         # Generate migration steps
         impact["migration_steps"] = self._generate_migration_steps(blueprint_changes, impact)
-        
+
         return impact
-    
+
     def _generate_migration_steps(
         self,
         blueprint_changes: Dict[str, Any],
@@ -526,17 +526,17 @@ class StructureManager:
     ) -> List[Dict[str, Any]]:
         """
         Generate step-by-step migration plan.
-        
+
         Args:
             blueprint_changes: Detected Blueprint changes
             impact: Impact analysis result
-            
+
         Returns:
             List of migration steps
         """
         steps = []
         step_num = 1
-        
+
         # Step 1: Handle breaking changes first (deletions)
         deleted = blueprint_changes.get("deleted_components", [])
         if deleted:
@@ -548,7 +548,7 @@ class StructureManager:
                 "priority": "high"
             })
             step_num += 1
-        
+
         # Step 2: Handle removed methods
         breaking = [c for c in impact["breaking_changes"] if c["type"] == "removed_methods"]
         if breaking:
@@ -560,7 +560,7 @@ class StructureManager:
                 "priority": "high"
             })
             step_num += 1
-        
+
         # Step 3: Add new components
         new_components = blueprint_changes.get("new_components", [])
         if new_components:
@@ -572,7 +572,7 @@ class StructureManager:
                 "priority": "medium"
             })
             step_num += 1
-        
+
         # Step 4: Update modified components
         modified = blueprint_changes.get("modified_components", [])
         if modified:
@@ -584,7 +584,7 @@ class StructureManager:
                 "priority": "medium"
             })
             step_num += 1
-        
+
         # Step 5: Add new contracts (dependencies)
         new_contracts = blueprint_changes.get("new_contracts", [])
         if new_contracts:
@@ -596,9 +596,9 @@ class StructureManager:
                 "priority": "low"
             })
             step_num += 1
-        
+
         return steps
-    
+
     def apply_blueprint_update(
         self,
         suggestion: BlueprintUpdateSuggestion,
@@ -606,11 +606,11 @@ class StructureManager:
     ) -> bool:
         """
         Apply a Blueprint update suggestion.
-        
+
         Args:
             suggestion: Blueprint update suggestion
             auto_apply: If True, apply without confirmation
-            
+
         Returns:
             True if applied successfully
         """
@@ -619,16 +619,16 @@ class StructureManager:
             # For now, we'll just log it
             logger.info(f"Would apply Blueprint update: {suggestion.suggestion_type}")
             return False
-        
+
         # Save backup before applying
         self._save_blueprint_backup()
-        
+
         blueprint = self._load_blueprint()
-        
+
         if suggestion.suggestion_type == "add_component" and suggestion.component:
             if "components" not in blueprint:
                 blueprint["components"] = []
-            
+
             # Convert Component to dict
             component_dict = {
                 "id": suggestion.component.id,
@@ -640,12 +640,12 @@ class StructureManager:
                 "attributes": suggestion.component.attributes,
                 "module_path": suggestion.component.module_path
             }
-            
+
             # Check if component already exists
             existing = self._find_component_in_blueprint(suggestion.component.id, blueprint)
             if not existing:
                 blueprint["components"].append(component_dict)
-        
+
         elif suggestion.suggestion_type == "update_component" and suggestion.component:
             # Find and update existing component
             if "components" in blueprint:
@@ -657,7 +657,7 @@ class StructureManager:
                             "attributes": suggestion.component.attributes
                         })
                         break
-        
+
         elif suggestion.suggestion_type == "remove_component":
             # Remove component from Blueprint
             if "components" in blueprint:
@@ -665,11 +665,11 @@ class StructureManager:
                     c for c in blueprint["components"]
                     if c.get("id") != suggestion.component_id
                 ]
-        
+
         elif suggestion.suggestion_type == "add_contract" and suggestion.contract:
             if "contracts" not in blueprint:
                 blueprint["contracts"] = []
-            
+
             contract_dict = {
                 "from_id": suggestion.contract.from_id,
                 "to_id": suggestion.contract.to_id,
@@ -677,7 +677,7 @@ class StructureManager:
                 "symbols": suggestion.contract.symbols,
                 "file": suggestion.contract.file
             }
-            
+
             # Check if contract already exists
             existing_contract = next(
                 (c for c in blueprint.get("contracts", [])
@@ -688,7 +688,7 @@ class StructureManager:
             )
             if not existing_contract:
                 blueprint["contracts"].append(contract_dict)
-        
+
         return save_blueprint_with_metadata(
             blueprint,
             self.blueprint_file,
@@ -696,7 +696,7 @@ class StructureManager:
             False,
             "automatic_update"
         )
-    
+
     def apply_blueprint_updates_batch(
         self,
         suggestions: List[BlueprintUpdateSuggestion],
@@ -704,11 +704,11 @@ class StructureManager:
     ) -> Dict[str, Any]:
         """
         Apply multiple Blueprint update suggestions in batch.
-        
+
         Args:
             suggestions: List of Blueprint update suggestions
             auto_apply: If True, apply without confirmation
-            
+
         Returns:
             Dict with results:
             {
@@ -723,16 +723,16 @@ class StructureManager:
                 "failed": 0,
                 "errors": ["Auto-apply is disabled"]
             }
-        
+
         results = {
             "applied": 0,
             "failed": 0,
             "errors": []
         }
-        
+
         # Save backup before batch update
         self._save_blueprint_backup()
-        
+
         for suggestion in suggestions:
             try:
                 success = self.apply_blueprint_update(suggestion, auto_apply=True)
@@ -744,19 +744,19 @@ class StructureManager:
             except Exception as e:
                 results["failed"] += 1
                 results["errors"].append(f"Error applying {suggestion.suggestion_type}: {str(e)}")
-        
+
         return results
-    
+
     def _load_blueprint(self) -> Dict[str, Any]:
         """Load current Blueprint."""
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         return BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=True)
-    
+
     def _load_code_blueprint(self) -> Dict[str, Any]:
         """Load code-extracted Blueprint."""
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         return BlueprintLoader.load_code_blueprint(self.manifest_dir)
-    
+
     def _find_component_in_blueprint(
         self,
         component_id: str,
@@ -765,12 +765,12 @@ class StructureManager:
         """Find a component in Blueprint by ID."""
         if not blueprint or "components" not in blueprint:
             return None
-        
+
         return next(
             (c for c in blueprint["components"] if c.get("id") == component_id),
             None
         )
-    
+
     def _create_component_from_change(
         self,
         change: StructuralChange
@@ -778,7 +778,7 @@ class StructureManager:
         """Create Component object from structural change."""
         if not change.component_data:
             return None
-        
+
         return Component(
             id=change.component_id or f"{change.file_path}:{change.component_data.get('name', 'unknown')}",
             name=change.component_data.get("name", ""),
@@ -789,40 +789,40 @@ class StructureManager:
             attributes=change.component_data.get("attributes", []),
             module_path=change.file_path.replace(str(self.project_root), "").lstrip("/")
         )
-    
+
     def _suggest_file_path(self, component: Dict[str, Any]) -> str:
         """Suggest file path for a new component."""
         component_type = component.get("type", "class")
         component_name = component.get("name", "component")
-        
+
         # Simple heuristic: use component name and type
         if component_type == "class":
             # Convert CamelCase to snake_case
             import re
             snake_case = re.sub(r'(?<!^)(?=[A-Z])', '_', component_name).lower()
             return f"src/{snake_case}.py"
-        
+
         return f"src/{component_name.lower()}.py"
-    
+
     def _get_file_for_component(self, component_id: str) -> str:
         """Get file path for a component ID."""
         blueprint = self._load_blueprint()
         component = self._find_component_in_blueprint(component_id, blueprint)
         return component.get("file", "") if component else ""
-    
+
     def _save_blueprint_backup(self) -> bool:
         """Save a backup of the current Blueprint before applying changes."""
         try:
             if not self.blueprint_file.exists():
                 return True  # Nothing to backup
-            
+
             backup_file = self.blueprint_file.with_suffix(
                 f".backup.{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
             )
-            
+
             import shutil
             shutil.copy2(self.blueprint_file, backup_file)
-            
+
             # Keep only last 5 backups
             backup_dir = self.blueprint_file.parent
             backups = sorted(
@@ -832,7 +832,7 @@ class StructureManager:
             )
             for old_backup in backups[5:]:
                 old_backup.unlink()
-            
+
             return True
         except Exception as e:
             logger.warning(f"Failed to create Blueprint backup: {e}", exc_info=True)
@@ -848,11 +848,11 @@ class StructureManager:
         """Apply a code change suggestion."""
         try:
             file_path = Path(suggestion.file_path)
-            
+
             if suggestion.suggestion_type == "create_file":
                 # Create directory if needed
                 file_path.parent.mkdir(parents=True, exist_ok=True)
-                
+
                 # Create file with basic skeleton
                 content = f'"""\n{suggestion.action}\n"""\n\n'
                 if suggestion.blueprint_component_id:
@@ -860,17 +860,17 @@ class StructureManager:
                     comp = self._find_component_in_blueprint(suggestion.blueprint_component_id, blueprint)
                     if comp:
                         content += self._generate_class_skeleton(comp)
-                
+
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(content)
                 return True
-                
+
             elif suggestion.suggestion_type == "add_method":
                 # This would require more complex AST manipulation or simple appending
                 # For now, we'll just log it
                 logger.info(f"Would add method to {suggestion.file_path}")
                 return False
-                
+
             return False
         except Exception as e:
             logger.error(f"Error applying code change: {e}")
@@ -880,10 +880,10 @@ class StructureManager:
         """Generate a basic Python class skeleton."""
         name = component.get("name", "NewClass")
         methods = component.get("methods", [])
-        
+
         skeleton = f"class {name}:\n"
         skeleton += f'    """{component.get("type", "Component")} implementation."""\n\n'
-        
+
         if not methods:
             skeleton += "    pass\n"
         else:
@@ -891,5 +891,5 @@ class StructureManager:
                 skeleton += f"    def {method}(self):\n"
                 skeleton += f'        """{method} implementation."""\n'
                 skeleton += "        pass\n\n"
-                
+
         return skeleton

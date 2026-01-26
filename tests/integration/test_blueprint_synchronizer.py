@@ -59,7 +59,7 @@ def sample_bottom_up():
 def test_detect_mismatch(synchronizer, sample_top_down, sample_bottom_up):
     """Test detecting mismatches between blueprints."""
     report = synchronizer.detect_mismatch(sample_top_down, sample_bottom_up)
-    
+
     assert report is not None
     assert len(report.conflicts) > 0
     assert report.status == "pending"
@@ -73,7 +73,7 @@ def test_detect_mismatch_no_conflicts(synchronizer):
         "contracts": [],
         "zones": {"client": [], "server": [], "data": []}
     }
-    
+
     report = synchronizer.detect_mismatch(blueprint, blueprint)
     assert report is None
 
@@ -87,9 +87,9 @@ def test_create_conflict_issue(synchronizer):
             message="Test conflict"
         )
     ]
-    
+
     issue = synchronizer.create_conflict_issue(conflicts, "task-1")
-    
+
     assert issue["type"] == "blueprint_conflict"
     assert issue["task_id"] == "task-1"
     assert issue["summary"]["total"] == 1
@@ -100,12 +100,12 @@ def test_save_and_load_conflict_report(synchronizer, sample_top_down, sample_bot
     """Test saving and loading conflict reports."""
     report = synchronizer.detect_mismatch(sample_top_down, sample_bottom_up)
     assert report is not None
-    
+
     report.task_id = "test-task-1"
     file_path = synchronizer.save_conflict_report(report)
-    
+
     assert file_path.exists()
-    
+
     # Load report
     loaded = synchronizer.load_conflict_report(file_path)
     assert loaded is not None
@@ -120,9 +120,9 @@ def test_resend_to_worker_squad(synchronizer):
         "task_id": "task-1",
         "conflicts": []
     }
-    
+
     request = synchronizer.resend_to_worker_squad("task-1", conflict_issue)
-    
+
     assert request["action"] == "resend_with_conflict"
     assert request["task_id"] == "task-1"
     assert "conflict_issue" in request
@@ -134,9 +134,9 @@ def test_request_planner_review(synchronizer):
         "type": "blueprint_conflict",
         "conflicts": []
     }
-    
+
     request = synchronizer.request_planner_review(conflict_issue)
-    
+
     assert request["action"] == "planner_review"
     assert "request" in request
     assert request["request"]["options"] == ["necessary", "violation"]
@@ -148,9 +148,9 @@ def test_request_user_approval_necessary(synchronizer):
         "type": "blueprint_conflict",
         "conflicts": []
     }
-    
+
     request = synchronizer.request_user_approval(conflict_issue, "necessary")
-    
+
     assert request["action"] == "user_approval"
     assert request["planner_flag"] == "necessary"
 
@@ -161,9 +161,9 @@ def test_request_user_approval_violation(synchronizer):
         "type": "blueprint_conflict",
         "conflicts": []
     }
-    
+
     request = synchronizer.request_user_approval(conflict_issue, "violation")
-    
+
     assert request["action"] == "no_approval_needed"
     assert request["planner_flag"] == "violation"
 
@@ -172,17 +172,17 @@ def test_update_conflict_status(synchronizer, sample_top_down, sample_bottom_up)
     """Test updating conflict report status."""
     report = synchronizer.detect_mismatch(sample_top_down, sample_bottom_up)
     assert report is not None
-    
+
     report.task_id = "test-task-1"
     synchronizer.save_conflict_report(report)
-    
+
     # Update status
     result = synchronizer.update_conflict_status(
         report,
         "planner_review",
         planner_flag="necessary"
     )
-    
+
     assert result is True
     assert report.status == "planner_review"
     assert report.planner_flag == "necessary"
@@ -195,7 +195,7 @@ def test_sync_blueprints_strict_mode(synchronizer, sample_top_down, sample_botto
         sample_bottom_up,
         mode="strict"
     )
-    
+
     assert result["success"] is False
     assert result["blocked"] is True
 
@@ -207,7 +207,7 @@ def test_sync_blueprints_workflow_mode(synchronizer, sample_top_down, sample_bot
         sample_bottom_up,
         mode="workflow"
     )
-    
+
     assert result["workflow_triggered"] is True
     assert "conflict_report" in result
 
@@ -220,8 +220,8 @@ def test_sync_blueprints_no_conflicts(synchronizer):
         "contracts": [],
         "zones": {"client": [], "server": [], "data": []}
     }
-    
+
     result = synchronizer.sync_blueprints(blueprint, blueprint, mode="workflow")
-    
+
     assert result["success"] is True
     assert result["workflow_triggered"] is False

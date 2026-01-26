@@ -81,7 +81,7 @@ def test_compare_components_missing(comparator, sample_top_down, sample_bottom_u
         sample_top_down["components"],
         sample_bottom_up["components"]
     )
-    
+
     # Should detect missing AnotherClass
     missing_conflicts = [
         c for c in conflicts
@@ -97,7 +97,7 @@ def test_compare_components_extra(comparator, sample_top_down, sample_bottom_up)
         sample_top_down["components"],
         sample_bottom_up["components"]
     )
-    
+
     # Should detect extra NewClass
     extra_conflicts = [
         c for c in conflicts
@@ -113,7 +113,7 @@ def test_compare_methods_missing(comparator, sample_top_down, sample_bottom_up):
         sample_top_down["components"],
         sample_bottom_up["components"]
     )
-    
+
     # Should detect missing method2
     method_conflicts = [
         c for c in conflicts
@@ -128,7 +128,7 @@ def test_compare_contracts(comparator, sample_top_down, sample_bottom_up):
         sample_top_down["contracts"],
         sample_bottom_up["contracts"]
     )
-    
+
     # Should detect missing contract
     contract_conflicts = [
         c for c in conflicts
@@ -143,7 +143,7 @@ def test_compare_zones(comparator, sample_top_down, sample_bottom_up):
         sample_top_down["zones"],
         sample_bottom_up["zones"]
     )
-    
+
     # Should detect zone mismatches
     zone_conflicts = [
         c for c in conflicts
@@ -155,9 +155,9 @@ def test_compare_zones(comparator, sample_top_down, sample_bottom_up):
 def test_compare_blueprints_full(comparator, sample_top_down, sample_bottom_up):
     """Test full blueprint comparison."""
     conflicts = comparator.compare_blueprints(sample_top_down, sample_bottom_up)
-    
+
     assert len(conflicts) > 0
-    
+
     # Should have various conflict types
     conflict_types = {c.type for c in conflicts}
     assert ConflictType.MISSING_COMPONENT in conflict_types
@@ -169,7 +169,7 @@ def test_get_conflicts_by_severity(comparator, sample_top_down, sample_bottom_up
     """Test grouping conflicts by severity."""
     conflicts = comparator.compare_blueprints(sample_top_down, sample_bottom_up)
     grouped = comparator.get_conflicts_by_severity(conflicts)
-    
+
     assert "error" in grouped
     assert "warning" in grouped
     assert "info" in grouped
@@ -179,6 +179,6 @@ def test_get_conflicts_by_type(comparator, sample_top_down, sample_bottom_up):
     """Test grouping conflicts by type."""
     conflicts = comparator.compare_blueprints(sample_top_down, sample_bottom_up)
     grouped = comparator.get_conflicts_by_type(conflicts)
-    
+
     assert ConflictType.MISSING_COMPONENT.value in grouped
     assert ConflictType.EXTRA_COMPONENT.value in grouped

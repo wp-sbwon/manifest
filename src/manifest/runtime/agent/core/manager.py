@@ -18,29 +18,29 @@ from manifest.runtime.agent.prompts.orchestrator_prompt import get_orchestrator_
 
 class AgentManager:
     """Manages agent lifecycle and creation.
-    
+
     Handles creating agent instances of different types, generating appropriate
     prompts, and managing their lifecycle. Maintains a registry of active
     agents and provides methods to start, stop, and query agents.
-    
+
     Attributes:
         state_manager: Manages state persistence for agents.
         agents: Dictionary mapping agent IDs to agent instances.
         agent_prompts: Dictionary mapping agent types to their identity prompts.
         executor: AgentExecutor instance for LLM API calls.
     """
-    
+
     def __init__(
         self,
         state_manager: StateManager,
         executor: Optional["AgentExecutor"] = None
     ):
         """Initialize the agent manager.
-        
+
         Sets up the agent registry and loads identity prompts for different
         agent types. If no executor is provided, agents will need to be
         created with an executor later.
-        
+
         Args:
             state_manager: State manager for persisting agent state.
             executor: Optional AgentExecutor instance. If not provided,
@@ -61,7 +61,7 @@ class AgentManager:
             "integration_test": "Integration Test agent"
         }
         self.executor = executor
-    
+
     async def create_agent(
         self,
         agent_type: str,
@@ -72,11 +72,11 @@ class AgentManager:
         tool_executor: Optional[Any] = None
     ) -> Any:
         """Create a new agent instance of the specified type.
-        
+
         Generates the appropriate prompt based on agent type and context,
         then creates the corresponding agent class instance. The agent
         is registered in the manager's agent dictionary.
-        
+
         Args:
             agent_type: Type of agent to create. Valid values: "orchestrator",
                 "planner", "coder", "test", "debug", "approver", "project_review",
@@ -84,16 +84,16 @@ class AgentManager:
             context: Tiered context dictionary for the agent (Tier 0-3).
             model_config: Dictionary with provider, model, and api_key.
             task_id: Optional task ID. If not provided, generates a unique ID.
-        
+
         Returns:
             Agent instance (specific type depends on agent_type). The agent
             is ready to use but not yet started.
         """
         agent_id = task_id or f"agent_{len(self.agents)}"
-        
+
         # Generate agent prompt based on type
         prompt = self._generate_agent_prompt(agent_type, context, task_id)
-        
+
         # Create actual agent instance based on type
         agent_instance = None
         if agent_type == "orchestrator" and self.executor:
@@ -123,7 +123,7 @@ class AgentManager:
         elif agent_type == "integration_test" and self.executor:
             from manifest.runtime.agent.agents.integration_test_agent import IntegrationTestAgent
             agent_instance = IntegrationTestAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router, tool_executor=tool_executor)
-        
+
         # Create agent object
         agent = {
             "id": agent_id,
@@ -135,10 +135,10 @@ class AgentManager:
             "system_prompt": self.agent_prompts.get(agent_type, ""),
             "instance": agent_instance  # Actual agent instance
         }
-        
+
         self.agents[agent_id] = agent
         return agent
-    
+
     def _generate_agent_prompt(
         self,
         agent_type: str,
@@ -146,15 +146,15 @@ class AgentManager:
         task_id: Optional[str] = None
     ) -> str:
         """Generate the appropriate prompt for an agent type.
-        
+
         Uses agent-specific prompt generators (get_coder_prompt, get_planner_prompt,
         etc.) to create prompts tailored to each agent's role and context.
-        
+
         Args:
             agent_type: Type of agent to generate prompt for.
             context: Tiered context dictionary for the agent.
             task_id: Optional task ID for context in the prompt.
-        
+
         Returns:
             Complete prompt string ready to send to the LLM.
         """
@@ -162,7 +162,7 @@ class AgentManager:
             # Get task description from context
             task_description = context.get("task_description", "Complete the assigned task")
             task_scope = context.get("task_scope", {})
-            
+
             return get_coder_prompt(
                 task_description=task_description,
                 context=context,
@@ -202,29 +202,29 @@ Context:
 
 Execute the assigned task following best practices.
 """
-    
+
     async def start_agent(self, agent_id: str) -> bool:
         """Start an agent."""
         if agent_id in self.agents:
             self.agents[agent_id]["status"] = "active"
             return True
         return False
-    
+
     async def stop_agent(self, agent_id: str) -> bool:
         """Stop an agent."""
         if agent_id in self.agents:
             self.agents[agent_id]["status"] = "stopped"
             return True
         return False
-    
+
     def get_agent(self, agent_id: str) -> Optional[Dict[str, Any]]:
         """Get agent information."""
         return self.agents.get(agent_id)
-    
+
     def list_agents(self) -> List[str]:
         """List all agent IDs."""
         return list(self.agents.keys())
-    
+
     async def shutdown(self):
         """Shutdown all agents."""
         for agent_id in list(self.agents.keys()):

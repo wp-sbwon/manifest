@@ -43,19 +43,19 @@ You DO:
 
 class ProjectReviewAgent:
     """Project review agent for project-level requirements verification.
-    
+
     Reviews completed Worker Squad work against PRD requirements, architecture
     constraints, and blueprint specifications. This is a higher-level review
     than task-level approval - it ensures the overall project goals are met
     and maintains project-wide consistency.
-    
+
     Attributes:
         agent_id: Unique identifier for this agent instance.
         executor: AgentExecutor for making LLM API calls.
         state_manager: StateManager for persisting review results.
         message_history: List of conversation messages for context.
     """
-    
+
     def __init__(
         self,
         agent_id: str,
@@ -64,7 +64,7 @@ class ProjectReviewAgent:
         terminal_router: Optional["TerminalRouter"] = None
     ):
         """Initialize the project review agent.
-        
+
         Args:
             agent_id: Unique identifier for this agent.
             executor: Executor instance for LLM API calls.
@@ -76,7 +76,7 @@ class ProjectReviewAgent:
         self.terminal_router = terminal_router
         self.state_manager = state_manager
         self.message_history: List[Dict[str, str]] = []
-    
+
     async def review(
         self,
         prd_data: Dict[str, Any],
@@ -87,11 +87,11 @@ class ProjectReviewAgent:
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
         """Review project-level requirements compliance.
-        
+
         Examines the completed Worker Squad output against PRD requirements,
         architecture guidelines, and blueprint specifications. Identifies
         any missing requirements or inconsistencies at the project level.
-        
+
         Args:
             prd_data: Product Requirements Document containing project goals.
             architecture_data: Architecture document with system design.
@@ -99,7 +99,7 @@ class ProjectReviewAgent:
             worker_squad_output: Complete output from Worker Squad execution.
             context: Tiered context for additional information.
             model_config: Dictionary with provider, model, and api_key.
-        
+
         Yields:
             Dictionaries with type "chunk" (streaming) or "complete" (finished).
             Content contains review findings, requirements compliance status,
@@ -109,7 +109,7 @@ class ProjectReviewAgent:
         prompt = self._generate_review_prompt(
             prd_data, architecture_data, blueprint_data, worker_squad_output, context
         )
-        
+
         # Execute agent
         async for chunk in self.executor.execute_agent(
             agent_id=self.agent_id,
@@ -127,9 +127,9 @@ class ProjectReviewAgent:
             elif chunk.get("type") == "complete":
                 # Save complete response
                 await self._save_response(chunk.get("content", ""))
-            
+
             yield chunk
-    
+
     def _generate_review_prompt(
         self,
         prd_data: Dict[str, Any],
@@ -140,7 +140,7 @@ class ProjectReviewAgent:
     ) -> str:
         """Generate project review prompt."""
         import json
-        
+
         prompt = f"""
 {PROJECT_REVIEW_IDENTITY}
 
@@ -183,14 +183,14 @@ RECOMMENDATIONS:
 - [recommendation 2]
 """
         return prompt
-    
+
     async def _save_response(self, content: str) -> None:
         """Save project review results to state and chat history.
-        
+
         Writes the review findings and recommendations to the appropriate
         channel so they can be displayed in the UI and used for project
         planning.
-        
+
         Args:
             content: The complete project review content.
         """

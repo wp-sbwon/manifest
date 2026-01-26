@@ -10,7 +10,7 @@ from typing import List, Dict, Any
 def get_tool_definitions() -> List[Dict[str, Any]]:
     """
     Get all tool definitions for LLM tool use.
-    
+
     Returns:
         List of tool definition dictionaries compatible with Anthropic/OpenAI APIs.
     """

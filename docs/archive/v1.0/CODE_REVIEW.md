@@ -116,7 +116,7 @@ class CommandHandler:
             "create_task": self._handle_create_task,
             # ...
         }
-    
+
     async def handle(self, command: str, args: List[str], log: RichLog):
         handler = self.handlers.get(command)
         if handler:
@@ -176,30 +176,30 @@ def _load_blueprint(self):
 # audit/blueprint_loader.py
 class BlueprintLoader:
     """Centralized Blueprint loading utility."""
-    
+
     @staticmethod
     def load_blueprint(manifest_dir: Path, with_metadata: bool = False) -> Dict[str, Any]:
         """Load blueprint.json with optional metadata."""
         blueprint_file = manifest_dir / "blueprint.json"
         if not blueprint_file.exists():
             return {"version": "1.0", "components": [], "contracts": [], "zones": {}}
-        
+
         with open(blueprint_file, "r") as f:
             data = json.load(f)
-        
+
         if with_metadata:
             from manifest.audit.blueprint_metadata import load_blueprint_with_metadata
             return load_blueprint_with_metadata(blueprint_file, "llm_design", False)
-        
+
         return data
-    
+
     @staticmethod
     def load_code_blueprint(manifest_dir: Path) -> Dict[str, Any]:
         """Load blueprint_code.json."""
         code_blueprint_file = manifest_dir / "blueprint_code.json"
         if not code_blueprint_file.exists():
             return {"components": [], "contracts": []}
-        
+
         with open(code_blueprint_file, "r") as f:
             return json.load(f)
 ```
@@ -228,14 +228,14 @@ self.state_manager.save_sprint(sprint_data)
 # core/sprint_manager.py
 class SprintManager:
     """Manages Sprint data with business logic."""
-    
+
     def __init__(self, state_manager: StateManager):
         self.state_manager = state_manager
-    
+
     def load_sprint(self, sprint_id: str) -> Optional[Dict[str, Any]]:
         """Load sprint with validation."""
         return self.state_manager.load_sprint(sprint_id)
-    
+
     def update_sprint_tests(
         self,
         sprint_id: str,
@@ -248,17 +248,17 @@ class SprintManager:
         sprint_data = self.load_sprint(sprint_id)
         if not sprint_data:
             return False
-        
+
         test_key = f"{test_type}_tests"
         if test_key not in sprint_data:
             sprint_data[test_key] = {}
-        
+
         sprint_data[test_key]["status"] = status
         if test_files:
             sprint_data[test_key]["test_files"] = test_files
         if test_plan:
             sprint_data[test_key]["test_plan"] = test_plan
-        
+
         return self.state_manager.save_sprint(sprint_data)
 ```
 
@@ -338,17 +338,17 @@ from pathlib import Path
 def setup_logger(name: str, log_file: Path = None) -> logging.Logger:
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
-    
+
     # Console handler
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
-    
+
     # File handler (optional)
     if log_file:
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(logging.DEBUG)
         logger.addHandler(file_handler)
-    
+
     return logger
 ```
 

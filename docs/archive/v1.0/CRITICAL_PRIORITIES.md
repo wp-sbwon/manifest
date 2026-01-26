@@ -1,6 +1,6 @@
 # Critical Priorities - 최종 정리
 
-**작성일**: 2026-01-24  
+**작성일**: 2026-01-24
 **기준**: REMAINING_FEATURES.md, PROJECT_REVIEW.md
 
 ---
@@ -34,7 +34,7 @@ result = await self.coordinator.start_worker_agent_and_wait(...)
 # }
 ```
 
-**위치**: 
+**위치**:
 - `src/manifest/agents/worker_squad_executor.py`
 - `src/manifest/agents/agent_coordinator.py`
 
@@ -67,7 +67,7 @@ result = await self.coordinator.start_worker_agent_and_wait(...)
    - 채널별 State 저장 및 로드
    - 출력 우선순위 및 표시 순서 관리
 
-**위치**: 
+**위치**:
 - `src/manifest/ui/app.py`
 - `src/manifest/ui/channels/channel_manager.py`
 
@@ -118,7 +118,7 @@ result = await self.coordinator.start_worker_agent_and_wait(...)
    - Task가 너무 크면 자동 분할 제안
    - 컨텍스트 크기 기반 Task 분할 자동화
 
-**위치**: 
+**위치**:
 - `src/manifest/agents/context_provider.py`
 - `src/manifest/agents/task_scoper.py`
 - `src/manifest/runtime/agent/agents/orchestrator_agent.py`
@@ -160,7 +160,7 @@ result = await self.coordinator.start_worker_agent_and_wait(...)
 - Blueprint 충돌 시 자동으로 Planner에 전달
 - Planner 응답 처리 및 Blueprint 업데이트
 
-**위치**: 
+**위치**:
 - `src/manifest/agents/agent_coordinator.py:427`
 - `src/manifest/bridge/agent_bridge.py`
 

@@ -25,21 +25,21 @@ logger = get_logger(__name__)
 
 class WorkerSquadExecutor:
     """Executes the complete Worker Squad workflow for tasks.
-    
+
     The Worker Squad is a multi-agent workflow that follows Test-Driven
     Development principles. It coordinates multiple agent types through
     a structured sequence of stages, with iteration and feedback loops
     built in.
-    
+
     Attributes:
         coordinator: Reference to AgentCoordinator for starting agents.
         state_manager: Reference to StateManager for persisting stage results.
         timeouts: Dictionary mapping stage names to timeouts in seconds.
     """
-    
+
     def __init__(self, coordinator: Any):
         """Initialize the Worker Squad executor.
-        
+
         Args:
             coordinator: AgentCoordinator instance that provides access to
                 agent startup methods and other services.
@@ -47,7 +47,7 @@ class WorkerSquadExecutor:
         self.coordinator = coordinator
         self.state_manager = coordinator.state_manager
         self.recovery_manager = FailureRecoveryManager(coordinator)
-        
+
         # Default timeouts for each stage (in seconds)
         self.timeouts = {
             "planner": 300.0,      # 5 minutes
@@ -58,17 +58,17 @@ class WorkerSquadExecutor:
             "self_review": 300.0,  # 5 minutes
             "approver": 300.0      # 5 minutes
         }
-    
+
     def set_timeout(self, stage: str, timeout: float):
         """Set timeout for a specific stage."""
         self.timeouts[stage] = timeout
-    
+
     async def execute(self, task_id: str) -> Dict[str, Any]:
         """Execute the complete Worker Squad workflow for a task.
-        
+
         This is the main entry point that orchestrates all stages of the
         Worker Squad process. The workflow follows TDD principles:
-        
+
         1. Planner: Creates a detailed plan for the task
         2. TDD Test: Writes test skeleton and plan before implementation
         3. Coder: Implements code to make the tests pass
@@ -76,17 +76,17 @@ class WorkerSquadExecutor:
         5. Debug: Fixes issues if tests fail (iterates up to 5 times)
         6. Self Review: Coder reviews own work for plan compliance
         7. Approver: Final approval (may loop back to coder if rejected)
-        
+
         Each stage's results are saved to state, and the workflow can
         exit early if any critical stage fails. After successful approval,
         Sprint-level tests are triggered in the background.
-        
+
         The executor can work in event-driven mode by subscribing to
         workflow events, but currently uses sequential mode for clarity.
-        
+
         Args:
             task_id: Unique identifier of the task to execute.
-        
+
         Returns:
             Dictionary containing:
             - success: Boolean indicating if workflow completed successfully
@@ -100,10 +100,10 @@ class WorkerSquadExecutor:
                 task_id=task_id,
                 data={"workflow_type": "worker_squad"}
             ))
-        
+
         stages = {}
         previous_stages = {}
-        
+
         # 1. Planner
         planner_result = await self._execute_planner_stage(task_id, previous_stages)
         planner_result["status"] = "completed" if planner_result.get("success") else "failed"
@@ -120,7 +120,7 @@ class WorkerSquadExecutor:
                 failure_result=planner_result,
                 previous_stages=previous_stages
             )
-            
+
             if recovery_result.get("recovered"):
                 # Recovery succeeded, use recovered result
                 planner_result = recovery_result["result"]
@@ -143,7 +143,7 @@ class WorkerSquadExecutor:
                         data={"error": error_msg, "recovery_failed": True}
                     ))
                 return {"success": False, "stages": stages, "error": error_msg}
-        
+
         # 2. Test (TDD - test first)
         tdd_test_result = await self._execute_tdd_test_stage(task_id, planner_result, previous_stages)
         stages["tdd_test"] = tdd_test_result
@@ -164,7 +164,7 @@ class WorkerSquadExecutor:
                 failure_result=failure_result,
                 previous_stages=previous_stages
             )
-            
+
             if recovery_result.get("recovered"):
                 tdd_test_result = recovery_result["result"]
                 tdd_test_result["status"] = "completed"
@@ -185,7 +185,7 @@ class WorkerSquadExecutor:
                         data={"error": error_msg, "recovery_failed": True}
                     ))
                 return {"success": False, "stages": stages, "error": error_msg}
-        
+
         # 3. Coder (implement to pass tests)
         coder_result = await self._execute_coder_stage(task_id, test_plan=tdd_test_result, previous_stages=previous_stages)
         coder_result["status"] = "completed" if coder_result.get("success") else "failed"
@@ -202,7 +202,7 @@ class WorkerSquadExecutor:
                 failure_result=coder_result,
                 previous_stages=previous_stages
             )
-            
+
             if recovery_result.get("recovered"):
                 coder_result = recovery_result["result"]
                 coder_result["status"] = "completed"
@@ -223,7 +223,7 @@ class WorkerSquadExecutor:
                         data={"error": error_msg, "recovery_failed": True}
                     ))
                 return {"success": False, "stages": stages, "error": error_msg}
-        
+
         # 4. Test (run tests)
         test_result = await self._execute_test_stage(task_id, previous_stages)
         test_result["status"] = "completed" if test_result.get("success") else "failed"
@@ -231,7 +231,7 @@ class WorkerSquadExecutor:
         previous_stages["test"] = test_result
         # Save stage result
         await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
-        
+
         # 5. Debug (iterative if tests fail)
         debug_iterations = 0
         max_debug_iterations = 5
@@ -243,7 +243,7 @@ class WorkerSquadExecutor:
             # Save stage result
             await self.state_manager.save_worker_squad_stage_async(task_id, "debug", debug_result)
             debug_iterations += 1
-            
+
             if debug_result.get("success"):
                 # Re-run tests after debug
                 test_result = await self._execute_test_stage(task_id, previous_stages)
@@ -268,7 +268,7 @@ class WorkerSquadExecutor:
                     await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
                 else:
                     break
-        
+
         if not test_result.get("success"):
             # Attempt recovery for final test failure
             recovery_result = await self.recovery_manager.attempt_recovery(
@@ -278,7 +278,7 @@ class WorkerSquadExecutor:
                 failure_result=test_result,
                 previous_stages=previous_stages
             )
-            
+
             if recovery_result.get("recovered"):
                 test_result = recovery_result["result"]
                 stages["test"] = test_result
@@ -294,21 +294,21 @@ class WorkerSquadExecutor:
                         data={"error": "Tests failed after max debug iterations"}
                     ))
                 return {"success": False, "stages": stages, "error": "Tests failed after max debug iterations"}
-        
+
         # 6. Self Review
         self_review_result = await self._execute_self_review_stage(task_id, previous_stages)
         stages["self_review"] = self_review_result
         previous_stages["self_review"] = self_review_result
         # Save stage result
         await self.state_manager.save_worker_squad_stage_async(task_id, "self_review", self_review_result)
-        
+
         # 7. Approver
         approver_result = await self._execute_approver_stage(task_id, self_review_result, previous_stages)
         stages["approver"] = approver_result
         previous_stages["approver"] = approver_result
         # Save stage result
         await self.state_manager.save_worker_squad_stage_async(task_id, "approver", approver_result)
-        
+
         # If approver rejects, go back to coder
         max_approver_iterations = 3
         approver_iterations = 0
@@ -323,24 +323,24 @@ class WorkerSquadExecutor:
             previous_stages["coder"] = coder_result
             # Save stage result
             await self.state_manager.save_worker_squad_stage_async(task_id, "coder", coder_result)
-            
+
             if not coder_result.get("success"):
                 return {"success": False, "stages": stages, "error": "Coder failed after approver rejection"}
-            
+
             # Re-run self review and approver
             self_review_result = await self._execute_self_review_stage(task_id, previous_stages)
             stages["self_review"] = self_review_result
             previous_stages["self_review"] = self_review_result
             # Save stage result
             await self.state_manager.save_worker_squad_stage_async(task_id, "self_review", self_review_result)
-            
+
             approver_result = await self._execute_approver_stage(task_id, self_review_result, previous_stages)
             stages["approver"] = approver_result
             previous_stages["approver"] = approver_result
             # Save stage result
             await self.state_manager.save_worker_squad_stage_async(task_id, "approver", approver_result)
             approver_iterations += 1
-        
+
         if approver_result.get("decision") != "approved":
             # Publish workflow failed event
             if hasattr(self.coordinator, 'event_bus'):
@@ -351,7 +351,7 @@ class WorkerSquadExecutor:
                     data={"error": "Approver did not approve after max iterations"}
                 ))
             return {"success": False, "stages": stages, "error": "Approver did not approve after max iterations"}
-        
+
         # 8. Run Sprint tests in background (NON-BLOCKING)
         # Get sprint_id from task
         tasks = self.state_manager.get_task_checklist()
@@ -359,7 +359,7 @@ class WorkerSquadExecutor:
         sprint_id = task.get("sprint_id") if task else None
         if sprint_id and hasattr(self.coordinator, 'sprint_executor'):
             asyncio.create_task(self.coordinator.sprint_executor.run_sprint_tests(sprint_id, task_id))
-        
+
         # Publish workflow completed event
         if hasattr(self.coordinator, 'event_bus'):
             await self.coordinator.event_bus.publish(WorkflowEvent(
@@ -371,19 +371,19 @@ class WorkerSquadExecutor:
                     "success": True
                 }
             ))
-        
+
         return {
             "success": True,
             "stages": stages
         }
-    
+
     async def _execute_planner_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> Dict[str, Any]:
         """Execute Planner stage and wait for completion.
-        
+
         Args:
             task_id: ID of the task to plan for.
             previous_stages: Results from previous stages (empty for planner).
-        
+
         Returns:
             Dictionary with stage results including success, output, and parsed data.
         """
@@ -391,7 +391,7 @@ class WorkerSquadExecutor:
         result = await self.coordinator.start_worker_agent_and_wait(
             task_id, "planner", stage="planner", previous_stages=previous_stages or {}, timeout=timeout
         )
-        
+
         # Extract plan from parsed data
         plan = result.get("parsed_data", {}).get("plan", {})
         if not plan:
@@ -399,7 +399,7 @@ class WorkerSquadExecutor:
             output = result.get("output", "")
             if output:
                 plan = {"description": output[:500]}  # Use first 500 chars as plan description
-        
+
         return {
             "success": result.get("success", False),
             "output": result.get("output", ""),
@@ -407,7 +407,7 @@ class WorkerSquadExecutor:
             "parsed_data": result.get("parsed_data", {}),
             "error": result.get("error")
         }
-    
+
     async def _execute_coder_stage(
         self,
         task_id: str,
@@ -416,13 +416,13 @@ class WorkerSquadExecutor:
         previous_stages: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """Execute Coder stage and wait for completion.
-        
+
         Args:
             task_id: ID of the task to code for.
             feedback: Optional feedback from approver if this is a rework.
             test_plan: Optional test plan from TDD stage to guide implementation.
             previous_stages: Results from previous stages in the workflow.
-        
+
         Returns:
             Dictionary with stage results including success, output, and parsed data.
         """
@@ -436,7 +436,7 @@ class WorkerSquadExecutor:
                     task["worker_squad"] = {}
                 task["worker_squad"]["approver_feedback"] = feedback
                 self.state_manager.set_task_checklist(tasks)
-        
+
         # If test_plan provided (TDD), add it to context
         if test_plan:
             tasks = self.state_manager.get_task_checklist()
@@ -448,15 +448,15 @@ class WorkerSquadExecutor:
                     task["worker_squad"]["stages"] = {}
                 task["worker_squad"]["stages"]["tdd_test"] = test_plan
                 self.state_manager.set_task_checklist(tasks)
-        
+
         timeout = self.timeouts.get("coder", 900.0)
         result = await self.coordinator.start_worker_agent_and_wait(
             task_id, "coder", stage="coder", previous_stages=previous_stages or {}, timeout=timeout
         )
-        
+
         # Extract files modified from parsed data
         files_modified = result.get("parsed_data", {}).get("files_modified", [])
-        
+
         return {
             "success": result.get("success", False),
             "output": result.get("output", ""),
@@ -464,7 +464,7 @@ class WorkerSquadExecutor:
             "parsed_data": result.get("parsed_data", {}),
             "error": result.get("error")
         }
-    
+
     async def _execute_tdd_test_stage(
         self,
         task_id: str,
@@ -472,12 +472,12 @@ class WorkerSquadExecutor:
         previous_stages: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """Execute TDD Test stage (test-first approach) and wait for completion.
-        
+
         Args:
             task_id: ID of the task to write tests for.
             planner_result: Results from the planner stage containing the plan.
             previous_stages: Results from all previous stages.
-        
+
         Returns:
             Dictionary with stage results including status, test skeleton, test plan, and TDD mode flag.
         """
@@ -485,12 +485,12 @@ class WorkerSquadExecutor:
         result = await self.coordinator.start_worker_agent_and_wait(
             task_id, "test", stage="tdd_test", previous_stages=previous_stages or {}, timeout=timeout
         )
-        
+
         # Extract test skeleton and plan from parsed data
         parsed_data = result.get("parsed_data", {})
         test_skeleton = parsed_data.get("test_skeleton", "")
         test_plan = parsed_data.get("test_plan", "")
-        
+
         return {
             "success": result.get("success", False),
             "status": "completed" if result.get("success") else "failed",
@@ -500,14 +500,14 @@ class WorkerSquadExecutor:
             "output": result.get("output", ""),
             "error": result.get("error")
         }
-    
+
     async def _execute_test_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> Dict[str, Any]:
         """Execute Test stage (run tests after implementation) and wait for completion.
-        
+
         Args:
             task_id: ID of the task to test.
             previous_stages: Results from previous stages including coder output.
-        
+
         Returns:
             Dictionary with test execution results including success, status, and test results.
         """
@@ -515,10 +515,10 @@ class WorkerSquadExecutor:
         result = await self.coordinator.start_worker_agent_and_wait(
             task_id, "test", stage="test", previous_stages=previous_stages or {}, timeout=timeout
         )
-        
+
         # Extract test results from parsed data
         test_results = result.get("parsed_data", {})
-        
+
         return {
             "success": result.get("success", False),
             "status": "completed" if result.get("success") else "failed",
@@ -526,7 +526,7 @@ class WorkerSquadExecutor:
             "output": result.get("output", ""),
             "error": result.get("error")
         }
-    
+
     async def _execute_debug_stage(
         self,
         task_id: str,
@@ -534,12 +534,12 @@ class WorkerSquadExecutor:
         previous_stages: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """Execute Debug stage and wait for completion.
-        
+
         Args:
             task_id: ID of the task to debug.
             test_result: Results from the test stage showing what failed.
             previous_stages: Results from all previous stages.
-        
+
         Returns:
             Dictionary with debug results including status and list of issues that were fixed.
         """
@@ -547,10 +547,10 @@ class WorkerSquadExecutor:
         result = await self.coordinator.start_worker_agent_and_wait(
             task_id, "debug", stage="debug", previous_stages=previous_stages or {}, timeout=timeout
         )
-        
+
         # Extract issues fixed from parsed data
         issues_fixed = result.get("parsed_data", {}).get("issues_fixed", [])
-        
+
         return {
             "success": result.get("success", False),
             "status": "completed" if result.get("success") else "failed",
@@ -558,14 +558,14 @@ class WorkerSquadExecutor:
             "output": result.get("output", ""),
             "error": result.get("error")
         }
-    
+
     async def _execute_self_review_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> Dict[str, Any]:
         """Execute Self Review stage (Coder self-review) and wait for completion.
-        
+
         Args:
             task_id: ID of the task to review.
             previous_stages: Results from all previous stages.
-        
+
         Returns:
             Dictionary with review results including status, plan compliance flag, and any findings.
         """
@@ -573,14 +573,14 @@ class WorkerSquadExecutor:
         result = await self.coordinator.start_worker_agent_and_wait(
             task_id, "coder", stage="self_review", previous_stages=previous_stages or {}, timeout=timeout
         )
-        
+
         # Parse findings from output (could be enhanced with structured parsing)
         findings = []
         output = result.get("output", "")
         if "issue" in output.lower() or "problem" in output.lower():
             # Simple extraction - could be improved
             findings.append("Issues found during self-review")
-        
+
         return {
             "success": result.get("success", False),
             "status": "completed" if result.get("success") else "failed",
@@ -589,7 +589,7 @@ class WorkerSquadExecutor:
             "output": output,
             "error": result.get("error")
         }
-    
+
     async def _execute_approver_stage(
         self,
         task_id: str,
@@ -597,12 +597,12 @@ class WorkerSquadExecutor:
         previous_stages: Dict[str, Any] = None
     ) -> Dict[str, Any]:
         """Execute Approver stage and wait for completion.
-        
+
         Args:
             task_id: ID of the task to approve.
             self_review_result: Results from the self review stage.
             previous_stages: Results from all previous stages.
-        
+
         Returns:
             Dictionary with approval results including status, decision ("approved" or "rejected"), and optional feedback.
         """
@@ -610,12 +610,12 @@ class WorkerSquadExecutor:
         result = await self.coordinator.start_worker_agent_and_wait(
             task_id, "approver", stage="approver", previous_stages=previous_stages or {}, timeout=timeout
         )
-        
+
         # Extract decision and feedback from parsed data
         parsed_data = result.get("parsed_data", {})
         decision = parsed_data.get("decision", "pending")
         feedback = parsed_data.get("feedback", "")
-        
+
         # If no decision in parsed data, try to infer from output
         if decision == "pending" and result.get("success"):
             output = result.get("output", "").lower()
@@ -625,7 +625,7 @@ class WorkerSquadExecutor:
                 decision = "rejected"
             else:
                 decision = "approved"  # Default to approved if successful
-        
+
         return {
             "success": result.get("success", False),
             "status": "completed" if result.get("success") else "failed",
