@@ -111,8 +111,8 @@ async def test_execute_tool_edit(tool_executor):
     assert result["tool_name"] == "edit"
     assert result["tool_call_id"] == "call_123"
     assert result.get("result") is not None
-    # FileManager.edit_file is called in _execute_edit
-    assert tool_executor.file_manager.edit_file.called
+    # FileManager.edit is called in _execute_edit
+    assert tool_executor.file_manager.edit.called
 
 
 @pytest.mark.asyncio
@@ -183,8 +183,9 @@ async def test_execute_tool_unknown(tool_executor):
 @pytest.mark.asyncio
 async def test_execute_tool_error_handling(tool_executor):
     """Test error handling in tool execution."""
-    # Make file_manager raise an error
-    tool_executor.file_manager.read_file = Mock(side_effect=Exception("File not found"))
+    # Make file_manager.read raise an exception
+    # The exception will be caught in execute_tool's try/except block
+    tool_executor.file_manager.read = Mock(side_effect=Exception("File not found"))
 
     tool_input = {
         "id": "call_123",
@@ -194,9 +195,11 @@ async def test_execute_tool_error_handling(tool_executor):
     result = await tool_executor.execute_tool("read", tool_input)
 
     assert result["tool_name"] == "read"
-    # Error should be caught and returned in result
-    # The actual implementation may wrap it differently
-    assert result.get("error") is not None or result.get("result") is None
+    # Error should be caught in execute_tool's try/except block (lines 98-118)
+    assert "error" in result
+    assert result["error"] is not None
+    assert "File not found" in result["error"]
+    assert result.get("result") is None
 
 
 @pytest.mark.asyncio
