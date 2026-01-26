@@ -103,7 +103,7 @@ class AgentBridge:
         self.watchdog.terminal_router = self.terminal_router
 
         # Agent executor for LLM calls (created via factory)
-        # Factory selects backend based on config (direct, opencode, claude_code)
+        # Factory selects backend based on config (direct, opencode)
         from manifest.runtime.agent.core.executor_factory import ExecutorFactory
         self.executor = ExecutorFactory.create_executor(
             config_manager or ConfigManager(),

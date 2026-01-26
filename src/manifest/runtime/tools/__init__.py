@@ -2,7 +2,7 @@
 Tool system for agent command execution and file operations.
 
 This module provides tools for agents to execute commands and modify files,
-following OpenCode/ClaudeCode conventions. Tools include bash command execution,
+following OpenCode conventions. Tools include bash command execution,
 file editing (edit, write, read), and file system operations (grep, glob, list).
 """
 from manifest.runtime.tools.tool_definitions import get_tool_definitions

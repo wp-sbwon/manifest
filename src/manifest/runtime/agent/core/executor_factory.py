@@ -2,7 +2,10 @@
 Executor factory for creating agent executors based on configuration.
 
 This module provides a factory that creates the appropriate executor backend
-(direct LLM API, OpenCode, Claude Code) based on user settings.
+(direct LLM API, OpenCode) based on user settings.
+
+Note: Claude Code support is not currently implemented. OpenCode is the
+recommended backend for LLM interactions.
 """
 from typing import Optional, Dict, Any, List
 from manifest.core.config import ConfigManager
@@ -21,8 +24,10 @@ class ExecutorFactory:
 
     Supports multiple execution backends:
     - "direct": Direct LLM API calls (AgentExecutor)
-    - "opencode": OpenCode HTTP API (OpenCodeLLMAdapter)
-    - "claude_code": Claude Code SDK (future)
+    - "opencode": OpenCode HTTP API (OpenCodeLLMAdapter) - Recommended
+
+    OpenCode is the default and recommended backend as it handles context
+    management, tool execution, and other optimizations automatically.
     """
 
     @staticmethod
@@ -37,7 +42,8 @@ class ExecutorFactory:
             config_manager: Configuration manager for settings.
             state_manager: State manager for persistence.
             backend: Optional backend name. If None, reads from config.
-                Options: "direct", "opencode", "claude_code"
+                Options: "direct", "opencode"
+                Default: "opencode" (recommended)
 
         Returns:
             BaseAgentExecutor instance configured for the selected backend.
@@ -96,6 +102,6 @@ class ExecutorFactory:
         """Get list of available execution backends.
 
         Returns:
-            List of backend names.
+            List of backend names. Currently: ["direct", "opencode"]
         """
-        return ["direct", "opencode", "claude_code"]
+        return ["direct", "opencode"]
