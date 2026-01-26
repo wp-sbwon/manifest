@@ -31,6 +31,7 @@ from manifest.ui.widgets.project_view import (
 from manifest.ui.widgets.agent_status_view import AgentStatusView, AgentStatusCard
 from manifest.ui.widgets.agent_channels_view import AgentChannelsView, ChannelSelected
 from manifest.ui.widgets.task_progress_view import TaskProgressView
+from manifest.ui.widgets.workflow_visualization import WorkflowVisualization
 
 __all__ = [
     # Legacy widgets
@@ -59,4 +60,5 @@ __all__ = [
     "AgentChannelsView",
     "ChannelSelected",
     "TaskProgressView",
+    "WorkflowVisualization",
 ]
