@@ -386,15 +386,26 @@ async def test_message_routing_updates_message_count(channel_manager):
 async def test_message_routing_creates_channel_if_missing(channel_manager):
     """Test that message routing creates channel if it doesn't exist."""
     # Use task_id without dashes to avoid parsing issues
-    channel_name = "squad-task1-coder"
+    task_id = "task1"
+    agent_type = "coder"
+    channel_name = f"squad-{task_id}-{agent_type}"
+
+    # Ensure channel doesn't exist initially
+    assert channel_name not in channel_manager.squad_channels
+
+    # Set active channel so handle_agent_output will try to display
     channel_manager.active_channel = channel_name
 
     # Create proper mock container with async mount
     mock_container = MagicMock()
     mock_container.mount = AsyncMock(return_value=None)
     mock_log = Mock()
-    # query_one calls: 1) channel-selector (Horizontal), 2) log-main (RichLog in create), 3) log-main (RichLog in handle_agent_output)
+    mock_log.write = Mock()  # Mock the write method
+
+    # Track query_one calls to ensure all are handled
+    query_one_calls = []
     def query_one_side_effect(selector, widget_type=None):
+        query_one_calls.append((selector, widget_type))
         if selector == "#channel-selector":
             return mock_container
         elif selector == "#log-main":
@@ -407,14 +418,36 @@ async def test_message_routing_creates_channel_if_missing(channel_manager):
     channel_manager.state_manager.add_chat_message = Mock()
     channel_manager.state_manager.save_state = AsyncMock()
 
-    await channel_manager.handle_agent_output(
-        channel=channel_name,
-        content="Test",
-        role="assistant"
-    )
+    # Mock Button class to avoid any constructor issues in CI
+    with patch('manifest.ui.channels.channel_manager.Button') as mock_button_class:
+        mock_button = Mock()
+        mock_button_class.return_value = mock_button
 
-    # Channel should be created
-    assert channel_name in channel_manager.squad_channels
+        # Call handle_agent_output - this should auto-create the channel
+        await channel_manager.handle_agent_output(
+            channel=channel_name,
+            content="Test",
+            role="assistant"
+        )
+
+    # Channel should be created by handle_agent_output's auto-create logic
+    assert channel_name in channel_manager.squad_channels, \
+        f"Channel {channel_name} was not created. Squad channels: {list(channel_manager.squad_channels.keys())}. " \
+        f"Query calls: {query_one_calls}"
+
+    # Verify channel info is correct
+    channel_info = channel_manager.squad_channels[channel_name]
+    assert channel_info["task_id"] == task_id
+    assert channel_info["agent_type"] == agent_type
+    assert "tab_id" in channel_info
+    assert "button_id" in channel_info
+
+    # Verify query_one was called (for channel-selector and log-main)
+    assert len(query_one_calls) > 0, "query_one should have been called"
+
+    # Verify state manager was called
+    channel_manager.state_manager.add_chat_message.assert_called_once()
+    channel_manager.state_manager.save_state.assert_called_once()
 
 
 @pytest.mark.asyncio
