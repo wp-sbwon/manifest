@@ -23,11 +23,12 @@
 - ✅ Tool Executor (42 tests) - All tool execution logic covered
 - ✅ Drift Auditor (22 tests) - All drift detection logic covered
 - ✅ Blueprint Synchronizer (28 tests) - All sync logic covered
+- ✅ Agent Message Bus (45 tests) - All messaging logic covered
 
 **In Progress**:
-- 🔄 Agent Message Bus - Next priority
+- 🔄 Workflow Event Bus - Next priority
 
-**Total Tests**: 775 passing
+**Total Tests**: 820 passing
 
 ## Test Coverage Philosophy
 
@@ -202,13 +203,14 @@
 #### Agent Message Bus (`agent_message_bus.py`)
 **Priority**: HIGH
 **Coverage Target**: 95%+ (already at 94%)
+**Status**: ✅ COMPLETED (45 tests)
 
 - [x] Message routing (direct, type-based, broadcast)
 - [x] Request-response pattern
 - [x] Message history and filtering
 - [x] Error handling in delivery
-- [ ] Message timeout handling
-- [ ] Message correlation
+- [x] Message timeout handling
+- [x] Message correlation
 
 #### Workflow Event Bus (`workflow_event_bus.py`)
 **Priority**: HIGH

@@ -456,6 +456,312 @@ async def test_request_timeout(message_bus):
     assert response is None
 
 
+# ========== TDL: Agent Message Bus - Missing Items ==========
+
+@pytest.mark.asyncio
+async def test_message_timeout_handling_cleanup(message_bus):
+    """Test that timeout properly cleans up pending requests."""
+    message_bus.register_agent("agent-1", "planner")
+    message_bus.register_agent("agent-2", "coder")
+
+    # Send request that will timeout
+    response = await message_bus.request(
+        from_agent_id="agent-1",
+        to_agent_id="agent-2",
+        subject="test",
+        content={},
+        timeout=0.1
+    )
+
+    assert response is None
+    # Pending requests should be cleaned up after timeout
+    assert len(message_bus._pending_requests) == 0
+
+
+@pytest.mark.asyncio
+async def test_message_timeout_handling_multiple_requests(message_bus):
+    """Test timeout handling with multiple concurrent requests."""
+    message_bus.register_agent("agent-1", "planner")
+    message_bus.register_agent("agent-2", "coder")
+
+    # Send multiple requests that will timeout
+    tasks = [
+        message_bus.request(
+            from_agent_id="agent-1",
+            to_agent_id="agent-2",
+            subject=f"test-{i}",
+            content={},
+            timeout=0.1
+        )
+        for i in range(3)
+    ]
+
+    responses = await asyncio.gather(*tasks)
+
+    # All should timeout
+    assert all(r is None for r in responses)
+    # All pending requests should be cleaned up
+    assert len(message_bus._pending_requests) == 0
+
+
+@pytest.mark.asyncio
+async def test_message_timeout_handling_exception_during_wait(message_bus):
+    """Test timeout handling when exception occurs during wait."""
+    message_bus.register_agent("agent-1", "planner")
+    message_bus.register_agent("agent-2", "coder")
+
+    # Mock asyncio.wait_for to raise an exception
+    original_wait_for = asyncio.wait_for
+    async def mock_wait_for(coro, timeout):
+        raise Exception("Wait error")
+    asyncio.wait_for = mock_wait_for
+
+    try:
+        response = await message_bus.request(
+            from_agent_id="agent-1",
+            to_agent_id="agent-2",
+            subject="test",
+            content={},
+            timeout=1.0
+        )
+        assert response is None
+        # Should clean up pending request on exception
+        assert len(message_bus._pending_requests) == 0
+    finally:
+        asyncio.wait_for = original_wait_for
+
+
+@pytest.mark.asyncio
+async def test_message_correlation_request_response(message_bus):
+    """Test message correlation in request-response pattern."""
+    message_bus.register_agent("agent-1", "planner")
+    message_bus.register_agent("agent-2", "coder")
+
+    # Start request in background
+    request_task = asyncio.create_task(
+        message_bus.request(
+            from_agent_id="agent-1",
+            to_agent_id="agent-2",
+            subject="test-request",
+            content={"query": "test"},
+            timeout=2.0
+        )
+    )
+
+    # Wait for correlation_id to be set
+    await asyncio.sleep(0.1)
+
+    # Get correlation_id from pending requests
+    assert len(message_bus._pending_requests) == 1
+    correlation_id = list(message_bus._pending_requests.keys())[0]
+
+    # Manually respond using the correlation_id
+    response_result = await message_bus.respond(
+        from_agent_id="agent-2",
+        correlation_id=correlation_id,
+        content={"result": "success"}
+    )
+
+    assert response_result is True
+
+    # Get response
+    response = await request_task
+
+    # Should receive response
+    assert response is not None
+    assert response["success"] is True
+    assert response["content"]["result"] == "success"
+    # Correlation ID should match
+    assert response["correlation_id"] == correlation_id
+
+
+@pytest.mark.asyncio
+async def test_message_correlation_multiple_requests(message_bus):
+    """Test message correlation with multiple concurrent requests."""
+    message_bus.register_agent("agent-1", "planner")
+    message_bus.register_agent("agent-2", "coder")
+
+    # Start multiple requests
+    tasks = [
+        message_bus.request(
+            from_agent_id="agent-1",
+            to_agent_id="agent-2",
+            subject=f"test-{i}",
+            content={"index": i},
+            timeout=2.0
+        )
+        for i in range(3)
+    ]
+
+    # Wait for correlation_ids to be set
+    await asyncio.sleep(0.1)
+
+    # Get all correlation_ids from pending requests
+    correlation_ids = list(message_bus._pending_requests.keys())
+    assert len(correlation_ids) == 3
+
+    # Respond to each request using its correlation_id
+    for i, correlation_id in enumerate(correlation_ids):
+        await message_bus.respond(
+            from_agent_id="agent-2",
+            correlation_id=correlation_id,
+            content={"request_id": correlation_id, "index": i}
+        )
+
+    # Get responses
+    responses = await asyncio.gather(*tasks)
+
+    # All should succeed
+    assert all(r is not None for r in responses)
+    # Each response should have correct correlation_id
+    for i, response in enumerate(responses):
+        assert response["correlation_id"] == correlation_ids[i]
+        assert response["content"]["request_id"] == correlation_ids[i]
+    # All correlation IDs should be unique
+    assert len(set(correlation_ids)) == 3
+
+
+@pytest.mark.asyncio
+async def test_message_correlation_id_generation(message_bus):
+    """Test that correlation IDs are generated correctly."""
+    message_bus.register_agent("agent-1", "planner")
+    message_bus.register_agent("agent-2", "coder")
+
+    # Send request and manually check correlation_id in history
+    request_task = asyncio.create_task(
+        message_bus.request(
+            from_agent_id="agent-1",
+            to_agent_id="agent-2",
+            subject="test",
+            content={},
+            timeout=0.5
+        )
+    )
+
+    # Wait a bit for message to be sent and correlation_id to be set
+    await asyncio.sleep(0.1)
+
+    # Check message history for correlation_id
+    history = message_bus.get_message_history()
+    request_messages = [m for m in history if m.message_type == MessageType.REQUEST]
+    assert len(request_messages) > 0
+
+    # Correlation ID should be set on the request message
+    request_msg = request_messages[0]
+    assert request_msg.correlation_id is not None
+    assert request_msg.correlation_id.startswith("req_agent-1_")
+
+    # Wait for timeout
+    await request_task
+
+
+@pytest.mark.asyncio
+async def test_message_correlation_message_history_update(message_bus):
+    """Test that correlation_id is set on message in history."""
+    message_bus.register_agent("agent-1", "planner")
+    message_bus.register_agent("agent-2", "coder")
+
+    async def handle_request(message):
+        await message_bus.respond(
+            from_agent_id="agent-2",
+            correlation_id=message.correlation_id,
+            content={}
+        )
+
+    message_bus.register_agent("agent-2", "coder", message_handler=handle_request)
+
+    # Send request
+    await message_bus.request(
+        from_agent_id="agent-1",
+        to_agent_id="agent-2",
+        subject="test",
+        content={},
+        timeout=1.0
+    )
+
+    # Check message history - request message should have correlation_id
+    history = message_bus.get_message_history(agent_id="agent-1")
+    request_messages = [m for m in history if m.message_type == MessageType.REQUEST]
+    assert len(request_messages) > 0
+    assert request_messages[0].correlation_id is not None
+    assert request_messages[0].correlation_id.startswith("req_agent-1_")
+
+
+@pytest.mark.asyncio
+async def test_message_correlation_respond_with_wrong_correlation_id(message_bus):
+    """Test responding with wrong correlation_id."""
+    message_bus.register_agent("agent-1", "planner")
+    message_bus.register_agent("agent-2", "coder")
+
+    # Send request
+    request_task = asyncio.create_task(
+        message_bus.request(
+            from_agent_id="agent-1",
+            to_agent_id="agent-2",
+            subject="test",
+            content={},
+            timeout=0.5
+        )
+    )
+
+    # Wait a bit for request to be sent
+    await asyncio.sleep(0.01)
+
+    # Try to respond with wrong correlation_id
+    result = await message_bus.respond(
+        from_agent_id="agent-2",
+        correlation_id="wrong-correlation-id",
+        content={}
+    )
+
+    # Should return False
+    assert result is False
+
+    # Request should still timeout
+    response = await request_task
+    assert response is None
+
+
+@pytest.mark.asyncio
+async def test_message_correlation_response_contains_correlation_id(message_bus):
+    """Test that response contains the correlation_id."""
+    message_bus.register_agent("agent-1", "planner")
+    message_bus.register_agent("agent-2", "coder")
+
+    # Start request
+    request_task = asyncio.create_task(
+        message_bus.request(
+            from_agent_id="agent-1",
+            to_agent_id="agent-2",
+            subject="test",
+            content={},
+            timeout=2.0
+        )
+    )
+
+    # Wait for correlation_id to be set
+    await asyncio.sleep(0.1)
+
+    # Get correlation_id from pending requests
+    assert len(message_bus._pending_requests) == 1
+    stored_correlation_id = list(message_bus._pending_requests.keys())[0]
+
+    # Respond with the correlation_id
+    await message_bus.respond(
+        from_agent_id="agent-2",
+        correlation_id=stored_correlation_id,
+        content={"data": "test"}
+    )
+
+    # Get response
+    response = await request_task
+
+    # Response should contain correlation_id
+    assert response is not None
+    assert "correlation_id" in response
+    assert response["correlation_id"] == stored_correlation_id
+
+
 @pytest.mark.asyncio
 async def test_request_with_message_not_found(message_bus):
     """Test request when message is not found in history."""
