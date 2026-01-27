@@ -38,6 +38,7 @@ async def test_run_agent_function():
     with patch('manifest.agents.runner.StateManager') as mock_state, \
          patch('manifest.agents.runner.get_config_manager') as mock_config, \
          patch('manifest.agents.runner.ContainerMessageBus') as mock_bus, \
+         patch('manifest.agents.runner.ContainerStateSync') as mock_state_sync, \
          patch('manifest.agents.runner.AgentManager') as mock_manager, \
          patch('manifest.agents.runner.AgentExecutor') as mock_executor:
 
@@ -45,6 +46,15 @@ async def test_run_agent_function():
         mock_bus_instance = AsyncMock()
         mock_bus.return_value = mock_bus_instance
         mock_bus_instance.connect = AsyncMock()
+
+        # Mock ContainerStateSync to avoid coroutine warning
+        # The start() method creates a background task that runs _sync_loop
+        # We need to mock it properly to avoid the warning
+        mock_state_sync_instance = Mock()
+        mock_state_sync_instance.start = AsyncMock()
+        # Mock _sync_loop to be a no-op to avoid coroutine warning
+        mock_state_sync_instance._sync_loop = AsyncMock()
+        mock_state_sync.return_value = mock_state_sync_instance
 
         mock_agent = AsyncMock()
         mock_agent_dict = {"instance": mock_agent}
