@@ -10,9 +10,10 @@ The WorkerSquadExecutor was separated from AgentCoordinator to improve
 code organization and follows the single responsibility principle.
 
 The executor can operate in two modes:
-1. Sequential mode: Explicitly calls each stage in order (current default)
+1. Sequential mode: Explicitly calls each stage in order
 2. Event-driven mode: Subscribes to workflow events and automatically
-   triggers next stages when agents complete (future enhancement)
+   triggers next stages when agents complete (default, can be disabled via
+   MANIFEST_EVENT_DRIVEN=false environment variable)
 """
 import asyncio
 from typing import Dict, Any, Optional, List
@@ -66,7 +67,17 @@ class WorkerSquadExecutor:
         # Track active workflows for event-driven mode
         self._active_workflows: Dict[str, Dict[str, Any]] = {}  # task_id -> workflow state
         self._event_subscriptions: Dict[str, Any] = {}  # task_id -> subscription callbacks
-        self._use_event_driven = False  # Can be enabled per workflow
+
+        # Enable event-driven mode by default (can be disabled via config)
+        # Check environment variable first, then default to True
+        import os
+        event_driven_env = os.getenv("MANIFEST_EVENT_DRIVEN", "true")
+        self._use_event_driven = event_driven_env.lower() in ("true", "1", "yes")
+
+        if self._use_event_driven:
+            logger.info("Event-driven workflow mode enabled")
+        else:
+            logger.info("Sequential workflow mode enabled")
         self._enable_parallel_execution = False  # Enable parallel execution of independent stages
 
         # Workflow registry for dynamic workflows
@@ -329,7 +340,9 @@ class WorkerSquadExecutor:
 
             # Mark stage as completed
             workflow_state["completed_stages"].add(completed_stage)
-            workflow_state["stages"][completed_stage] = event.data.get("result", {})
+            # Store result from event data (can be in "result" or directly in data)
+            stage_result = event.data.get("result") or event.data
+            workflow_state["stages"][completed_stage] = stage_result
 
             # Check if we should trigger next stage
             await self._handle_stage_completion(task_id, completed_stage, event.data)
@@ -845,6 +858,30 @@ class WorkerSquadExecutor:
             # Save stage result
             workflow_state["stages"][stage] = result
             await self.state_manager.save_worker_squad_stage_async(task_id, stage, result)
+
+            # Note: STAGE_COMPLETED events are already published by start_worker_agent_and_wait
+            # in agent_coordinator.py. This ensures events are published even if called directly.
+            # However, we also publish here as a backup to ensure event-driven mode works.
+            if self.event_bus and self._use_event_driven:
+                success = result.get("success", False)
+                if success:
+                    # Ensure event is published (may have been published already by coordinator)
+                    await self.event_bus.publish(WorkflowEvent(
+                        event_type=WorkflowEventType.STAGE_COMPLETED,
+                        task_id=task_id,
+                        stage=stage,
+                        agent_type=stage,  # Stage name usually matches agent type
+                        data={"result": result}
+                    ))
+                else:
+                    # Stage completed but failed
+                    await self.event_bus.publish(WorkflowEvent(
+                        event_type=WorkflowEventType.STAGE_FAILED,
+                        task_id=task_id,
+                        stage=stage,
+                        agent_type=stage,
+                        data={"error": result.get("error", "Stage failed"), "result": result}
+                    ))
 
         except Exception as e:
             logger.error(f"Error executing stage {stage} for task {task_id}: {e}", exc_info=True)
