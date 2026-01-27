@@ -79,6 +79,8 @@ class WorkerSquadExecutor:
         else:
             logger.info("Sequential workflow mode enabled")
         self._enable_parallel_execution = False  # Enable parallel execution of independent stages
+        self._max_concurrent_stages = 3  # Maximum number of stages to run in parallel
+        self._running_stages: Dict[str, Dict[str, asyncio.Task]] = {}  # task_id -> {stage_name -> task}
 
         # Workflow registry for dynamic workflows
         self.workflow_registry = WorkflowRegistry()
@@ -104,7 +106,7 @@ class WorkerSquadExecutor:
         else:
             logger.info("Event-driven workflow execution disabled")
 
-    def enable_parallel_execution(self, enabled: bool = True):
+    def enable_parallel_execution(self, enabled: bool = True, max_concurrent: int = 3):
         """Enable or disable parallel execution of independent stages.
 
         When enabled, stages that don't depend on each other can run
@@ -112,10 +114,12 @@ class WorkerSquadExecutor:
 
         Args:
             enabled: Whether to enable parallel execution.
+            max_concurrent: Maximum number of stages to run concurrently (default: 3).
         """
         self._enable_parallel_execution = enabled
+        self._max_concurrent_stages = max_concurrent
         if enabled:
-            logger.info("Parallel stage execution enabled")
+            logger.info(f"Parallel stage execution enabled (max concurrent: {max_concurrent})")
         else:
             logger.info("Parallel stage execution disabled")
 
@@ -426,17 +430,33 @@ class WorkerSquadExecutor:
             )
 
             if ready_stages:
+                # Limit number of concurrent stages
+                if len(ready_stages) > self._max_concurrent_stages:
+                    logger.info(
+                        f"Limiting parallel execution: {len(ready_stages)} ready stages, "
+                        f"executing {self._max_concurrent_stages} concurrently"
+                    )
+                    ready_stages = ready_stages[:self._max_concurrent_stages]
+
                 logger.info(
                     f"Triggering {len(ready_stages)} ready stage(s) in parallel for task {task_id}: {ready_stages}"
                 )
-                # Execute all ready stages in parallel
-                tasks = [
-                    self._execute_stage_async(task_id, stage, workflow_state)
-                    for stage in ready_stages
-                ]
-                # Don't await here - let them run in parallel
-                for task in tasks:
-                    asyncio.create_task(task)
+
+                # Track running stages for this task
+                if task_id not in self._running_stages:
+                    self._running_stages[task_id] = {}
+
+                # Execute ready stages in parallel
+                for stage in ready_stages:
+                    # Skip if already running
+                    if stage in self._running_stages[task_id]:
+                        continue
+
+                    # Create and track task
+                    task = asyncio.create_task(
+                        self._execute_stage_with_tracking(task_id, stage, workflow_state)
+                    )
+                    self._running_stages[task_id][stage] = task
             else:
                 # No ready stages, check if workflow is complete
                 if self._is_workflow_complete(workflow_state):
@@ -814,6 +834,29 @@ class WorkerSquadExecutor:
         # Critical stages that cause workflow termination on failure
         critical_stages = {"planner", "tdd_test"}
         return failed_stage in critical_stages
+
+    async def _execute_stage_with_tracking(
+        self, task_id: str, stage: str, workflow_state: Dict[str, Any]
+    ):
+        """Execute a stage with tracking for parallel execution.
+
+        Wraps _execute_stage_async to track running tasks and clean up
+        after completion.
+
+        Args:
+            task_id: Task ID.
+            stage: Stage name to execute.
+            workflow_state: Current workflow state.
+        """
+        try:
+            await self._execute_stage_async(task_id, stage, workflow_state)
+        finally:
+            # Clean up tracking
+            if task_id in self._running_stages:
+                self._running_stages[task_id].pop(stage, None)
+                # Remove task_id entry if no running stages
+                if not self._running_stages[task_id]:
+                    del self._running_stages[task_id]
 
     async def _execute_stage_async(self, task_id: str, stage: str, workflow_state: Dict[str, Any]):
         """Execute a stage asynchronously (for event-driven mode).
