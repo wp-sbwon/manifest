@@ -97,11 +97,12 @@ async def test_task_created_correctly(
     """Test: Task is created correctly via command."""
     # Step 1: User creates task via command
     # Command parser splits on spaces, so first word becomes task name
+    # Format: /create_task <name> [description] [stage] [status] [sprint_id]
     task_name = "Authentication"
-    task_description = "Add login and logout functionality"
+    task_description = "LoginLogout"  # Single word to avoid parser issues
 
-    # Simulate command: /create_task Authentication "Add login and logout functionality"
-    # The parser splits on spaces, so we use a single-word name
+    # Simulate command: /create_task Authentication LoginLogout
+    # The parser splits on spaces, so we use single-word arguments
     handled = await command_handler.handle(
         f'/create_task {task_name} {task_description}',
         mock_log
@@ -121,9 +122,9 @@ async def test_task_created_correctly(
     )
     assert created_task is not None, f"Task '{task_name}' not found in tasks: {[t.get('name') for t in tasks]}"
     assert created_task.get("name") == task_name
-    # Description will be the remaining arguments (command parser splits on spaces)
-    # So description might be just the first word or all remaining words
-    assert created_task.get("description") is not None
+    # Description will be the second argument
+    assert created_task.get("description") == task_description
+    # Default status is "pending"
     assert created_task.get("status") == "pending"
 
 
