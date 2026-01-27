@@ -31,3 +31,11 @@ repos:
         pass_filenames: false
         always_run: false
         stages: [pre-push]  # Only run on push
+      - id: check-github-ci-status
+        name: Check GitHub CI status before push
+        entry: bash -c 'source venv/bin/activate 2>/dev/null || true; python scripts/check_ci_status.py'
+        language: system
+        pass_filenames: false
+        always_run: false
+        stages: [pre-push]  # Only run on push
+        verbose: true
