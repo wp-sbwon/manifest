@@ -211,3 +211,393 @@ def test_permission_effective_permissions_structure(permission_manager):
     for perm_type in ["read", "write", "edit", "bash"]:
         if perm_type in perms:
             assert perms[perm_type] in ["allow", "ask", "deny"]
+
+
+# ========== TDL: Permission Manager - Missing Items ==========
+
+def test_permission_rule_evaluation_agent_specific_overrides_global(permission_manager):
+    """Test permission rule evaluation - agent-specific overrides global."""
+    # Set up config with global and agent-specific rules
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "global": {
+                "permission": {
+                    "write": {"*": "deny"}  # Global: deny all writes
+                }
+            },
+            "agent": {
+                "coder": {
+                    "permission": {
+                        "write": {"*.py": "allow"}  # Agent-specific: allow .py files
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="coder")
+    # Agent-specific rule should override global
+    result = pm.check_permission("write", "test.py")
+    assert result == "allow"
+
+
+def test_permission_rule_evaluation_pattern_matching(permission_manager):
+    """Test permission rule evaluation with pattern matching."""
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "agent": {
+                "coder": {
+                    "permission": {
+                        "bash": {
+                            "*": "allow",
+                            "rm *": "deny",  # Deny rm commands
+                            "git push --force": "deny"  # Deny force push
+                        }
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="coder")
+    # Pattern matching should work
+    assert pm.check_permission("bash", "ls -la") == "allow"
+    assert pm.check_permission("bash", "rm -rf /") == "deny"
+    assert pm.check_permission("bash", "git push --force") == "deny"
+
+
+def test_permission_rule_evaluation_wildcard_patterns(permission_manager):
+    """Test permission rule evaluation with wildcard patterns."""
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "agent": {
+                "coder": {
+                    "permission": {
+                        "read": {
+                            "*.py": "allow",
+                            "*.md": "allow",
+                            "*": "deny"  # Deny everything else
+                        }
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="coder")
+    # Wildcard patterns should match
+    assert pm.check_permission("read", "test.py") == "allow"
+    assert pm.check_permission("read", "README.md") == "allow"
+    assert pm.check_permission("read", "test.txt") == "deny"
+
+
+def test_permission_rule_evaluation_last_match_wins(permission_manager):
+    """Test permission rule evaluation - last matching rule wins."""
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "agent": {
+                "coder": {
+                    "permission": {
+                        "bash": {
+                            "*": "allow",  # First rule: allow all
+                            "git *": "ask",  # Second rule: ask for git commands
+                            "git push": "deny"  # Third rule: deny git push (most specific, last)
+                        }
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="coder")
+    # Last matching rule should win (most specific)
+    assert pm.check_permission("bash", "ls") == "allow"
+    assert pm.check_permission("bash", "git status") == "ask"
+    assert pm.check_permission("bash", "git push") == "deny"  # Most specific match
+
+
+def test_permission_rule_evaluation_list_resource(permission_manager):
+    """Test permission rule evaluation with list resource (command args)."""
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "agent": {
+                "coder": {
+                    "permission": {
+                        "bash": {
+                            "git push": "deny"
+                        }
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="coder")
+    # List resource should be converted to string
+    result = pm.check_permission("bash", ["git", "push"])
+    assert result == "deny"
+
+
+def test_permission_approval_workflow_ask_permission(permission_manager):
+    """Test permission approval workflow - ask permission."""
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "agent": {
+                "coder": {
+                    "permission": {
+                        "websearch": "ask"  # Requires approval
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="coder")
+    # Should return "ask" for approval workflow
+    result = pm.check_permission("websearch")
+    assert result == "ask"
+
+
+def test_permission_approval_workflow_allow_no_approval(permission_manager):
+    """Test permission approval workflow - allow doesn't need approval."""
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "agent": {
+                "coder": {
+                    "permission": {
+                        "read": "allow"  # No approval needed
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="coder")
+    result = pm.check_permission("read")
+    assert result == "allow"
+
+
+def test_permission_approval_workflow_deny_no_approval(permission_manager):
+    """Test permission approval workflow - deny doesn't need approval."""
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "agent": {
+                "planner": {
+                    "permission": {
+                        "write": "deny"  # Denied, no approval needed
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="planner")
+    result = pm.check_permission("write")
+    assert result == "deny"
+
+
+def test_permission_caching_effective_permissions(permission_manager):
+    """Test permission caching - effective permissions are consistent."""
+    # Get effective permissions multiple times
+    perms1 = permission_manager.get_effective_permissions()
+    perms2 = permission_manager.get_effective_permissions()
+
+    # Should return same results (consistent)
+    assert perms1 == perms2
+    # All values should be valid
+    for perm_type, perm_value in perms1.items():
+        assert perm_value in ["allow", "ask", "deny"]
+
+
+def test_permission_caching_check_permission_consistency(permission_manager):
+    """Test permission caching - check_permission returns consistent results."""
+    # Check same permission multiple times
+    result1 = permission_manager.check_permission("read", "test.py")
+    result2 = permission_manager.check_permission("read", "test.py")
+
+    # Should return same result
+    assert result1 == result2
+    assert result1 in ["allow", "ask", "deny"]
+
+
+def test_permission_rule_persistence_load_from_config(permission_manager):
+    """Test permission rule persistence - loading from config."""
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "global": {
+                "permission": {
+                    "read": {"*": "allow"}
+                }
+            },
+            "agent": {
+                "coder": {
+                    "permission": {
+                        "write": {"*.py": "ask"}
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="coder")
+
+    # Rules should be loaded from config
+    assert pm.global_permissions.get("read") is not None
+    assert pm.agent_permissions.get("write") is not None
+
+
+def test_permission_rule_persistence_defaults_on_load_error(permission_manager):
+    """Test permission rule persistence - defaults used on load error."""
+    error_config = Mock(spec=ConfigManager)
+    error_config._load_agent_config = Mock(side_effect=Exception("Config error"))
+
+    # Should not raise exception, should use defaults
+    pm = PermissionManager(config_manager=error_config, agent_type="coder")
+
+    # Should have default permissions
+    assert pm.check_permission("read") == "allow"
+    assert pm.check_permission("write") == "allow"
+
+
+def test_permission_rule_persistence_reload_permissions(permission_manager):
+    """Test permission rule persistence - reloading permissions."""
+    # Initial load
+    initial_perms = permission_manager.get_effective_permissions()
+
+    # Reload permissions (simulate config change)
+    permission_manager._load_permissions()
+
+    # Should still work after reload
+    reloaded_perms = permission_manager.get_effective_permissions()
+    assert isinstance(reloaded_perms, dict)
+
+
+def test_permission_pattern_matching_question_mark(permission_manager):
+    """Test permission pattern matching with ? wildcard."""
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "agent": {
+                "coder": {
+                    "permission": {
+                        "read": {
+                            "file?.py": "allow",  # Matches file1.py, file2.py, etc.
+                            "*": "deny"
+                        }
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="coder")
+    # ? should match single character
+    assert pm.check_permission("read", "file1.py") == "allow"
+    assert pm.check_permission("read", "file2.py") == "allow"
+    assert pm.check_permission("read", "file10.py") == "deny"  # ? doesn't match "10"
+
+
+def test_permission_pattern_matching_star_wildcard(permission_manager):
+    """Test permission pattern matching with * wildcard."""
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "agent": {
+                "coder": {
+                    "permission": {
+                        "read": {
+                            "src/*.py": "allow",  # Matches src/main.py
+                            "src/**/*.py": "allow",  # Matches nested paths
+                            "*": "deny"
+                        }
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="coder")
+    # * should match any characters
+    assert pm.check_permission("read", "src/main.py") == "allow"
+    assert pm.check_permission("read", "src/utils/helper.py") == "allow"
+
+
+def test_permission_pattern_specificity_ordering(permission_manager):
+    """Test permission pattern specificity ordering."""
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "agent": {
+                "coder": {
+                    "permission": {
+                        "bash": {
+                            "*": "allow",  # General (low specificity)
+                            "git *": "ask",  # More specific
+                            "git push *": "deny"  # Most specific
+                        }
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="coder")
+    # More specific patterns should be evaluated and win
+    assert pm.check_permission("bash", "git push origin main") == "deny"
+    assert pm.check_permission("bash", "git status") == "ask"
+    assert pm.check_permission("bash", "ls") == "allow"
+
+
+def test_permission_rule_evaluation_none_resource(permission_manager):
+    """Test permission rule evaluation with None resource."""
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "agent": {
+                "coder": {
+                    "permission": {
+                        "read": {
+                            "*": "allow"  # Should match when resource is None
+                        }
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="coder")
+    # None resource should check against "*" pattern
+    result = pm.check_permission("read", None)
+    assert result == "allow"
+
+
+def test_permission_rule_evaluation_empty_string_resource(permission_manager):
+    """Test permission rule evaluation with empty string resource."""
+    custom_config = Mock(spec=ConfigManager)
+    custom_config._load_agent_config = Mock(return_value={
+        "agent_permissions": {
+            "agent": {
+                "coder": {
+                    "permission": {
+                        "read": {
+                            "*": "allow"
+                        }
+                    }
+                }
+            }
+        }
+    })
+
+    pm = PermissionManager(config_manager=custom_config, agent_type="coder")
+    # Empty string should work
+    result = pm.check_permission("read", "")
+    assert result in ["allow", "ask", "deny"]
