@@ -169,7 +169,9 @@ async def test_active_agents_restored(
     )
 
     # Simulate agent being active
-    agent_coordinator._active_agents[task_id] = {
+    # Note: Active agents are tracked in agent_bridge, not coordinator
+    # We'll verify task state instead
+    agent_bridge._active_agents[task_id] = {
         "agent_type": "planner",
         "status": "active",
         "channel": f"squad-{task_id}-planner"
@@ -309,7 +311,7 @@ async def test_state_recovery_partial_data(
 
 @pytest.mark.asyncio
 async def test_complete_state_recovery_workflow(
-    temp_dir, state_manager, agent_bridge, agent_coordinator
+    temp_dir, state_manager, agent_bridge, agent_coordinator, config_manager
 ):
     """Test: Complete state recovery workflow."""
     # Step 1: User works on mission
