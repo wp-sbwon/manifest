@@ -4,6 +4,7 @@ Unit tests for WorkflowEventBus.
 Tests event publishing, subscription, and workflow event handling.
 """
 import pytest
+import asyncio
 from unittest.mock import Mock, AsyncMock
 from manifest.agents.workflow_event_bus import (
     WorkflowEventBus,
@@ -423,3 +424,292 @@ async def test_publish_with_multiple_subscribers(event_bus):
     callback1.assert_called_once_with(event)
     callback2.assert_called_once_with(event)
     callback3.assert_called_once_with(event)
+
+
+# ========== TDL: Workflow Event Bus - Missing Item ==========
+
+@pytest.mark.asyncio
+async def test_event_driven_workflow_trigger_stage_completion(event_bus):
+    """Test event-driven workflow trigger on stage completion."""
+    trigger_callback = AsyncMock()
+
+    # Subscribe to TRIGGER_NEXT_STAGE events
+    event_bus.subscribe(WorkflowEventType.TRIGGER_NEXT_STAGE, trigger_callback)
+
+    # Publish stage completion event (which should trigger next stage)
+    stage_completed_event = WorkflowEvent(
+        event_type=WorkflowEventType.STAGE_COMPLETED,
+        task_id="task-1",
+        stage="planner",
+        agent_type="planner",
+        data={"result": "plan created"}
+    )
+
+    await event_bus.publish(stage_completed_event)
+
+    # Publish trigger next stage event
+    trigger_event = WorkflowEvent(
+        event_type=WorkflowEventType.TRIGGER_NEXT_STAGE,
+        task_id="task-1",
+        stage="planner",
+        agent_type="planner",
+        data={"completed_stage": "planner", "next_stage": "coder"}
+    )
+
+    await event_bus.publish(trigger_event)
+
+    # Trigger callback should be called
+    trigger_callback.assert_called_once_with(trigger_event)
+    # Verify event data contains next stage information
+    call_args = trigger_callback.call_args[0][0]
+    assert call_args.data["completed_stage"] == "planner"
+    assert call_args.data["next_stage"] == "coder"
+
+
+@pytest.mark.asyncio
+async def test_event_driven_workflow_trigger_chain(event_bus):
+    """Test event-driven workflow trigger chain (multiple stages)."""
+    triggered_stages = []
+
+    async def stage_trigger_handler(event):
+        """Handler that simulates triggering next stage."""
+        if event.event_type == WorkflowEventType.TRIGGER_NEXT_STAGE:
+            triggered_stages.append({
+                "task_id": event.task_id,
+                "completed": event.data.get("completed_stage"),
+                "next": event.data.get("next_stage")
+            })
+
+    # Subscribe to trigger events
+    event_bus.subscribe(WorkflowEventType.TRIGGER_NEXT_STAGE, stage_trigger_handler)
+
+    # Simulate workflow progression: planner -> coder -> test
+    events = [
+        WorkflowEvent(
+            event_type=WorkflowEventType.STAGE_COMPLETED,
+            task_id="task-1",
+            stage="planner",
+            data={"result": "plan"}
+        ),
+        WorkflowEvent(
+            event_type=WorkflowEventType.TRIGGER_NEXT_STAGE,
+            task_id="task-1",
+            stage="planner",
+            data={"completed_stage": "planner", "next_stage": "coder"}
+        ),
+        WorkflowEvent(
+            event_type=WorkflowEventType.STAGE_COMPLETED,
+            task_id="task-1",
+            stage="coder",
+            data={"result": "code"}
+        ),
+        WorkflowEvent(
+            event_type=WorkflowEventType.TRIGGER_NEXT_STAGE,
+            task_id="task-1",
+            stage="coder",
+            data={"completed_stage": "coder", "next_stage": "test"}
+        )
+    ]
+
+    for event in events:
+        await event_bus.publish(event)
+
+    # Should have triggered 2 stages
+    assert len(triggered_stages) == 2
+    assert triggered_stages[0]["completed"] == "planner"
+    assert triggered_stages[0]["next"] == "coder"
+    assert triggered_stages[1]["completed"] == "coder"
+    assert triggered_stages[1]["next"] == "test"
+
+
+@pytest.mark.asyncio
+async def test_event_driven_workflow_trigger_with_workflow_executor(event_bus):
+    """Test event-driven workflow trigger simulating workflow executor subscription."""
+    workflow_state = {"current_stage": None, "next_stage": None}
+
+    async def workflow_executor_handler(event):
+        """Simulate workflow executor handling trigger events."""
+        if event.event_type == WorkflowEventType.TRIGGER_NEXT_STAGE:
+            workflow_state["current_stage"] = event.data.get("completed_stage")
+            workflow_state["next_stage"] = event.data.get("next_stage")
+
+    # Workflow executor subscribes to trigger events
+    event_bus.subscribe(WorkflowEventType.TRIGGER_NEXT_STAGE, workflow_executor_handler)
+
+    # Publish trigger event
+    trigger_event = WorkflowEvent(
+        event_type=WorkflowEventType.TRIGGER_NEXT_STAGE,
+        task_id="task-1",
+        stage="planner",
+        data={"completed_stage": "planner", "next_stage": "coder"}
+    )
+
+    await event_bus.publish(trigger_event)
+
+    # Workflow executor should have updated state
+    assert workflow_state["current_stage"] == "planner"
+    assert workflow_state["next_stage"] == "coder"
+
+
+@pytest.mark.asyncio
+async def test_event_driven_workflow_trigger_conditional_execution(event_bus):
+    """Test event-driven workflow trigger with conditional execution."""
+    execution_path = []
+
+    async def conditional_handler(event):
+        """Handler that conditionally triggers next stage based on event data."""
+        if event.event_type == WorkflowEventType.TRIGGER_NEXT_STAGE:
+            completed = event.data.get("completed_stage")
+            next_stage = event.data.get("next_stage")
+            # Simulate conditional logic: if test fails, go to debug
+            if completed == "test" and event.data.get("test_passed", True) is False:
+                execution_path.append("test -> debug")
+            else:
+                execution_path.append(f"{completed} -> {next_stage}")
+
+    event_bus.subscribe(WorkflowEventType.TRIGGER_NEXT_STAGE, conditional_handler)
+
+    # Test successful path
+    await event_bus.publish(WorkflowEvent(
+        event_type=WorkflowEventType.TRIGGER_NEXT_STAGE,
+        task_id="task-1",
+        stage="planner",
+        data={"completed_stage": "planner", "next_stage": "coder", "test_passed": True}
+    ))
+
+    # Test failure path
+    await event_bus.publish(WorkflowEvent(
+        event_type=WorkflowEventType.TRIGGER_NEXT_STAGE,
+        task_id="task-1",
+        stage="test",
+        data={"completed_stage": "test", "next_stage": "self_review", "test_passed": False}
+    ))
+
+    assert len(execution_path) == 2
+    assert "planner -> coder" in execution_path
+    assert "test -> debug" in execution_path
+
+
+@pytest.mark.asyncio
+async def test_event_driven_workflow_trigger_parallel_stages(event_bus):
+    """Test event-driven workflow trigger for parallel stage execution."""
+    triggered_tasks = []
+
+    async def parallel_handler(event):
+        """Handler that can trigger multiple parallel stages."""
+        if event.event_type == WorkflowEventType.TRIGGER_NEXT_STAGE:
+            triggered_tasks.append({
+                "task_id": event.task_id,
+                "stage": event.data.get("next_stage")
+            })
+
+    event_bus.subscribe(WorkflowEventType.TRIGGER_NEXT_STAGE, parallel_handler)
+
+    # Simulate multiple tasks completing and triggering next stages in parallel
+    events = [
+        WorkflowEvent(
+            event_type=WorkflowEventType.TRIGGER_NEXT_STAGE,
+            task_id="task-1",
+            stage="planner",
+            data={"completed_stage": "planner", "next_stage": "coder"}
+        ),
+        WorkflowEvent(
+            event_type=WorkflowEventType.TRIGGER_NEXT_STAGE,
+            task_id="task-2",
+            stage="planner",
+            data={"completed_stage": "planner", "next_stage": "coder"}
+        ),
+        WorkflowEvent(
+            event_type=WorkflowEventType.TRIGGER_NEXT_STAGE,
+            task_id="task-3",
+            stage="planner",
+            data={"completed_stage": "planner", "next_stage": "coder"}
+        )
+    ]
+
+    # Publish all events (simulating parallel completion)
+    await asyncio.gather(*[event_bus.publish(event) for event in events])
+
+    # All tasks should have triggered their next stages
+    assert len(triggered_tasks) == 3
+    assert all(t["stage"] == "coder" for t in triggered_tasks)
+    assert len(set(t["task_id"] for t in triggered_tasks)) == 3  # All unique task IDs
+
+
+@pytest.mark.asyncio
+async def test_event_driven_workflow_trigger_retry_stage(event_bus):
+    """Test event-driven workflow trigger for retry stage events."""
+    retry_handler = AsyncMock()
+
+    event_bus.subscribe(WorkflowEventType.RETRY_STAGE, retry_handler)
+
+    # Publish retry stage event
+    retry_event = WorkflowEvent(
+        event_type=WorkflowEventType.RETRY_STAGE,
+        task_id="task-1",
+        stage="coder",
+        data={"retry_count": 1, "reason": "test_failure"}
+    )
+
+    await event_bus.publish(retry_event)
+
+    # Retry handler should be called
+    retry_handler.assert_called_once_with(retry_event)
+    assert retry_handler.call_args[0][0].data["retry_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_event_driven_workflow_trigger_workflow_completion(event_bus):
+    """Test event-driven workflow trigger on workflow completion."""
+    completion_handlers = []
+
+    async def completion_handler(event):
+        """Handler for workflow completion."""
+        if event.event_type == WorkflowEventType.WORKFLOW_COMPLETED:
+            completion_handlers.append({
+                "task_id": event.task_id,
+                "stages": event.data.get("completed_stages", [])
+            })
+
+    event_bus.subscribe(WorkflowEventType.WORKFLOW_COMPLETED, completion_handler)
+
+    # Publish workflow completion event
+    completion_event = WorkflowEvent(
+        event_type=WorkflowEventType.WORKFLOW_COMPLETED,
+        task_id="task-1",
+        data={"completed_stages": ["planner", "coder", "test"]}
+    )
+
+    await event_bus.publish(completion_event)
+
+    # Completion handler should be called
+    assert len(completion_handlers) == 1
+    assert completion_handlers[0]["task_id"] == "task-1"
+    assert len(completion_handlers[0]["stages"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_event_driven_workflow_trigger_error_handling(event_bus):
+    """Test event-driven workflow trigger with error handling."""
+    error_handler = Mock(side_effect=Exception("Handler error"))
+    good_handler = AsyncMock()
+
+    # Subscribe both error and good handlers
+    event_bus.subscribe(WorkflowEventType.TRIGGER_NEXT_STAGE, error_handler)
+    event_bus.subscribe(WorkflowEventType.TRIGGER_NEXT_STAGE, good_handler)
+
+    # Publish trigger event
+    trigger_event = WorkflowEvent(
+        event_type=WorkflowEventType.TRIGGER_NEXT_STAGE,
+        task_id="task-1",
+        stage="planner",
+        data={"completed_stage": "planner", "next_stage": "coder"}
+    )
+
+    # Should not raise exception, both handlers should be called
+    await event_bus.publish(trigger_event)
+
+    error_handler.assert_called_once()
+    good_handler.assert_called_once()
+    # Event should still be in history
+    assert len(event_bus._event_history) == 1

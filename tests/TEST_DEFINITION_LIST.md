@@ -24,11 +24,12 @@
 - ✅ Drift Auditor (22 tests) - All drift detection logic covered
 - ✅ Blueprint Synchronizer (28 tests) - All sync logic covered
 - ✅ Agent Message Bus (45 tests) - All messaging logic covered
+- ✅ Workflow Event Bus (29 tests) - All event logic covered
 
 **In Progress**:
-- 🔄 Workflow Event Bus - Next priority
+- 🔄 Command Handler - Next priority
 
-**Total Tests**: 820 passing
+**Total Tests**: 849 passing
 
 ## Test Coverage Philosophy
 
@@ -215,12 +216,13 @@
 #### Workflow Event Bus (`workflow_event_bus.py`)
 **Priority**: HIGH
 **Coverage Target**: 95%+ (already at 97%)
+**Status**: ✅ COMPLETED (29 tests)
 
 - [x] Event publishing
 - [x] Event subscription/unsubscription
 - [x] Event history and filtering
 - [x] Error handling in callbacks
-- [ ] Event-driven workflow triggers
+- [x] Event-driven workflow triggers
 
 ### 1.5 Runtime Components
 
