@@ -70,6 +70,7 @@ def mock_app(agent_coordinator, agent_bridge, state_manager):
     app.agent_bridge = agent_bridge
     app.state_manager = state_manager
     app.update_squad_channels = AsyncMock(return_value=None)
+    app._load_project_data = AsyncMock(return_value=None)
     return app
 
 
