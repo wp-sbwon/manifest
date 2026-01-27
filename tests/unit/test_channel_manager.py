@@ -385,15 +385,23 @@ async def test_message_routing_updates_message_count(channel_manager):
 @pytest.mark.asyncio
 async def test_message_routing_creates_channel_if_missing(channel_manager):
     """Test that message routing creates channel if it doesn't exist."""
-    channel_name = "squad-task-1-coder"
+    # Use task_id without dashes to avoid parsing issues
+    channel_name = "squad-task1-coder"
     channel_manager.active_channel = channel_name
 
     # Create proper mock container with async mount
     mock_container = MagicMock()
-    mock_container.mount = AsyncMock()
+    mock_container.mount = AsyncMock(return_value=None)
     mock_log = Mock()
-    # query_one calls: 1) channel-selector, 2) log-main (in create), 3) log-main (in handle_agent_output)
-    channel_manager.app.query_one = Mock(side_effect=[mock_container, mock_log, mock_log])
+    # query_one calls: 1) channel-selector (Horizontal), 2) log-main (RichLog in create), 3) log-main (RichLog in handle_agent_output)
+    def query_one_side_effect(selector, widget_type=None):
+        if selector == "#channel-selector":
+            return mock_container
+        elif selector == "#log-main":
+            return mock_log
+        return Mock()
+
+    channel_manager.app.query_one = Mock(side_effect=query_one_side_effect)
     channel_manager.app.set_timer = Mock()
     channel_manager.state_manager.get_chat_history = Mock(return_value=[])
     channel_manager.state_manager.add_chat_message = Mock()
