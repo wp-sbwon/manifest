@@ -465,6 +465,7 @@
 
 #### Workflow 2: Manual Task Creation & Execution
 **Priority**: HIGH
+**Status**: ✅ COMPLETED (6 tests)
 **Description**: User manually creates task and starts agent
 
 **Steps**:
@@ -476,10 +477,10 @@
 6. User reviews results
 
 **Validation**:
-- [ ] Task is created correctly
-- [ ] Agent starts and completes
-- [ ] Results are saved
-- [ ] State is updated
+- [x] Task is created correctly
+- [x] Agent starts and completes
+- [x] Results are saved
+- [x] State is updated
 
 #### Workflow 3: Blueprint Sync & Drift Detection
 **Priority**: HIGH
