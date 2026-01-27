@@ -40,11 +40,12 @@
 - ✅ Tool Executor → Terminal Router (9 tests) - All tool-terminal integration covered
 - ✅ Tool Executor → Permission Manager (8 tests) - All tool-permission integration covered
 - ✅ File Watcher → Drift Auditor (8 tests) - All file-drift integration covered
+- ✅ App → Command Handler → Agent Coordinator (11 tests) - All UI-command integration covered
 
 **In Progress**:
 - 🔄 Next component - TBD
 
-**Total Tests**: 1093 passing
+**Total Tests**: 1104 passing
 
 ## Test Coverage Philosophy
 
@@ -421,10 +422,11 @@
 
 #### App → Command Handler → Agent Coordinator
 **Priority**: CRITICAL
+**Status**: ✅ COMPLETED (11 tests)
 
-- [ ] User commands trigger agent actions
-- [ ] Command parsing and routing
-- [ ] Response display
+- [x] User commands trigger agent actions
+- [x] Command parsing and routing
+- [x] Response display
 
 #### App → Channel Manager → Agent Bridge
 **Priority**: HIGH
