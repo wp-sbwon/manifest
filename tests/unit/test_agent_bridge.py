@@ -33,7 +33,14 @@ def mock_config_manager():
 def mock_executor():
     """Create a mock executor."""
     executor = AsyncMock()
-    executor.execute_agent = AsyncMock()
+
+    # Mock execute_agent to return an async generator that yields chunks
+    # This properly handles async iteration to avoid coroutine warnings
+    async def mock_execute_agent(*args, **kwargs):
+        yield {"type": "complete", "content": "Test output"}
+        return
+
+    executor.execute_agent = mock_execute_agent
     return executor
 
 

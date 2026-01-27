@@ -312,7 +312,8 @@ class ContextProvider:
         task_id: str,
         agent_type: str,
         stage: str,
-        previous_stages: Optional[Dict[str, Any]] = None
+        previous_stages: Optional[Dict[str, Any]] = None,
+        model_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Get stage-specific context for worker agents.
