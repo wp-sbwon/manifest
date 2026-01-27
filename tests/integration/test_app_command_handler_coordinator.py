@@ -68,6 +68,8 @@ def mock_app(agent_coordinator, agent_bridge, state_manager):
     app.agent_bridge = agent_bridge
     app.state_manager = state_manager
     app.update_squad_channels = AsyncMock(return_value=None)
+    app.show_orchestrator_chat = AsyncMock(return_value=None)
+    app._load_project_data = AsyncMock(return_value=None)
     return app
 
 
@@ -159,11 +161,22 @@ async def test_user_commands_trigger_agent_actions_stop_agent(
 
 @pytest.mark.asyncio
 async def test_command_parsing_and_routing(
-    command_handler, mock_app, agent_bridge, mock_log
+    command_handler, mock_app, agent_bridge, agent_coordinator, mock_log
 ):
     """Test command parsing and routing."""
-    # Start bridge
+    # Start bridge and coordinator
     await agent_bridge.start()
+    await agent_coordinator.start()
+
+    # Mock coordinator methods
+    async def mock_start_agent(task_id, agent_type, **kwargs):
+        return True
+
+    async def mock_stop_agent(task_id):
+        return True
+
+    agent_coordinator.start_worker_agent = mock_start_agent
+    agent_coordinator.stop_agent = mock_stop_agent
 
     # Mock bridge methods
     async def mock_get_status():
@@ -313,18 +326,13 @@ async def test_command_handler_coordinator_integration_orchestrator(
 
     agent_coordinator.start_orchestrator = track_start_orchestrator
 
-    # Mock app methods that might be called
-    mock_app.show_orchestrator_ui = AsyncMock(return_value=None)
-
-    # Handle orchestrator command
+    # Handle orchestrator command (calls show_orchestrator_chat which is already mocked)
     handled = await command_handler.handle("/orchestrator Test mission description", mock_log)
 
     # Verify command was handled
     assert handled is True
-    # Orchestrator command may show UI or trigger coordinator directly
-    # Verify either coordinator was called or UI was shown
-    assert len(orchestrator_calls) >= 0  # May or may not be called directly
-    assert mock_log.write.called or mock_app.show_orchestrator_ui.called
+    # Orchestrator command shows UI (already mocked in fixture)
+    assert mock_app.show_orchestrator_chat.called
 
 
 @pytest.mark.asyncio
