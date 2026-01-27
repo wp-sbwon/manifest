@@ -68,6 +68,72 @@ class TaskProgressView(Vertical):
         except Exception as e:
             logger.error(f"Error updating task progress view: {e}", exc_info=True)
 
+    def _update_workflow_visualization(self, task_id: str, task: Dict[str, Any]) -> None:
+        """Update workflow visualization with current workflow state.
+
+        Args:
+            task_id: ID of the task.
+            task: Task dictionary.
+        """
+        try:
+            workflow_viz = self.query_one("#workflow-visualization", WorkflowVisualization)
+
+            # Get workflow state from task
+            worker_squad = task.get("worker_squad", {})
+            stages = worker_squad.get("stages", {})
+
+            # Build workflow state dict
+            completed_stages = set()
+            failed_stages = set()
+            for stage_name, stage_data in stages.items():
+                status = stage_data.get("status", "pending")
+                if status == "completed":
+                    completed_stages.add(stage_name)
+                elif status == "failed":
+                    failed_stages.add(stage_name)
+
+            workflow_state = {
+                "stages": stages,
+                "completed_stages": completed_stages,
+                "failed_stages": failed_stages,
+                "status": task.get("status", "unknown")
+            }
+
+            # Get workflow definition from registry (default worker_squad)
+            workflow_def = None
+            if self.app_ref and hasattr(self.app_ref, "agent_coordinator"):
+                coordinator = self.app_ref.agent_coordinator
+                if coordinator and hasattr(coordinator, "worker_squad_executor"):
+                    executor = coordinator.worker_squad_executor
+                    if executor and hasattr(executor, "workflow_registry"):
+                        workflow_def = executor.workflow_registry.get("worker_squad")
+
+            # If no workflow definition found, create a basic one from stages
+            if not workflow_def:
+                from manifest.agents.workflow_definition import WorkflowDefinition, StageDefinition, StageCondition
+                stage_defs = []
+                for stage_name, stage_data in stages.items():
+                    agent_type = stage_data.get("agent_type", stage_name)
+                    status = stage_data.get("status", "pending")
+                    condition = StageCondition.ON_SUCCESS if status == "completed" else StageCondition.ALWAYS
+                    stage_defs.append(StageDefinition(
+                        name=stage_name,
+                        agent_type=agent_type,
+                        condition=condition,
+                        dependencies=[]  # Simplified - actual dependencies would come from executor
+                    ))
+                if stage_defs:
+                    workflow_def = WorkflowDefinition(
+                        name="worker_squad",
+                        stages=stage_defs,
+                        entry_points=[stage_defs[0].name] if stage_defs else [],
+                        exit_points=[stage_defs[-1].name] if stage_defs else []
+                    )
+
+            workflow_viz.load_workflow(workflow_def, workflow_state, task_id)
+        except Exception as e:
+            logger.error(f"Error updating workflow visualization: {e}", exc_info=True)
+
     def _update_stages(self, task: Dict[str, Any]) -> None:
         """Update Worker Squad stages display.
 
