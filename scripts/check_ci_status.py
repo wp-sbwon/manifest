@@ -232,6 +232,9 @@ def main():
             print(f"❌ Remote CI failed: {workflow_name} (run #{run_number})")
             if html_url:
                 print(f"   View details: {html_url}")
+            print("\n⚠️  CI is failing! Fix the issues before pushing.")
+            print("   You can still push with: git push --no-verify")
+            print("   But it's recommended to check GitHub Actions first.")
             sys.exit(1)
         else:
             print(f"⚠️  Remote CI {conclusion}: {workflow_name} (run #{run_number})")
