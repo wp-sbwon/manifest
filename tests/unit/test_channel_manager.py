@@ -389,10 +389,10 @@ async def test_message_routing_creates_channel_if_missing(channel_manager):
     channel_manager.active_channel = channel_name
 
     mock_container = Mock()
-    mock_container.mount = AsyncMock()
+    mock_container.mount = AsyncMock()  # Must be AsyncMock for await
     mock_log = Mock()
-    # query_one is called multiple times: container, log (in create), log (in handle_agent_output)
-    channel_manager.app.query_one = Mock(side_effect=[mock_container, mock_log, mock_log])
+    # query_one is called multiple times: container (for channel-selector), container (for mount), log (in create), log (in handle_agent_output)
+    channel_manager.app.query_one = Mock(side_effect=[mock_container, mock_container, mock_log, mock_log])
     channel_manager.app.set_timer = Mock()
     channel_manager.state_manager.get_chat_history = Mock(return_value=[])
     channel_manager.state_manager.add_chat_message = Mock()
