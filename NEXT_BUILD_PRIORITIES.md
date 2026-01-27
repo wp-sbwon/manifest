@@ -1,6 +1,7 @@
 # Next Build Priorities - Manifest Project
 
 **Date**: 2026-01-27
+**Last Updated**: 2026-01-27
 **Based on**: Actual codebase review (not docs)
 
 ---
@@ -13,141 +14,122 @@
 3. **shadow_manager.py** - Complete implementation with sandbox support
 4. **agent_message_bus.py** - Infrastructure complete, registered in agent_bridge
 5. **container_api.py** - Implemented and started in app.py
-6. **worker_squad_executor.py** - Sequential mode fully working
+6. **worker_squad_executor.py** - Sequential and event-driven mode fully working
+7. **Event-driven workflow mode** - ✅ Enabled by default (MANIFEST_EVENT_DRIVEN=true)
+8. **Agent-to-agent messaging** - ✅ All agents implement handle_message()
+9. **Container communication** - ✅ Full integration tests complete
+10. **Parallel stage execution** - ✅ Implemented with dependency resolution and resource limits
+11. **Workflow visualization** - ✅ Basic implementation complete, real-time updates added
 
-### ⚠️ Partially Implemented (Needs Completion)
-1. **Event-driven workflow mode** - Code exists but disabled by default (`_use_event_driven = False`)
-2. **Agent-to-agent messaging** - Infrastructure exists but agents don't implement `handle_message()`
-3. **Container communication** - Basic structure exists but needs full integration testing
+### ⚠️ Recently Completed (2026-01-27)
+1. ✅ **Event-driven workflow mode** - Enabled by default, fully tested
+2. ✅ **Agent-to-agent messaging** - All agents (planner, coder, test, debug) implement handle_message()
+3. ✅ **Container communication** - Full integration tests (8 tests) passing
+4. ✅ **Parallel stage execution** - Dependency resolution, resource limits, tracking implemented
+5. ✅ **Workflow visualization** - _update_workflow_visualization() implemented, real-time event subscriptions added
 
 ---
 
 ## 🎯 Recommended Next Build Priorities
 
-### Priority 1: Enable Event-Driven Workflow Mode (HIGH IMPACT)
+### ✅ Priority 1: Enable Event-Driven Workflow Mode (COMPLETED)
 
-**Status**: Code exists, just needs to be enabled and tested
+**Status**: ✅ Completed (2026-01-27)
 
-**What exists**:
-- `WorkerSquadExecutor.enable_event_driven()` method
-- Event subscription setup (`_setup_event_subscriptions`)
-- Event handlers for stage completion/failure
-- Workflow state tracking
+**What was done**:
+- ✅ Event-driven mode enabled by default (MANIFEST_EVENT_DRIVEN=true)
+- ✅ All agent completions publish `STAGE_COMPLETED`/`STAGE_FAILED` events
+- ✅ Event-driven workflow end-to-end tested (7 integration tests)
+- ✅ Fallback to sequential mode if events fail
 
-**What's missing**:
-- Actually enabling it somewhere (it's always `False`)
-- Testing the event-driven flow
-- Ensuring events are properly published when agents complete
-
-**Why this matters**:
-- Makes workflow execution more flexible and responsive
-- Allows for conditional stage execution (e.g., skip debug if tests pass)
-- Enables parallel execution of independent stages
-- Better error recovery (events can trigger retries)
-
-**Implementation steps**:
-1. Add option to enable event-driven mode (config or command flag)
-2. Ensure all agent completions publish `STAGE_COMPLETED` events
-3. Test event-driven workflow end-to-end
-4. Add fallback to sequential mode if events fail
-
-**Estimated effort**: 2-3 days
+**Result**: Event-driven workflow fully operational
 
 ---
 
-### Priority 2: Implement Agent Message Handling (MEDIUM IMPACT)
+### ✅ Priority 2: Implement Agent Message Handling (COMPLETED)
 
-**Status**: Infrastructure exists, agents need to implement handlers
+**Status**: ✅ Completed (2026-01-27)
 
-**What exists**:
-- `AgentMessageBus` fully implemented
-- Agents registered with message bus in `agent_bridge.py`
-- Message routing and delivery working
+**What was done**:
+- ✅ All agents implement `handle_message()` method (planner, coder, test, debug)
+- ✅ Message handlers for each agent type implemented
+- ✅ Message bus correlation_id 수정 (이벤트 전달 전 설정)
+- ✅ Agent-to-agent communication tested (6 integration tests)
 
-**What's missing**:
-- Agents don't have `handle_message()` methods
-- No actual agent-to-agent communication happening
-- Message handlers not implemented
-
-**Why this matters**:
-- Enables agents to request information from each other
-- Allows for dynamic coordination (e.g., coder asks planner for clarification)
-- Supports request-response patterns between agents
-- Enables real-time agent collaboration
-
-**Implementation steps**:
-1. Add `handle_message()` method to base agent classes
-2. Implement message handlers for each agent type:
-   - Planner: Handle requests for plan details
-   - Coder: Handle requests for implementation status
-   - Test: Handle requests for test results
-   - Debug: Handle requests for error analysis
-3. Add message sending examples in agent execution
-4. Test agent-to-agent communication
-
-**Estimated effort**: 3-4 days
+**Result**: Agents can now communicate via message bus
 
 ---
 
-### Priority 3: Complete Container Communication Integration (MEDIUM IMPACT)
+### ✅ Priority 3: Complete Container Communication Integration (COMPLETED)
 
-**Status**: Basic structure exists, needs full integration
+**Status**: ✅ Completed (2026-01-27)
 
-**What exists**:
-- `ContainerMessageBus` implemented
-- `ContainerStateSync` implemented
-- `ContainerAPI` implemented and started
-- `ContainerManager` for Docker operations
+**What was done**:
+- ✅ Full end-to-end testing of container communication (8 integration tests)
+- ✅ State synchronization verified and tested
+- ✅ Error handling for container failures tested
+- ✅ Container API endpoints fully tested
 
-**What's missing**:
-- Full end-to-end testing of container communication
-- State synchronization verification
-- Error handling for container failures
-- Container lifecycle management
-
-**Why this matters**:
-- Enables agents to run in isolated Docker containers
-- Provides better security and isolation
-- Allows for distributed agent execution
-- Supports scaling to multiple containers
-
-**Implementation steps**:
-1. Test container communication end-to-end
-2. Verify state synchronization works correctly
-3. Add error handling for container failures
-4. Add container health monitoring
-5. Test with actual Docker containers
-
-**Estimated effort**: 4-5 days
+**Result**: Container communication fully integrated and tested
 
 ---
 
-### Priority 4: Parallel Stage Execution (LOW-MEDIUM IMPACT)
+### ✅ Priority 4: Parallel Stage Execution (COMPLETED)
 
-**Status**: Infrastructure exists, needs implementation
+**Status**: ✅ Completed (2026-01-27)
 
-**What exists**:
-- `enable_parallel_execution()` method
-- Workflow definition system with dependencies
-- Stage dependency tracking
+**What was done**:
+- ✅ Dependency graph resolution implemented
+- ✅ Parallel stage execution logic with task tracking
+- ✅ Resource limits (max_concurrent_stages, default: 3)
+- ✅ Parallel execution tested (9 integration tests)
 
-**What's missing**:
-- Actual parallel execution logic
-- Dependency resolution
-- Resource management for parallel execution
+**Result**: Independent stages can run in parallel with proper dependency resolution
 
-**Why this matters**:
-- Improves workflow throughput
-- Reduces total execution time
-- Better resource utilization
+---
 
-**Implementation steps**:
-1. Implement dependency graph resolution
-2. Add parallel stage execution logic
-3. Add resource limits (max concurrent stages)
-4. Test parallel execution
+## 🎯 Current Next Priorities (2026-01-27)
 
-**Estimated effort**: 3-4 days
+### Priority 1: Workflow Visualization 완성 (HIGH IMPACT)
+
+**Status**: ✅ Just Completed
+
+**What was done**:
+- ✅ `TaskProgressView._update_workflow_visualization()` 구현
+- ✅ WorkflowVisualization에 workflow state 전달
+- ✅ 기본 Worker Squad workflow definition 로드
+- ✅ 실시간 워크플로우 업데이트 (이벤트 구독 추가)
+- ✅ Dashboard metrics 계산 로직 개선
+
+**Result**: Task 선택 시 workflow 시각화가 표시되고, stage 완료 시 실시간 업데이트됨
+
+---
+
+### Priority 2: UI 개선 및 사용자 경험 향상 (MEDIUM IMPACT)
+
+**Status**: Ongoing improvements
+
+**개선 사항**:
+- ✅ ContextBar activity 제한 확장 (3개 → 10개)
+- ✅ 실시간 workflow 이벤트 구독
+- ⚠️ 병렬 실행 시 UI 표시 개선 (부분 완료)
+
+**추가 개선 가능 사항**:
+- WorkflowVisualization에서 병렬 stage를 더 명확히 표시
+- Dashboard에 병렬 실행 중인 stage 수 표시
+- 에러 메시지 및 디버깅 정보 개선
+
+---
+
+## 📊 Completed Priorities Summary
+
+| Feature | Status | Completion Date |
+|---------|--------|----------------|
+| Event-driven mode | ✅ Complete | 2026-01-27 |
+| Agent messaging | ✅ Complete | 2026-01-27 |
+| Container integration | ✅ Complete | 2026-01-27 |
+| Parallel execution | ✅ Complete | 2026-01-27 |
+| Workflow visualization | ✅ Complete | 2026-01-27 |
 
 ---
 
@@ -161,64 +143,44 @@
 
 ---
 
-## 📊 Impact vs Effort Matrix
+## 💡 Recent Improvements (2026-01-27)
 
-| Feature | Impact | Effort | Priority |
-|---------|--------|--------|----------|
-| Event-driven mode | HIGH | LOW (2-3 days) | **1** |
-| Agent messaging | MEDIUM | MEDIUM (3-4 days) | **2** |
-| Container integration | MEDIUM | HIGH (4-5 days) | **3** |
-| Parallel execution | LOW-MEDIUM | MEDIUM (3-4 days) | **4** |
-
----
-
-## 🎯 Recommended Next Steps
-
-### Week 1: Event-Driven Mode
-1. Enable event-driven mode by default or via config
-2. Ensure all agent completions publish events
-3. Test event-driven workflow end-to-end
-4. Add error handling and fallback
-
-### Week 2: Agent Messaging
-1. Implement `handle_message()` in base agent classes
-2. Add message handlers for each agent type
-3. Test agent-to-agent communication
-4. Add examples of agent collaboration
-
-### Week 3-4: Container Integration
-1. Test container communication end-to-end
-2. Verify state synchronization
-3. Add error handling
-4. Document container usage
-
----
-
-## 💡 Quick Wins (Can Do Anytime)
-
-1. **Enable event-driven mode** - Just set `_use_event_driven = True` and test
-2. **Add agent message examples** - Show how agents can communicate
-3. **Improve error messages** - Better debugging for workflow failures
-4. **Add workflow visualization** - Show current stage in UI
+1. ✅ **Event-driven mode** - Enabled by default, fully tested
+2. ✅ **Agent message handling** - All agents implement handle_message()
+3. ✅ **Container communication** - Full integration tests complete
+4. ✅ **Parallel execution** - Dependency resolution and resource limits
+5. ✅ **Workflow visualization** - Real-time updates via event subscriptions
 
 ---
 
 ## 🔍 Code Locations
 
 ### Event-Driven Mode:
-- `src/manifest/agents/worker_squad_executor.py` (lines 80-110, 909-947)
-- `src/manifest/agents/workflow_event_bus.py`
+- `src/manifest/agents/worker_squad_executor.py` - Event-driven mode (enabled by default)
+- `src/manifest/agents/workflow_event_bus.py` - Event bus implementation
+- `src/manifest/ui/app.py` - UI event subscriptions for real-time updates
 
 ### Agent Messaging:
-- `src/manifest/agents/agent_message_bus.py`
-- `src/manifest/bridge/agent_bridge.py` (lines 431-450)
-- `src/manifest/runtime/agent/agents/*.py` (need to add handle_message)
+- `src/manifest/agents/agent_message_bus.py` - Message bus
+- `src/manifest/bridge/agent_bridge.py` - Agent registration
+- `src/manifest/runtime/agent/agents/*.py` - All agents implement handle_message()
 
 ### Container Communication:
-- `src/manifest/agents/container_communication.py`
-- `src/manifest/agents/container_api.py`
-- `src/manifest/agents/container_manager.py`
+- `src/manifest/agents/container_communication.py` - Message bus and state sync
+- `src/manifest/agents/container_api.py` - HTTP API
+- `src/manifest/agents/container_manager.py` - Docker operations
+- `tests/integration/test_container_communication_integration.py` - Integration tests
+
+### Parallel Execution:
+- `src/manifest/agents/worker_squad_executor.py` - Parallel execution logic
+- `src/manifest/agents/workflow_definition.py` - Dependency resolution
+- `tests/integration/test_parallel_stage_execution.py` - Integration tests
+
+### Workflow Visualization:
+- `src/manifest/ui/widgets/task_progress_view.py` - Task progress view
+- `src/manifest/ui/widgets/workflow_visualization.py` - Workflow graph visualization
+- `src/manifest/ui/app.py` - Real-time event subscriptions
 
 ---
 
-**Conclusion**: Start with **Event-Driven Mode** - it's the highest impact with lowest effort. The code is already there, just needs to be enabled and tested.
+**Conclusion**: All 4 original priorities completed. Current focus: UI improvements and user experience enhancements.

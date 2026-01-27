@@ -111,8 +111,8 @@ class ContextBar(RichLog):
             "activity": activity,
             "timestamp": time.time()
         })
-        # Keep only recent activities (last 3)
-        self.activities = self.activities[-3:]
+        # Keep only recent activities (last 10 for parallel execution support)
+        self.activities = self.activities[-10:]
         self.update_display()
 
     def remove_activity(self, task_id: str, agent_type: str):
@@ -629,6 +629,10 @@ class ManifestApp(App):
         self.set_interval(2.0, self.update_context_bar)
         # Set up periodic agent status updates
         self.set_interval(3.0, self.update_agent_status)
+
+        # Subscribe to workflow events for real-time updates
+        if self.agent_coordinator and self.agent_coordinator.event_bus:
+            await self._setup_workflow_event_subscriptions()
 
         # Focus input field after everything is loaded
         self.query_one("#global-input").focus()
@@ -1209,15 +1213,12 @@ class ManifestApp(App):
             # Count running agents
             running_agents = 0
             if self.agent_coordinator:
-                # Check active worker squads
-                state = self.state_manager.get_state()
-                tasks = state.get("tasks", [])
-                for task in tasks:
-                    worker_squad = task.get("worker_squad", {})
-                    stages = worker_squad.get("stages", {})
-                    for stage_data in stages.values():
-                        if stage_data.get("status") == "in_progress":
-                            running_agents += 1
+                # Use get_active_agents() for accurate count
+                active_agents = self.agent_coordinator.get_active_agents()
+                running_agents = sum(
+                    1 for agent_info in active_agents.values()
+                    if agent_info.get("status") == "active"
+                )
 
             dashboard.update_metrics({
                 "match_pct": match_pct,
@@ -2425,6 +2426,82 @@ class ManifestApp(App):
         """
         if self.channel_manager:
             await self.channel_manager.handle_agent_output(channel, content, role)
+
+    async def _setup_workflow_event_subscriptions(self) -> None:
+        """Set up subscriptions to workflow events for real-time UI updates."""
+        if not self.agent_coordinator or not self.agent_coordinator.event_bus:
+            return
+
+        from manifest.agents.workflow_event_bus import WorkflowEventType
+
+        async def on_stage_completed(event):
+            """Handle stage completion event - update UI."""
+            task_id = event.task_id
+            stage = event.stage
+
+            # Update task progress view if task is currently selected
+            try:
+                task_progress_view = self.query_one("#task-progress-view", raise_if_missing=False)
+                if task_progress_view and task_progress_view.current_task_id == task_id:
+                    # Reload task from state and update view
+                    task = self.state_manager.get_task(task_id)
+                    if task:
+                        task_progress_view.update_task(task_id, task)
+            except Exception as e:
+                logger.debug(f"Could not update task progress view on stage completion: {e}")
+
+            # Update dashboard metrics
+            await self.update_dashboard_metrics()
+            # Update context bar
+            await self.update_context_bar()
+
+        async def on_stage_failed(event):
+            """Handle stage failure event - update UI."""
+            task_id = event.task_id
+            stage = event.stage
+
+            # Update task progress view if task is currently selected
+            try:
+                task_progress_view = self.query_one("#task-progress-view", raise_if_missing=False)
+                if task_progress_view and task_progress_view.current_task_id == task_id:
+                    # Reload task from state and update view
+                    task = self.state_manager.get_task(task_id)
+                    if task:
+                        task_progress_view.update_task(task_id, task)
+            except Exception as e:
+                logger.debug(f"Could not update task progress view on stage failure: {e}")
+
+            # Update dashboard metrics
+            await self.update_dashboard_metrics()
+            # Update context bar
+            await self.update_context_bar()
+
+        async def on_workflow_completed(event):
+            """Handle workflow completion event - update UI."""
+            task_id = event.task_id
+
+            # Update task progress view if task is currently selected
+            try:
+                task_progress_view = self.query_one("#task-progress-view", raise_if_missing=False)
+                if task_progress_view and task_progress_view.current_task_id == task_id:
+                    # Reload task from state and update view
+                    task = self.state_manager.get_task(task_id)
+                    if task:
+                        task_progress_view.update_task(task_id, task)
+            except Exception as e:
+                logger.debug(f"Could not update task progress view on workflow completion: {e}")
+
+            # Update dashboard metrics
+            await self.update_dashboard_metrics()
+            # Update task tree
+            await self.update_task_tree()
+
+        # Subscribe to events
+        self.agent_coordinator.event_bus.subscribe(WorkflowEventType.STAGE_COMPLETED, on_stage_completed)
+        self.agent_coordinator.event_bus.subscribe(WorkflowEventType.STAGE_FAILED, on_stage_failed)
+        self.agent_coordinator.event_bus.subscribe(WorkflowEventType.WORKFLOW_COMPLETED, on_workflow_completed)
+
+        logger.debug("Workflow event subscriptions set up for UI updates")
 
     async def on_unmount(self) -> None:
         """Cleanup on app exit."""
