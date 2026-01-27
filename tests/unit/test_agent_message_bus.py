@@ -593,12 +593,15 @@ async def test_message_correlation_multiple_requests(message_bus):
         for i in range(3)
     ]
 
-    # Wait for correlation_ids to be set
-    await asyncio.sleep(0.1)
+    # Wait for correlation_ids to be set (poll until we have all 3)
+    for _ in range(20):  # Poll up to 20 times
+        await asyncio.sleep(0.05)
+        if len(message_bus._pending_requests) == 3:
+            break
 
     # Get all correlation_ids from pending requests
     correlation_ids = list(message_bus._pending_requests.keys())
-    assert len(correlation_ids) == 3
+    assert len(correlation_ids) == 3, f"Expected 3 correlation_ids, got {len(correlation_ids)}"
 
     # Respond to each request using its correlation_id
     for i, correlation_id in enumerate(correlation_ids):
