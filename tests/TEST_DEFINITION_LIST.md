@@ -19,11 +19,12 @@
 - ✅ Coder Agent (16 tests) - All coding logic covered
 - ✅ Test Agent (16 tests) - All test generation logic covered
 - ✅ Debug Agent (11 tests) - All debugging logic covered
+- ✅ Terminal Router (28 tests) - All routing logic covered
 
 **In Progress**:
-- 🔄 Approver Agent - Next priority
+- 🔄 Tool Executor - Next priority
 
-**Total Tests**: 678 passing
+**Total Tests**: 695 passing
 
 ## Test Coverage Philosophy
 
@@ -221,13 +222,14 @@
 #### Terminal Router (`terminal_router.py`)
 **Priority**: HIGH
 **Coverage Target**: 100% of routing logic
+**Status**: ✅ COMPLETED (28 tests)
 
-- [ ] Command execution (OpenCode vs subprocess)
-- [ ] Permission checking
-- [ ] Permission approval flow
-- [ ] Command result parsing
-- [ ] Error handling
-- [ ] Working directory management
+- [x] Command execution (OpenCode vs subprocess)
+- [x] Permission checking
+- [x] Permission approval flow
+- [x] Command result parsing
+- [x] Error handling
+- [x] Working directory management
 
 #### Tool Executor (`tool_executor.py`)
 **Priority**: HIGH
