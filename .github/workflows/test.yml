@@ -9,6 +9,7 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30  # Set timeout to 30 minutes per job
     strategy:
       matrix:
         python-version: ['3.9', '3.10', '3.11']
@@ -32,8 +33,9 @@ jobs:
       - name: Run tests
         env:
           PYTHONPATH: src
+        timeout-minutes: 25  # Set timeout for test step (5 min buffer before job timeout)
         run: |
-          pytest tests/ -v --cov=src/manifest --cov-report=term-missing --cov-report=xml
+          pytest tests/ -v --cov=src/manifest --cov-report=term-missing --cov-report=xml --timeout=300
 
       # Codecov integration (optional - uncomment if you set up Codecov)
       # - name: Upload coverage reports
