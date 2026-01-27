@@ -356,5 +356,10 @@ async def test_save_response(debug_agent):
     content = "Debug analysis complete"
 
     # Method should complete without error (does nothing, kept for compatibility)
-    await debug_agent._save_response(content)
-    assert True  # Should complete successfully
+    # Verify it doesn't raise an exception
+    try:
+        await debug_agent._save_response(content)
+        # If we get here, method completed successfully
+        assert True  # Method completed without error
+    except Exception as e:
+        pytest.fail(f"_save_response raised unexpected exception: {e}")

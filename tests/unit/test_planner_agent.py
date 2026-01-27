@@ -127,8 +127,10 @@ async def test_plan_generation_with_conflict_review(planner_agent):
         results.append(chunk)
 
     assert len(results) > 0
-    # Verify conflict review mode was handled
-    assert True  # Conflict review is handled in prompt generation
+    # Verify conflict review mode was handled - check that results were generated
+    # Conflict review is handled in prompt generation, but we verify the flow completed
+    complete_chunks = [r for r in results if r.get("type") == "complete"]
+    assert len(complete_chunks) > 0, "Plan generation should complete"
 
 
 @pytest.mark.asyncio
@@ -302,8 +304,9 @@ async def test_plan_compliance_checking_architecture(planner_agent):
 
     # Verify plan was generated with architecture context
     assert len(results) > 0
-    # Architecture compliance is checked in prompt generation
-    assert True
+    # Architecture compliance is checked in prompt generation, but we verify plan was generated
+    complete_chunks = [r for r in results if r.get("type") == "complete"]
+    assert len(complete_chunks) > 0, "Plan generation should complete with architecture context"
 
 
 @pytest.mark.asyncio
@@ -435,9 +438,13 @@ async def test_update_blueprint_metadata_no_file(planner_agent):
 
     # Mock Path.exists to return False
     with patch('pathlib.Path.exists', return_value=False):
-        # Should not raise exception
-        await planner_agent._update_blueprint_metadata(methodology_info)
-        assert True  # Should complete without error
+        # Should not raise exception even when file doesn't exist
+        try:
+            await planner_agent._update_blueprint_metadata(methodology_info)
+            # If we get here, method completed without error
+            assert True  # Method completed successfully
+        except Exception as e:
+            pytest.fail(f"_update_blueprint_metadata raised unexpected exception when file doesn't exist: {e}")
 
 
 @pytest.mark.asyncio

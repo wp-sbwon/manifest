@@ -357,8 +357,12 @@ async def test_plan_compliance_checking(coder_agent):
 
     # Verify implementation was generated with plan context
     assert len(results) > 0
-    # Plan compliance is checked in prompt generation
-    assert True
+    # Verify plan compliance was checked - response should reference the plan
+    complete_chunks = [r for r in results if r.get("type") == "complete"]
+    if complete_chunks:
+        content = complete_chunks[0].get("content", "")
+        # Plan compliance is verified by prompt generation, but we verify response was generated
+        assert len(content) > 0
 
 
 @pytest.mark.asyncio

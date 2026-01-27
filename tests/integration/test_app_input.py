@@ -44,12 +44,10 @@ def test_empty_input_handling(mock_app):
     # Simulate input submission with whitespace
     user_input = input_widget.value.strip()
 
-    # Empty input should be ignored
-    if not user_input:
-        # Should return early without processing
-        assert True
-    else:
-        assert False, "Empty input should be ignored"
+    # Empty input should be ignored - verify it's actually empty after strip
+    assert not user_input, "Empty input (whitespace only) should be empty after strip"
+    # If we get here, the input was correctly identified as empty
+    # This test verifies the empty input detection logic works
 
 
 def test_input_processing_flow(mock_app):
@@ -86,12 +84,13 @@ async def test_command_processing(mock_app):
     user_input = "/audit"
 
     # Should process without blocking
+    assert user_input.startswith("/"), "Command should start with /"
     if user_input.startswith("/"):
         command = user_input[1:].split()[0]
-        assert command == "audit"
+        assert command == "audit", f"Expected command 'audit', got '{command}'"
 
-    # Verify non-blocking behavior
-    assert True  # If we get here, it didn't block
+    # Verify non-blocking behavior - if we get here, command was parsed without blocking
+    # This test verifies command parsing doesn't block execution
 
 
 def test_focus_not_called_on_empty_input(mock_app):
