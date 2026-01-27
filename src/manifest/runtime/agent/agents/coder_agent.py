@@ -62,6 +62,8 @@ class CoderAgent:
         self.tool_executor = tool_executor
         self.message_history: List[Dict[str, str]] = []
         self.agent_type = "coder"
+        self.message_bus = None  # Will be set by agent_bridge when agent is registered
+        self._implementation_status: Optional[Dict[str, Any]] = None  # Store implementation status
 
         # Track tool execution results for completion detection
         self.tool_execution_summary: Dict[str, Any] = {
@@ -162,6 +164,15 @@ class CoderAgent:
                             self.message_history.append({"role": "assistant", "content": full_response})
                         else:
                             self.message_history[-1]["content"] = full_response
+                    # Store implementation status for message responses
+                    self._implementation_status = {
+                        "tool_execution_summary": self.tool_execution_summary.copy(),
+                        "modified_files": self.tool_execution_summary.get("modified_files", []),
+                        "executed_commands": self.tool_execution_summary.get("executed_commands", []),
+                        "agent_id": self.agent_id,
+                        "timestamp": __import__("time").time()
+                    }
+
                     # Yield complete chunk for UI display with tool_execution_summary
                     # This summary will be used by next stages (test, debug) to know what was modified
                     complete_chunk = chunk.copy()
@@ -382,6 +393,90 @@ class CoderAgent:
                 await self._save_response(chunk.get("content", ""))
 
             yield chunk
+
+    async def handle_message(self, message: "AgentMessage") -> None:
+        """Handle incoming messages from other agents.
+
+        Supports request-response pattern for agent-to-agent communication.
+        Coder can respond to requests for implementation status, modified files, etc.
+
+        Args:
+            message: AgentMessage instance containing message details.
+        """
+        from manifest.agents.agent_message_bus import AgentMessage, MessageType
+        from manifest.core.logger import get_logger
+
+        logger = get_logger(__name__)
+
+        if message.message_type == MessageType.REQUEST:
+            # Handle request messages
+            subject = message.subject.lower()
+            content = message.content or {}
+
+            if subject in ("implementation_status", "get_status", "status"):
+                # Respond with implementation status
+                response_content = {
+                    "status": self._implementation_status or {},
+                    "has_implementation": self._implementation_status is not None,
+                    "agent_id": self.agent_id
+                }
+                if self.message_bus:
+                    await self.message_bus.respond(
+                        from_agent_id=self.agent_id,
+                        correlation_id=(message.correlation_id or message.message_id),
+                        content=response_content,
+                        success=True
+                    )
+
+            elif subject in ("modified_files", "get_files", "files"):
+                # Respond with list of modified files
+                modified_files = []
+                if self._implementation_status:
+                    modified_files = self._implementation_status.get("modified_files", [])
+
+                response_content = {
+                    "modified_files": modified_files,
+                    "agent_id": self.agent_id
+                }
+                if self.message_bus:
+                    await self.message_bus.respond(
+                        from_agent_id=self.agent_id,
+                        correlation_id=(message.correlation_id or message.message_id),
+                        content=response_content,
+                        success=True
+                    )
+
+            elif subject in ("tool_summary", "get_tool_summary"):
+                # Respond with tool execution summary
+                tool_summary = {}
+                if self._implementation_status:
+                    tool_summary = self._implementation_status.get("tool_execution_summary", {})
+
+                response_content = {
+                    "tool_summary": tool_summary,
+                    "agent_id": self.agent_id
+                }
+                if self.message_bus:
+                    await self.message_bus.respond(
+                        from_agent_id=self.agent_id,
+                        correlation_id=(message.correlation_id or message.message_id),
+                        content=response_content,
+                        success=True
+                    )
+
+            else:
+                # Unknown request - respond with error
+                if self.message_bus:
+                    await self.message_bus.respond(
+                        from_agent_id=self.agent_id,
+                        correlation_id=(message.correlation_id or message.message_id),
+                        content={"error": f"Unknown request subject: {subject}"},
+                        success=False
+                    )
+
+        elif message.message_type == MessageType.NOTIFICATION:
+            # Handle notifications (one-way messages)
+            logger.debug(f"Coder {self.agent_id} received notification: {message.subject}")
 
     def _generate_self_review_prompt(
         self,

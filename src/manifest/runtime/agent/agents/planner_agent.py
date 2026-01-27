@@ -59,6 +59,73 @@ class PlannerAgent:
         self.state_manager = state_manager
         self.terminal_router = terminal_router
         self.message_history: List[Dict[str, str]] = []
+        self.message_bus = None  # Will be set by agent_bridge when agent is registered
+        self._last_plan: Optional[Dict[str, Any]] = None  # Store last plan for message responses
+
+    async def handle_message(self, message: "AgentMessage") -> None:
+        """Handle incoming messages from other agents.
+
+        Supports request-response pattern for agent-to-agent communication.
+        Planner can respond to requests for plan details, plan status, etc.
+
+        Args:
+            message: AgentMessage instance containing message details.
+        """
+        from manifest.agents.agent_message_bus import AgentMessage, MessageType
+
+        if message.message_type == MessageType.REQUEST:
+            # Handle request messages
+            subject = message.subject.lower()
+            content = message.content or {}
+
+            if subject in ("plan_details", "get_plan", "plan_info"):
+                # Respond with plan details
+                response_content = {
+                    "plan": self._last_plan or {},
+                    "status": "available" if self._last_plan else "no_plan_yet",
+                    "agent_id": self.agent_id
+                }
+                if self.message_bus:
+                    await self.message_bus.respond(
+                        from_agent_id=self.agent_id,
+                        correlation_id=(message.correlation_id or message.message_id),
+                        content=response_content,
+                        success=True
+                    )
+
+            elif subject in ("plan_status", "is_plan_ready"):
+                # Respond with plan status
+                response_content = {
+                    "has_plan": self._last_plan is not None,
+                    "agent_id": self.agent_id
+                }
+                if self.message_bus:
+                    await self.message_bus.respond(
+                        from_agent_id=self.agent_id,
+                        correlation_id=(message.correlation_id or message.message_id),
+                        content=response_content,
+                        success=True
+                    )
+
+            else:
+                # Unknown request - respond with error
+                if self.message_bus:
+                    await self.message_bus.respond(
+                        from_agent_id=self.agent_id,
+                        correlation_id=(message.correlation_id or message.message_id),
+                        content={"error": f"Unknown request subject: {subject}"},
+                        success=False
+                    )
+
+        elif message.message_type == MessageType.NOTIFICATION:
+            # Handle notifications (one-way messages)
+            # Planner might receive notifications about task changes, etc.
+            logger.debug(f"Planner {self.agent_id} received notification: {message.subject}")
+
+        # Store message in history for debugging
+        if not hasattr(self, '_message_history'):
+            self._message_history = []
+        self._message_history.append(message.to_dict())
 
     async def plan(
         self,
@@ -113,7 +180,15 @@ class PlannerAgent:
                 self.message_history[-1]["content"] += chunk.get("content", "")
             elif chunk.get("type") == "complete":
                 # Save complete response
-                await self._save_response(chunk.get("content", ""))
+                content = chunk.get("content", "")
+                await self._save_response(content)
+                # Store plan for message responses
+                # Try to extract plan from content (simplified - could parse JSON if available)
+                self._last_plan = {
+                    "content": content,
+                    "agent_id": self.agent_id,
+                    "timestamp": __import__("time").time()
+                }
 
             yield chunk
 

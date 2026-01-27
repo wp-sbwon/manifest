@@ -433,6 +433,10 @@ class AgentBridge:
                 message_bus = self.message_bus
                 agent_instance = agent.get("instance")
 
+                # Set message_bus on agent instance so it can send messages
+                if agent_instance:
+                    agent_instance.message_bus = message_bus
+
                 # Create message handler for this agent
                 async def message_handler(message):
                     """Handle incoming messages for this agent."""

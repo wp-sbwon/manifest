@@ -792,55 +792,32 @@ async def test_request_with_message_not_found(message_bus):
 
 @pytest.mark.asyncio
 async def test_request_with_message_found_in_history(message_bus):
-    """Test request when message is found and correlation_id is set."""
+    """Test that when request() is used, the handler receives a message with correlation_id set."""
+    received_messages = []
+
+    async def capture_handler(msg):
+        received_messages.append(msg)
+        await message_bus.respond(
+            from_agent_id="agent-2",
+            correlation_id=(msg.correlation_id or msg.message_id),
+            content={"result": "ok"},
+        )
+
     message_bus.register_agent("agent-1", "planner")
-    message_bus.register_agent("agent-2", "coder")
+    message_bus.register_agent("agent-2", "coder", message_handler=capture_handler)
 
-    # Send a request
-    response_future = asyncio.Future()
-    correlation_id = "test-corr"
-    message_bus._pending_requests[correlation_id] = response_future
-
-    # Create a message in history
-    message = AgentMessage(
-        message_id="msg-1",
-        message_type=MessageType.REQUEST,
-        from_agent_id="agent-1",
-        from_agent_type="planner",
-        to_agent_id="agent-2"
-    )
-    message_bus._message_history = [message]
-
-    # Mock send_message to return the message_id
-    original_send = message_bus.send_message
-    async def mock_send(*args, **kwargs):
-        return "msg-1"
-    message_bus.send_message = mock_send
-
-    # Start request (will set correlation_id on message)
-    task = asyncio.create_task(message_bus.request(
+    response = await message_bus.request(
         from_agent_id="agent-1",
         to_agent_id="agent-2",
         subject="test",
         content={},
-        timeout=0.1
-    ))
+        timeout=1.0,
+    )
 
-    # Give it a moment to set correlation_id
-    await asyncio.sleep(0.01)
-
-    # Verify correlation_id was set
-    assert message.correlation_id is not None
-
-    # Cancel task
-    task.cancel()
-    try:
-        await task
-    except asyncio.CancelledError:
-        pass
-
-    # Cleanup
-    message_bus.send_message = original_send
+    assert response is not None
+    assert len(received_messages) == 1
+    assert received_messages[0].correlation_id is not None
+    assert received_messages[0].message_type == MessageType.REQUEST
 
 
 @pytest.mark.asyncio
