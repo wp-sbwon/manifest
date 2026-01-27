@@ -15,11 +15,12 @@
 - ✅ Context Provider (23 tests) - All context logic covered
 - ✅ Task Scoper (21 tests) - All scoping logic covered
 - ✅ Orchestrator Agent (13 tests) - All orchestration logic covered
+- ✅ Planner Agent (19 tests) - All planning logic covered
 
 **In Progress**:
-- 🔄 Planner Agent - Next priority
+- 🔄 Coder Agent - Next priority
 
-**Total Tests**: 624 passing
+**Total Tests**: 641 passing
 
 ## Test Coverage Philosophy
 
@@ -153,11 +154,12 @@
 #### Planner Agent (`planner_agent.py`)
 **Priority**: HIGH
 **Coverage Target**: 100% of planning logic
+**Status**: ✅ COMPLETED (19 tests)
 
-- [ ] Plan generation
-- [ ] Plan validation
-- [ ] Plan updates
-- [ ] Plan compliance checking
+- [x] Plan generation
+- [x] Plan validation
+- [x] Plan updates
+- [x] Plan compliance checking
 
 #### Coder Agent (`coder_agent.py`)
 **Priority**: HIGH
