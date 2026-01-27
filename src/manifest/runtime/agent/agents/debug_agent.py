@@ -82,6 +82,8 @@ class DebugAgent:
         self.tool_executor = tool_executor
         self.message_history: List[Dict[str, str]] = []
         self.agent_type = "debug"
+        self.message_bus = None  # Will be set by agent_bridge when agent is registered
+        self._debug_analysis: Optional[Dict[str, Any]] = None  # Store debug analysis for message responses
 
         # Track tool execution results
         self.tool_execution_summary: Dict[str, Any] = {
@@ -135,9 +137,85 @@ class DebugAgent:
                 self.message_history[-1]["content"] += chunk.get("content", "")
             elif chunk.get("type") == "complete":
                 # Save complete response
-                await self._save_response(chunk.get("content", ""))
+                content = chunk.get("content", "")
+                await self._save_response(content)
+                # Store debug analysis for message responses
+                self._debug_analysis = {
+                    "content": content,
+                    "agent_id": self.agent_id,
+                    "timestamp": __import__("time").time()
+                }
 
             yield chunk
+
+    async def handle_message(self, message: "AgentMessage") -> None:
+        """Handle incoming messages from other agents.
+
+        Supports request-response pattern for agent-to-agent communication.
+        Debug agent can respond to requests for error analysis, fix suggestions, etc.
+
+        Args:
+            message: AgentMessage instance containing message details.
+        """
+        from manifest.agents.agent_message_bus import AgentMessage, MessageType
+        from manifest.core.logger import get_logger
+
+        logger = get_logger(__name__)
+
+        if message.message_type == MessageType.REQUEST:
+            # Handle request messages
+            subject = message.subject.lower()
+            content = message.content or {}
+
+            if subject in ("debug_analysis", "get_analysis", "error_analysis"):
+                # Respond with debug analysis
+                response_content = {
+                    "analysis": self._debug_analysis or {},
+                    "has_analysis": self._debug_analysis is not None,
+                    "agent_id": self.agent_id
+                }
+                if self.message_bus:
+                    await self.message_bus.respond(
+                        from_agent_id=self.agent_id,
+                        correlation_id=(message.correlation_id or message.message_id),
+                        content=response_content,
+                        success=True
+                    )
+
+            elif subject in ("fix_suggestions", "get_fixes"):
+                # Respond with fix suggestions (extracted from analysis)
+                fix_suggestions = []
+                if self._debug_analysis:
+                    # Extract fix suggestions from analysis content (simplified)
+                    analysis_content = self._debug_analysis.get("content", "")
+                    # In a real implementation, we'd parse the analysis to extract fixes
+                    fix_suggestions = [analysis_content] if analysis_content else []
+
+                response_content = {
+                    "fix_suggestions": fix_suggestions,
+                    "agent_id": self.agent_id
+                }
+                if self.message_bus:
+                    await self.message_bus.respond(
+                        from_agent_id=self.agent_id,
+                        correlation_id=(message.correlation_id or message.message_id),
+                        content=response_content,
+                        success=True
+                    )
+
+            else:
+                # Unknown request - respond with error
+                if self.message_bus:
+                    await self.message_bus.respond(
+                        from_agent_id=self.agent_id,
+                        correlation_id=(message.correlation_id or message.message_id),
+                        content={"error": f"Unknown request subject: {subject}"},
+                        success=False
+                    )
+
+        elif message.message_type == MessageType.NOTIFICATION:
+            # Handle notifications (one-way messages)
+            logger.debug(f"Debug agent {self.agent_id} received notification: {message.subject}")
 
     def _generate_debug_prompt(
         self,

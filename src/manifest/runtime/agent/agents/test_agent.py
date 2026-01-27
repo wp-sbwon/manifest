@@ -174,6 +174,8 @@ class TestAgent:
         self.tool_executor = tool_executor
         self.message_history: List[Dict[str, str]] = []
         self.agent_type = "test"
+        self.message_bus = None  # Will be set by agent_bridge when agent is registered
+        self._test_results: Optional[Dict[str, Any]] = None  # Store test results for message responses
 
         # Track tool execution results
         self.tool_execution_summary: Dict[str, Any] = {
@@ -408,6 +410,13 @@ class TestAgent:
                 if full_response:
                     # Save test results
                     await self._save_test_execution_results(task_id, full_response)
+                    # Store test results for message responses
+                    self._test_results = {
+                        "content": full_response,
+                        "task_id": task_id,
+                        "agent_id": self.agent_id,
+                        "timestamp": __import__("time").time()
+                    }
                     yield {
                         "type": "complete",
                         "content": full_response,
@@ -421,6 +430,73 @@ class TestAgent:
                 "content": f"Maximum tool execution iterations ({max_iterations}) reached",
                 "tool_execution_summary": self.tool_execution_summary.copy()
             }
+
+    async def handle_message(self, message: "AgentMessage") -> None:
+        """Handle incoming messages from other agents.
+
+        Supports request-response pattern for agent-to-agent communication.
+        Test agent can respond to requests for test results, test status, etc.
+
+        Args:
+            message: AgentMessage instance containing message details.
+        """
+        from manifest.agents.agent_message_bus import AgentMessage, MessageType
+        from manifest.core.logger import get_logger
+
+        logger = get_logger(__name__)
+
+        if message.message_type == MessageType.REQUEST:
+            # Handle request messages
+            subject = message.subject.lower()
+            content = message.content or {}
+
+            if subject in ("test_results", "get_test_results", "test_status"):
+                # Respond with test results
+                response_content = {
+                    "test_results": self._test_results or {},
+                    "has_results": self._test_results is not None,
+                    "agent_id": self.agent_id
+                }
+                if self.message_bus:
+                    await self.message_bus.respond(
+                        from_agent_id=self.agent_id,
+                        correlation_id=(message.correlation_id or message.message_id),
+                        content=response_content,
+                        success=True
+                    )
+
+            elif subject in ("test_files", "get_test_files"):
+                # Respond with test files created
+                test_files = []
+                if self._test_results:
+                    # Extract test files from results (if available)
+                    test_files = self._test_results.get("test_files", [])
+
+                response_content = {
+                    "test_files": test_files,
+                    "agent_id": self.agent_id
+                }
+                if self.message_bus:
+                    await self.message_bus.respond(
+                        from_agent_id=self.agent_id,
+                        correlation_id=(message.correlation_id or message.message_id),
+                        content=response_content,
+                        success=True
+                    )
+
+            else:
+                # Unknown request - respond with error
+                if self.message_bus:
+                    await self.message_bus.respond(
+                        from_agent_id=self.agent_id,
+                        correlation_id=(message.correlation_id or message.message_id),
+                        content={"error": f"Unknown request subject: {subject}"},
+                        success=False
+                    )
+
+        elif message.message_type == MessageType.NOTIFICATION:
+            # Handle notifications (one-way messages)
+            logger.debug(f"Test agent {self.agent_id} received notification: {message.subject}")
 
     def _generate_tdd_test_prompt(self, task_id: str, context: Dict[str, Any]) -> str:
         """Generate a prompt for TDD test writing mode.

@@ -197,7 +197,8 @@ class AgentMessageBus:
         to_agent_type: Optional[str] = None,
         subject: str = "",
         content: Dict[str, Any] = None,
-        message_type: MessageType = MessageType.NOTIFICATION
+        message_type: MessageType = MessageType.NOTIFICATION,
+        correlation_id: Optional[str] = None
     ) -> Optional[str]:
         """Send a message to an agent or agent type.
 
@@ -208,6 +209,7 @@ class AgentMessageBus:
             subject: Message subject/topic.
             content: Message content/data.
             message_type: Type of message.
+            correlation_id: Optional correlation ID for request-response (set by request()).
 
         Returns:
             Message ID if message was sent, None otherwise.
@@ -233,6 +235,7 @@ class AgentMessageBus:
             to_agent_type=to_agent_type,
             subject=subject,
             content=content or {},
+            correlation_id=correlation_id,
             timestamp=__import__("time").time()
         )
 
@@ -275,24 +278,20 @@ class AgentMessageBus:
         response_future = asyncio.Future()
         self._pending_requests[correlation_id] = response_future
 
-        # Send request message
+        # Send request message (pass correlation_id so handler can respond with it)
         message_id = await self.send_message(
             from_agent_id=from_agent_id,
             to_agent_id=to_agent_id,
             to_agent_type=to_agent_type,
             subject=subject,
             content=content or {},
-            message_type=MessageType.REQUEST
+            message_type=MessageType.REQUEST,
+            correlation_id=correlation_id
         )
 
         if not message_id:
             self._pending_requests.pop(correlation_id, None)
             return None
-
-        # Update message with correlation ID
-        message = next((m for m in self._message_history if m.message_id == message_id), None)
-        if message:
-            message.correlation_id = correlation_id
 
         try:
             # Wait for response with timeout

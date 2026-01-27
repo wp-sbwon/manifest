@@ -79,7 +79,7 @@ def create_container_api(state_manager=None) -> FastAPI:
         if topic not in _message_store:
             _message_store[topic] = []
 
-        message_dict = message.dict()
+        message_dict = message.model_dump()
         _message_store[topic].append(message_dict)
 
         # Keep only last 100 messages per topic
