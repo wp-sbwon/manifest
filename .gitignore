@@ -47,12 +47,12 @@ env/
 .DS_Store
 Thumbs.db
 
-# Testing / coverage (generated; safe to delete)
+# Testing (we do not use code-coverage; .gitignore in case someone runs pytest --cov)
 .pytest_cache/
 .coverage
 coverage.json
 coverage.xml
-htmlcov/          # HTML coverage report (pytest-cov); open index.html in browser
+htmlcov/
 *.cover
 .hypothesis/
 

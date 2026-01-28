@@ -28,24 +28,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest pytest-asyncio pytest-cov pytest-timeout
+          pip install pytest pytest-asyncio pytest-timeout
 
       - name: Run tests
         env:
           PYTHONPATH: src
         timeout-minutes: 25  # Set timeout for test step (5 min buffer before job timeout)
         run: |
-          pytest tests/ -v --cov=src/manifest --cov-report=term-missing --cov-report=xml --timeout=300
-
-      # Codecov integration (optional - uncomment if you set up Codecov)
-      # - name: Upload coverage reports
-      #   uses: codecov/codecov-action@v4
-      #   if: matrix.python-version == '3.9'
-      #   with:
-      #     file: ./coverage.xml
-      #     flags: unittests
-      #     name: codecov-umbrella
-      #     fail_ci_if_error: false
+          pytest tests/ -v --timeout=300
 
       - name: Test summary
         if: always()
