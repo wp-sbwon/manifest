@@ -101,14 +101,32 @@ class ToolExecutor:
             tool_input=tool_input,
             approval_callback=None,
         )
-        return {
+        return self._tool_result(
+            tool_input, tool_name,
+            result=None,
+            permission_required=True,
+            approval_request_id=request_id,
+            message="Tool execution pending approval. Approve then re-invoke with __approved_request_id__ set to this request_id.",
+        )
+
+    @staticmethod
+    def _tool_result(
+        tool_input: Dict[str, Any],
+        tool_name: str,
+        result: Any = None,
+        error: Optional[str] = None,
+        **extra: Any,
+    ) -> Dict[str, Any]:
+        """Build a standard tool result dict. Use **extra for permission_required, permission_denied, etc."""
+        out: Dict[str, Any] = {
             "tool_call_id": tool_input.get("id", "unknown"),
             "tool_name": tool_name,
-            "result": None,
-            "permission_required": True,
-            "approval_request_id": request_id,
-            "message": "Tool execution pending approval. Approve then re-invoke with __approved_request_id__ set to this request_id.",
+            "result": result,
         }
+        if error is not None:
+            out["error"] = error
+        out.update(extra)
+        return out
 
     async def execute_tool(
         self,
@@ -356,23 +374,13 @@ class ToolExecutor:
             Execution result dict.
         """
         if not self.terminal_router:
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "bash",
-                "error": "TerminalRouter not available",
-                "result": None
-            }
+            return self._tool_result(tool_input, "bash", error="TerminalRouter not available")
 
         command = tool_input.get("command")
         args = tool_input.get("args", [])
 
         if not command:
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "bash",
-                "error": "Command not provided",
-                "result": None
-            }
+            return self._tool_result(tool_input, "bash", error="Command not provided")
 
         try:
             result = await self.terminal_router.execute_command(
@@ -383,13 +391,11 @@ class ToolExecutor:
 
             # Check for permission denied
             if result.get("permission_denied"):
-                return {
-                    "tool_call_id": tool_input.get("id", "unknown"),
-                    "tool_name": "bash",
-                    "error": result.get("stderr", "Permission denied"),
-                    "result": None,
-                    "permission_denied": True
-                }
+                return self._tool_result(
+                    tool_input, "bash",
+                    error=result.get("stderr", "Permission denied"),
+                    permission_denied=True,
+                )
 
             # Check for permission required (ask)
             if result.get("permission_required"):
@@ -406,44 +412,30 @@ class ToolExecutor:
                         approval_callback=None  # Will be handled by retry mechanism
                     )
 
-                    return {
-                        "tool_call_id": tool_input.get("id", "unknown"),
-                        "tool_name": "bash",
-                        "error": "Permission approval required",
-                        "result": None,
-                        "permission_required": True,
-                        "permission_details": permission_details,
-                        "approval_request_id": request_id
-                    }
+                    return self._tool_result(
+                        tool_input, "bash",
+                        error="Permission approval required",
+                        permission_required=True,
+                        permission_details=permission_details,
+                        approval_request_id=request_id,
+                    )
                 else:
-                    # No approval manager, return error
-                    return {
-                        "tool_call_id": tool_input.get("id", "unknown"),
-                        "tool_name": "bash",
-                        "error": "Permission approval required but no approval manager available",
-                        "result": None,
-                        "permission_required": True,
-                        "permission_details": permission_details
-                    }
+                    return self._tool_result(
+                        tool_input, "bash",
+                        error="Permission approval required but no approval manager available",
+                        permission_required=True,
+                        permission_details=permission_details,
+                    )
 
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "bash",
-                "result": {
-                    "stdout": result.get("stdout", ""),
-                    "stderr": result.get("stderr", ""),
-                    "returncode": result.get("returncode", -1),
-                    "command": f"{command} {' '.join(args) if args else ''}".strip()
-                }
-            }
+            return self._tool_result(tool_input, "bash", result={
+                "stdout": result.get("stdout", ""),
+                "stderr": result.get("stderr", ""),
+                "returncode": result.get("returncode", -1),
+                "command": f"{command} {' '.join(args) if args else ''}".strip()
+            })
         except Exception as e:
             logger.error(f"Error executing bash command: {e}")
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "bash",
-                "error": str(e),
-                "result": None
-            }
+            return self._tool_result(tool_input, "bash", error=str(e))
 
     def _execute_edit(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute edit operation.
@@ -864,33 +856,20 @@ class ToolExecutor:
                 resp = await client.post(url, json=payload)
             if resp.status_code == 200:
                 run_result = resp.json()
-                return {
-                    "tool_call_id": tool_input.get("id", "unknown"),
-                    "tool_name": "worker_squad_spawn",
-                    "result": run_result,
-                }
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "worker_squad_spawn",
-                "error": f"Container API returned {resp.status_code}: {resp.text[:200]}",
-                "result": None,
-            }
+                return self._tool_result(tool_input, "worker_squad_spawn", result=run_result)
+            return self._tool_result(
+                tool_input, "worker_squad_spawn",
+                error=f"Container API returned {resp.status_code}: {resp.text[:200]}",
+            )
         except Exception as e:
             if "Connect" in type(e).__name__ or "connect" in str(e).lower() or "Connection refused" in str(e):
                 logger.warning("Container API not reachable for run_squad: %s", e)
-                return {
-                    "tool_call_id": tool_input.get("id", "unknown"),
-                    "tool_name": "worker_squad_spawn",
-                    "error": "Container API not reachable. Start Manifest with Launcher (manifest) so Container API runs, or set worker_squad_runner on ToolExecutor.",
-                    "result": None,
-                }
+                return self._tool_result(
+                    tool_input, "worker_squad_spawn",
+                    error="Container API not reachable. Start Manifest with Launcher (manifest) so Container API runs, or set worker_squad_runner on ToolExecutor.",
+                )
             logger.error("run_squad via Container API failed: %s", e, exc_info=True)
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "worker_squad_spawn",
-                "error": str(e),
-                "result": None,
-            }
+            return self._tool_result(tool_input, "worker_squad_spawn", error=str(e))
 
     def _execute_worker_squad_spawn(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute worker_squad_spawn tool (spawn planner/coder/test/debug/approver)."""
@@ -899,12 +878,7 @@ class ToolExecutor:
         action = (tool_input.get("action") or "").strip()
         task_id = (tool_input.get("task_id") or "").strip()
         if not action or not task_id:
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "worker_squad_spawn",
-                "error": "Missing action or task_id",
-                "result": None
-            }
+            return self._tool_result(tool_input, "worker_squad_spawn", error="Missing action or task_id")
         try:
             if action == "spawn_planner":
                 agent_process_id = tool.spawn_planner(task_id, context=tool_input.get("context"))
@@ -930,32 +904,16 @@ class ToolExecutor:
                     work_summary=tool_input.get("work_summary"),
                 )
             elif action == "run_squad":
-                return {
-                    "tool_call_id": tool_input.get("id", "unknown"),
-                    "tool_name": "worker_squad_spawn",
-                    "error": "run_squad is handled by Container API or worker_squad_runner. Use spawn_planner, spawn_coder, etc. for per-stage log-only spawn.",
-                    "result": None,
-                }
+                return self._tool_result(
+                    tool_input, "worker_squad_spawn",
+                    error="run_squad is handled by Container API or worker_squad_runner. Use spawn_planner, spawn_coder, etc. for per-stage log-only spawn.",
+                )
             else:
-                return {
-                    "tool_call_id": tool_input.get("id", "unknown"),
-                    "tool_name": "worker_squad_spawn",
-                    "error": f"Unknown action: {action}",
-                    "result": None
-                }
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "worker_squad_spawn",
-                "result": {"ok": True, "agent_process_id": agent_process_id}
-            }
+                return self._tool_result(tool_input, "worker_squad_spawn", error=f"Unknown action: {action}")
+            return self._tool_result(tool_input, "worker_squad_spawn", result={"ok": True, "agent_process_id": agent_process_id})
         except Exception as e:
             logger.error(f"worker_squad_spawn error: {e}", exc_info=True)
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "worker_squad_spawn",
-                "error": str(e),
-                "result": None
-            }
+            return self._tool_result(tool_input, "worker_squad_spawn", error=str(e))
 
     def _execute_blueprint_sync(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute blueprint_sync tool (compare_blueprints, detect_drift, sync_blueprint)."""
@@ -963,12 +921,7 @@ class ToolExecutor:
         tool = BlueprintSyncTool(self.manifest_dir)
         action = (tool_input.get("action") or "").strip()
         if not action:
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "blueprint_sync",
-                "error": "Missing action",
-                "result": None
-            }
+            return self._tool_result(tool_input, "blueprint_sync", error="Missing action")
         try:
             if action == "compare_blueprints":
                 out = tool.compare_blueprints()
@@ -978,25 +931,11 @@ class ToolExecutor:
                 mode = (tool_input.get("mode") or "workflow").strip()
                 out = tool.sync_blueprint(mode=mode)
             else:
-                return {
-                    "tool_call_id": tool_input.get("id", "unknown"),
-                    "tool_name": "blueprint_sync",
-                    "error": f"Unknown action: {action}",
-                    "result": None
-                }
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "blueprint_sync",
-                "result": out
-            }
+                return self._tool_result(tool_input, "blueprint_sync", error=f"Unknown action: {action}")
+            return self._tool_result(tool_input, "blueprint_sync", result=out)
         except Exception as e:
             logger.error(f"blueprint_sync error: {e}", exc_info=True)
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "blueprint_sync",
-                "error": str(e),
-                "result": None
-            }
+            return self._tool_result(tool_input, "blueprint_sync", error=str(e))
 
     def _execute_drift_check(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute drift_check tool (returns component statuses)."""
@@ -1004,16 +943,7 @@ class ToolExecutor:
         tool = DriftCheckTool(self.manifest_dir)
         try:
             out = tool.check()
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "drift_check",
-                "result": out
-            }
+            return self._tool_result(tool_input, "drift_check", result=out)
         except Exception as e:
             logger.error(f"drift_check error: {e}", exc_info=True)
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "drift_check",
-                "error": str(e),
-                "result": None
-            }
+            return self._tool_result(tool_input, "drift_check", error=str(e))
