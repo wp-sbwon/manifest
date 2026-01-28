@@ -4,20 +4,25 @@
 
 ## Documentation
 
-All documentation is located in the [`docs/`](docs/) directory. See [docs/README.md](docs/README.md) for the complete documentation index.
+All documentation is in [`docs/`](docs/). See [docs/README.md](docs/README.md) for the index.
 
-**Quick Links:**
-- [User Guide](docs/USER_GUIDE.md) - How to use Manifest
-- [API Documentation](docs/API.md) - API reference
-- [Module Documentation](docs/MODULES.md) - Detailed module docs
-- [Architecture](docs/ARCHITECTURE.md) - System architecture
-- [Development Setup](docs/DEV_SETUP.md) - Setup instructions
-- [Contributing](docs/CONTRIBUTING.md) - Contribution guidelines
-- [Refactoring Notes](docs/REFACTORING.md) - Project refactoring history
+**Quick links:** [Project structure](docs/PROJECT_STRUCTURE.md) · [OpenCode setup](docs/OPENCODE_SETUP.md) · [OpenCode agent](docs/OPENCODE_AGENT_SETUP.md) · [UI redesign plan](docs/UI_REDESIGN_PLAN.md) · [Worker squad](docs/WORKER_SQUAD_AND_AGENTS.md). Older docs are in [docs/archive/](docs/archive/).
 
 ## Quick Start
 
-See [DEV_SETUP.md](docs/DEV_SETUP.md) for detailed setup instructions.
+See [OpenCode setup](docs/OPENCODE_SETUP.md). Then: `./scripts/setup.sh`, `source venv/bin/activate`, `PYTHONPATH=src python -m manifest`.
+
+## Root directory (what’s what)
+
+| Path | Purpose |
+|------|--------|
+| `src/`, `tests/`, `scripts/`, `docs/` | Source, tests, scripts, documentation |
+| `.manifest/` | Runtime data (tasks, state, blueprints); created at run time |
+| `.opencode/` | OpenCode agent configs (e.g. manifest-orchestrator) |
+| `htmlcov/` | **Generated** – HTML coverage report from `pytest --cov`; safe to delete; open `htmlcov/index.html` to view |
+| `coverage.json`, `.coverage`, `coverage.xml` | **Generated** – coverage data; in `.gitignore`; safe to delete |
+| `reference/` | Reference materials (e.g. implementation plan, PDF) |
+| `AGENTS.md.example` | Example for project-level AGENTS.md (OpenCode convention) |
 
 # Manifest Development Environment
 
@@ -32,11 +37,12 @@ This document provides an overview of the development environment setup for the 
 
 ### Option 1: Python Virtual Environment (Recommended for Development)
 
-1. **Setup the environment:**
+1. **Setup the environment (Docker is required; install it during setup if missing):**
    ```bash
-   chmod +x setup.sh
-   ./setup.sh
+   chmod +x scripts/setup.sh
+   ./scripts/setup.sh
    ```
+   To install Docker automatically on macOS/Linux: `INSTALL_DOCKER=1 ./scripts/setup.sh`
 
 2. **Activate the virtual environment:**
    ```bash
@@ -47,11 +53,11 @@ This document provides an overview of the development environment setup for the 
    ```bash
    PYTHONPATH=src python -m manifest
    ```
-   또는 개발 환경에서:
+   또는 `pip install -e .` 후:
    ```bash
-   export PYTHONPATH=src
-   python -m manifest
+   manifest
    ```
+   이렇게 하면 **OpenCode 터미널**과 **상시 시각화 View**(blueprint·구조·drift·태스크)가 함께 실행됩니다. 채팅/입력은 OpenCode에서 합니다. OpenCode 설치 및 PATH 설정이 필요하며, OpenCode에 `manifest-orchestrator` 에이전트를 설정해 두어야 합니다.
 
 4. **Deactivate when done:**
    ```bash
@@ -123,7 +129,7 @@ See `requirements.txt` for the complete list.
 - Configure skills for individual agents in `.manifest/agent_config.json`
 - Configure project-scoped skills in `AGENTS.md` (OpenCode convention)
 - Skills are automatically loaded from `.claude/rules/` directory
-- See [docs/SKILLS.md](docs/SKILLS.md) for detailed documentation
+- See [docs/archive/superseded-2026/SKILLS.md](docs/archive/superseded-2026/SKILLS.md) for detailed documentation
 
 ## Development Workflow
 
