@@ -1,8 +1,9 @@
 """
-Manifest launcher: View + OpenCode.
+Manifest launcher: starts View and OpenCode.
 
-manifest 실행 시 (1) 상시 시각화 View 프로세스 시작, (2) OpenCode 터미널 실행.
-Docker는 OpenCode처럼 필수이나, 없을 때 종료하지 않고 설치/시작을 시도한 뒤 진행한다.
+On run: (1) starts the View process (visualization dashboard), (2) execs OpenCode.
+Docker is required for container features; if unavailable, launcher attempts
+to install or start it instead of exiting.
 """
 import os
 import sys
@@ -21,6 +22,9 @@ DEFAULT_AGENT = "manifest-orchestrator"
 
 # Seconds to wait for Docker to become available after start/install attempt
 DOCKER_WAIT_SECONDS = 30
+
+# Container API port (Launcher starts API on this port when Docker is available).
+CONTAINER_API_PORT = 4097
 
 
 def _get_manifest_dir() -> Path:
@@ -192,6 +196,39 @@ def _start_view() -> Optional[subprocess.Popen]:
         return None
 
 
+def _start_container_api() -> Optional[subprocess.Popen]:
+    """Start Container API in a subprocess when Docker is available."""
+    if not _is_docker_available():
+        return None
+    try:
+        manifest_dir = _get_manifest_dir()
+        api_log = manifest_dir / "container_api.log"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        with open(api_log, "w") as log_file:
+            proc = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "manifest.agents.container_api:app",
+                    "--host",
+                    "0.0.0.0",
+                    "--port",
+                    str(CONTAINER_API_PORT),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                cwd=os.getcwd(),
+                env={**os.environ, "PYTHONPATH": os.environ.get("PYTHONPATH", "") or str(Path(__file__).resolve().parent.parent)},
+            )
+        logger.info("Container API started: pid=%s, port=%s", proc.pid, CONTAINER_API_PORT)
+        return proc
+    except Exception as e:
+        logger.warning("Could not start Container API: %s", e)
+        return None
+
+
 def run_opencode() -> int:
     """Run OpenCode in the current process (exec). Returns only on exec failure."""
     agent = _get_agent_name()
@@ -230,6 +267,7 @@ def main() -> int:
             "Install/start Docker and restart if you need containers.\n"
         )
     _start_view()
+    _start_container_api()
     return run_opencode()
 
 

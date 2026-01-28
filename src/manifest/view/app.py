@@ -1,9 +1,9 @@
 """
-Manifest View App - UI Redesign Plan (Phase 1).
+Manifest View App: visualization-only dashboard.
 
-Layout: Header (Dashboard | Metrics) | Sidebar (Tasks, Status, Viz) | Main Chat Area.
-Chat runs in OpenCode; this view shows compact sidebar + placeholder for chat.
-Task panel is toggleable (keybind t). Watches .manifest/ for real-time sync.
+Layout: header (metrics), sidebar (tasks, status, viz), main area (placeholder;
+chat runs in OpenCode). Task panel toggles with keybind t. Watches .manifest/
+for real-time sync.
 """
 import json
 from pathlib import Path
@@ -41,7 +41,7 @@ This panel shows dashboard and compact viz; switch sidebar views with 1–5."""
 
 
 class ViewType(Enum):
-    """뷰 타입."""
+    """Sidebar view type."""
     ARCHITECT = "architect"
     BLUEPRINT = "blueprint"
     HISTORY = "history"
@@ -50,7 +50,7 @@ class ViewType(Enum):
 
 
 class InspectorMode(Enum):
-    """Inspector View 모드."""
+    """Inspector view mode (drift, visual status, or data)."""
     VISUAL = "visual"
     DATA = "data"
     DRIFT = "drift"
@@ -209,36 +209,53 @@ class ManifestViewApp(App[None]):
         return "\n".join(lines) if lines else "Blueprint: (no data)"
 
     def _load_history_view(self) -> str:
-        """Load History View data (Git commits)."""
+        """Load History View data: design doc history and Git commits."""
         lines = []
         try:
+            # Design history (PRD, architecture, blueprint – versioned like git)
+            from manifest.core.design_history import get_design_history
+            design_entries = get_design_history(self.manifest_dir)
+            if design_entries:
+                lines.append("Design history (PRD / architecture / blueprint)")
+                lines.append(f"  Entries: {len(design_entries)}")
+                for entry in design_entries[:15]:
+                    doc = entry.get("doc", "?")
+                    path = entry.get("path", "?")
+                    ts = (entry.get("timestamp") or "?")[:10]
+                    lines.append(f"  [{doc}] {path} | {ts}")
+                if len(design_entries) > 15:
+                    lines.append(f"  ... and {len(design_entries) - 15} more")
+                lines.append("")
+            # Git commits
             git_mgr = self._get_git_manager()
-            if not git_mgr.is_available():
-                return "History: (Git not available or not a git repository)"
-            try:
-                branch = git_mgr.get_current_branch()
-            except Exception:
-                branch = "unknown"
-            try:
-                commits = git_mgr.get_latest_commits(limit=20)
-            except Exception:
-                commits = []
-            lines.append(f"Branch: {branch}")
-            lines.append(f"Commits: {len(commits)}")
-            for commit in commits:
-                short_hash = commit.get("short_hash", "?")
-                author = commit.get("author", "?")[:20]
-                message = commit.get("message", "?")[:60].replace("\n", " ")
-                timestamp = commit.get("timestamp", "?")[:10]
-                lines.append(f"  [{short_hash}] {author} | {timestamp}")
-                lines.append(f"    {message}")
+            if git_mgr.is_available():
+                try:
+                    branch = git_mgr.get_current_branch()
+                except Exception:
+                    branch = "unknown"
+                try:
+                    commits = git_mgr.get_latest_commits(limit=20)
+                except Exception:
+                    commits = []
+                lines.append(f"Branch: {branch}")
+                lines.append(f"Commits: {len(commits)}")
+                for commit in commits:
+                    short_hash = commit.get("short_hash", "?")
+                    author = commit.get("author", "?")[:20]
+                    message = commit.get("message", "?")[:60].replace("\n", " ")
+                    timestamp = commit.get("timestamp", "?")[:10]
+                    lines.append(f"  [{short_hash}] {author} | {timestamp}")
+                    lines.append(f"    {message}")
+            else:
+                if not design_entries:
+                    lines.append("History: (Git not available; no design history yet)")
         except Exception as e:
             logger.debug("History view load failed: %s", e)
             lines.append("History: (load failed)")
-        return "\n".join(lines) if lines else "History: (no commits)"
+        return "\n".join(lines) if lines else "History: (no data)"
 
     def _load_inspector_view(self) -> str:
-        """Load Inspector View data (모드에 따라 다름)."""
+        """Load Inspector view data (drift, visual status, or data mode)."""
         lines = []
         try:
             if self.inspector_mode == InspectorMode.DRIFT:
@@ -287,7 +304,7 @@ class ManifestViewApp(App[None]):
         return "\n".join(lines) if lines else "Inspector: (no data)"
 
     def _load_mission_control_view(self) -> str:
-        """Load Mission Control View data (Task/Mission 상태만, read-only). Prefers tasks.json."""
+        """Load Mission Control view data (tasks, sprints, channels; read-only). Prefers tasks.json."""
         lines = []
         try:
             state_mgr = self._get_state_manager()
@@ -312,6 +329,51 @@ class ManifestViewApp(App[None]):
                     sid = s.get("id", "?") if isinstance(s, dict) else str(s)
                     name = s.get("name", sid)[:40] if isinstance(s, dict) else sid
                     lines.append(f"  · {name}")
+            # Worker squad channels (container/channel output)
+            chat_history = state_mgr.get_state().get("chat_history", {})
+            squad_channels = [c for c in chat_history if isinstance(c, str) and c.startswith("squad-")]
+            if squad_channels:
+                lines.append(f"\nWorker squad channels: {len(squad_channels)}")
+                for ch in squad_channels[:10]:
+                    msgs = state_mgr.get_chat_history(ch)
+                    lines.append(f"  [{ch}] ({len(msgs)} msgs)")
+                    for m in msgs[-2:]:
+                        role = m.get("role", "?")
+                        content = (m.get("content") or "")[:60].replace("\n", " ")
+                        lines.append(f"    {role}: {content}...")
+            else:
+                lines.append("\nWorker squad channels: (none yet)")
+            # Shadow / per-component output (shadow-* channels)
+            shadow_channels = [c for c in chat_history if isinstance(c, str) and c.startswith("shadow-")]
+            if shadow_channels:
+                lines.append(f"\nComponent / shadow output: {len(shadow_channels)}")
+                for ch in shadow_channels[:8]:
+                    msgs = state_mgr.get_chat_history(ch)
+                    lines.append(f"  [{ch}] ({len(msgs)} msgs)")
+                    for m in msgs[-2:]:
+                        role = m.get("role", "?")
+                        content = (m.get("content") or "")[:60].replace("\n", " ")
+                        lines.append(f"    {role}: {content}...")
+            else:
+                lines.append("\nComponent / shadow output: (none yet)")
+            # Resources (tokens, limits, cost)
+            lines.append("\nResources")
+            try:
+                from manifest.core.config import ConfigManager
+                cm = ConfigManager(self.manifest_dir)
+                limits = cm.get_setting("resource_limits", {}) or {}
+                tokens = limits.get("tokens_per_day")
+                model = limits.get("model")
+                cost = limits.get("cost_limit")
+                lines.append(f"  Limits: tokens_per_day={tokens}, model={model}, cost_limit={cost}")
+            except Exception:
+                lines.append("  Limits: (see .manifest/settings.json)")
+            resource_usage = state_mgr.get_state().get("resource_usage", {})
+            if resource_usage:
+                lines.append(f"  Last usage: {resource_usage}")
+            else:
+                lines.append("  Usage: (available when orchestrator/agents run)")
+            lines.append("  Manage: .manifest/settings.json (resource_limits)")
         except Exception as e:
             logger.debug("Mission Control view load failed: %s", e)
             lines.append("Mission Control: (load failed)")

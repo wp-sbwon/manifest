@@ -65,6 +65,8 @@ class PRDManager:
             prd_file.parent.mkdir(parents=True, exist_ok=True)
             with open(prd_file, "w", encoding="utf-8") as f:
                 json.dump(prd_data, f, indent=2, ensure_ascii=False)
+            from manifest.core.design_history import record_design_save
+            record_design_save(self.state_manager.manifest_dir, "prd", "prd.json")
             return True
         except Exception as e:
             logger.error(f"Error saving PRD: {e}", exc_info=True)

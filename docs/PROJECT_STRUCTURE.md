@@ -2,6 +2,8 @@
 
 Current layout after the OpenCode-first redesign. Entry: `python -m manifest` → launcher → View (TUI) + OpenCode.
 
+**Assess the codebase against [Redesign Architecture and Intent](./REDESIGN_ARCHITECTURE_AND_INTENT.md)** for target architecture, feature list, and legacy removal/alter list.
+
 ## Root
 
 ```
@@ -13,18 +15,16 @@ manifest/
 │   ├── blueprint_code.json  # Bottom-up (CodeWatcher)
 │   ├── architecture.json
 │   └── worker_spawns.json   # Worker spawn log
-├── .opencode/
-│   └── agents/          # OpenCode agent configs
-│       └── manifest-orchestrator.json
+├── .rules/              # Project rules (task-granularity, prd-template, code-style)
 ├── src/manifest/        # Package
-├── tests/
+├── tests/               # Single startup test; full suite in tests/archive/
 ├── docs/                # Active docs (archive/ = superseded)
 ├── scripts/
 ├── reference/           # Reference materials (implementation_plan, PDF)
 └── pyproject.toml, requirements.txt, pytest.ini, README.md
 ```
 
-**Tests:** We run `pytest tests/ -v --timeout=300` (no code-coverage). Test quality is based on an actual failproof checklist, not line coverage.
+**Tests:** One smoke test (`tests/test_startup.py`) ensures the app starts. Full test suite is archived under `tests/archive/`. GitHub Actions are disabled; add testing later.
 
 ## Source (`src/manifest/`)
 
@@ -62,11 +62,9 @@ manifest/
 
 ## Tests
 
-- `tests/unit/` – unit tests (view, opencode tools, tool_executor, code_watcher, …).
-- `tests/integration/` – integration (view_app, state_manager, opencode_integration, …).
-- `tests/e2e/` – e2e (permission, mission, blueprint sync, …).
+- One smoke test: `tests/test_startup.py` (app starts). Full suite archived under `tests/archive/`.
 
 ## Docs
 
-- **Active**: `docs/README.md`, `docs/UI_REDESIGN_PLAN.md`, `docs/OPENCODE_AGENT_SETUP.md`, `docs/OPENCODE_SETUP.md`, `docs/WORKER_SQUAD_AND_AGENTS.md`, `docs/PROJECT_STRUCTURE.md` (this file).
+- **Active**: `docs/README.md`, `docs/REDESIGN_ARCHITECTURE_AND_INTENT.md`, `docs/UI_REDESIGN_PLAN.md`, `docs/WORKER_SQUAD_AND_AGENTS.md`, `docs/PROJECT_STRUCTURE.md` (this file).
 - **Archive**: `docs/archive/superseded-2026/`, `docs/archive/v1.0/` – superseded planning and status docs.

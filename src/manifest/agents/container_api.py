@@ -6,9 +6,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
-import asyncio
 from datetime import datetime
-import uuid
 
 # Message models
 class Message(BaseModel):
@@ -140,4 +138,52 @@ def create_container_api(state_manager=None) -> FastAPI:
         """Health check endpoint."""
         return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
+    @app.post("/api/worker_squad/run")
+    async def run_worker_squad(body: Dict[str, Any]) -> Dict[str, Any]:
+        """Run full Worker Squad workflow for a task.
+
+        Request body: task_id (required), manifest_dir (optional path string).
+        Creates coordinator and runs execute_worker_squad(task_id).
+        """
+        task_id = (body.get("task_id") or "").strip()
+        if not task_id:
+            raise HTTPException(status_code=400, detail="task_id required")
+        manifest_dir_str = body.get("manifest_dir")
+        from pathlib import Path
+        manifest_dir = Path(manifest_dir_str).resolve() if manifest_dir_str else Path.cwd() / ".manifest"
+
+        try:
+            from manifest.core.state_manager import StateManager
+            from manifest.core.config import ConfigManager
+            from manifest.bridge.agent_bridge import AgentBridge
+            from manifest.agents.context_provider import ContextProvider
+            from manifest.agents.task_scoper import TaskScoper
+            from manifest.agents.agent_coordinator import AgentCoordinator
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"Could not load coordinator: {e}") from e
+
+        try:
+            state_manager = StateManager(manifest_dir)
+            config_manager = ConfigManager(manifest_dir)
+            bridge = AgentBridge(state_manager=state_manager, config_manager=config_manager)
+            context_provider = ContextProvider(state_manager=state_manager)
+            task_scoper = TaskScoper(state_manager=state_manager)
+            coordinator = AgentCoordinator(
+                agent_bridge=bridge,
+                context_provider=context_provider,
+                task_scoper=task_scoper,
+                config_manager=config_manager,
+                state_manager=state_manager,
+            )
+            result = await coordinator.execute_worker_squad(task_id)
+            return result
+        except Exception as e:
+            from manifest.core.logger import get_logger
+            get_logger(__name__).error("run_worker_squad failed: %s", e, exc_info=True)
+            raise HTTPException(status_code=500, detail=str(e)) from e
+
     return app
+
+
+# Module-level app for uvicorn (manifest.agents.container_api:app)
+app = create_container_api()
