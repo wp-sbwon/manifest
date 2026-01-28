@@ -1,0 +1,466 @@
+{
+  "version": "1.0",
+  "type": "project_manifest",
+  "metadata": {
+    "name": "Manifest",
+    "description": "AI-Native Orchestration IDE - TUI MVP",
+    "version": "1.0.0",
+    "status": "phase1_complete"
+  },
+  "architecture": {
+    "principle": "Feature-centric architecture: Features → Requirements → Modules (not file-centric)",
+    "layers": [
+      {
+        "id": "presentation",
+        "name": "Presentation Module",
+        "description": "User interface and view management",
+        "features": [
+          {
+            "id": "custom_widgets",
+            "name": "Custom Widgets",
+            "status": "complete",
+            "requirements": ["REQ-05: Visual Components"],
+            "classes": [
+              {"name": "RequirementMap", "file": "widgets.py"},
+              {"name": "ArchitectureGraph", "file": "widgets.py"},
+              {"name": "FeatureTree", "file": "widgets.py"},
+              {"name": "TaskTree", "file": "widgets.py"},
+              {"name": "GateController", "file": "widgets.py"}
+            ]
+          },
+          {
+            "id": "5_view_workspace",
+            "name": "5-View Workspace",
+            "status": "complete",
+            "requirements": ["REQ-06: Multi-View Interface"],
+            "views": ["architect", "blueprint", "inspector", "mission_control", "history", "feature_explorer", "project_info"]
+          }
+        ],
+        "modules": [
+          {
+            "id": "app",
+            "name": "app.py",
+            "type": "main_application",
+            "responsibility": "TUI application entry point and view management",
+            "dependencies": ["config", "state_manager", "agent_bridge", "drift_auditor", "widgets"],
+            "lines_of_code": 550,
+            "status": "complete",
+            "note": "File reference for implementation details"
+          },
+          {
+            "id": "widgets",
+            "name": "widgets.py",
+            "type": "ui_components",
+            "responsibility": "Custom Textual widgets",
+            "components": [
+              {"id": "requirement_map", "name": "RequirementMap", "status": "complete"},
+              {"id": "architecture_graph", "name": "ArchitectureGraph", "status": "complete"},
+              {"id": "feature_tree", "name": "FeatureTree", "status": "complete"},
+              {"id": "task_tree", "name": "TaskTree", "status": "complete"},
+              {"id": "gate_controller", "name": "GateController", "status": "complete"}
+            ],
+            "lines_of_code": 260,
+            "status": "complete"
+          },
+          {
+            "id": "bootstrap_ui",
+            "name": "bootstrap_ui.py",
+            "type": "bootstrap",
+            "responsibility": "API key configuration TUI",
+            "status": "partial",
+            "issues": ["nested_app_event_loop_conflict"]
+          }
+        ]
+      },
+      {
+        "id": "business_logic",
+        "name": "Business Logic Module",
+        "description": "Core business logic and features",
+        "features": [
+          {
+            "id": "state_management",
+            "name": "State Management",
+            "status": "complete",
+            "requirements": ["REQ-02: State Persistence"],
+            "classes": [
+              {"name": "StateManager", "file": "state_manager.py", "methods": ["load_state", "save_state", "add_chat_message", "set_last_action"]}
+            ]
+          },
+          {
+            "id": "agent_bridge",
+            "name": "Agent Bridge",
+            "status": "complete",
+            "requirements": ["REQ-03: Agent System Integration"],
+            "classes": [
+              {"name": "AgentBridge", "file": "agent_bridge.py", "methods": ["start", "stop", "start_mission", "get_status"]}
+            ]
+          },
+          {
+            "id": "drift_auditor",
+            "name": "Drift Auditor",
+            "status": "complete",
+            "requirements": ["REQ-04: Architecture Validation"],
+            "classes": [
+              {"name": "DriftAuditor", "file": "drift_auditor.py", "methods": ["audit_project", "parse_python_file", "compare_with_blueprint"]}
+            ]
+          }
+        ],
+        "modules": [
+          {
+            "id": "state_manager",
+            "name": "state_manager.py",
+            "type": "state_persistence",
+            "responsibility": "Application state persistence and session resumption",
+            "dependencies": ["aiofiles"],
+            "features": [
+              "mission_tree_management",
+              "task_checklist_management",
+              "chat_history_management",
+              "session_resumption"
+            ],
+            "lines_of_code": 150,
+            "status": "complete",
+            "note": "File reference for implementation details"
+          },
+          {
+            "id": "agent_bridge",
+            "name": "agent_bridge.py",
+            "type": "agent_bridge",
+            "responsibility": "Direct integration with agent system",
+            "dependencies": ["state_manager"],
+            "features": [
+              "json_message_protocol",
+              "async_message_handling",
+              "command_interface",
+              "standalone_mode"
+            ],
+            "commands": [
+              {"name": "start_mission", "status": "complete"},
+              {"name": "get_status", "status": "complete"},
+              {"name": "promote_task", "status": "complete"},
+              {"name": "get_agent_output", "status": "complete"}
+            ],
+            "lines_of_code": 200,
+            "status": "complete"
+          },
+          {
+            "id": "drift_auditor",
+            "name": "drift_auditor.py",
+            "type": "drift_detection",
+            "responsibility": "Architecture drift detection by comparing code against blueprint",
+            "dependencies": [],
+            "features": [
+              "ast_parsing",
+              "blueprint_comparison",
+              "conflict_detection",
+              "severity_levels"
+            ],
+            "severity_levels": ["error", "warning", "info"],
+            "lines_of_code": 200,
+            "status": "complete"
+          }
+        ]
+      },
+      {
+        "id": "infrastructure",
+        "name": "Infrastructure Module",
+        "description": "Infrastructure and configuration",
+        "features": [
+          {
+            "id": "configuration_system",
+            "name": "Configuration System",
+            "status": "complete",
+            "requirements": ["REQ-01: API Key Management"],
+            "classes": [
+              {"name": "ConfigManager", "file": "config.py", "methods": ["get_api_key", "set_api_key", "validate_key", "has_all_keys"]}
+            ]
+          },
+          {
+            "id": "core_infrastructure",
+            "name": "Core Infrastructure",
+            "status": "complete",
+            "requirements": ["REQ-01: API Key Management"],
+            "description": "Base infrastructure for the application"
+          }
+        ],
+        "modules": [
+          {
+            "id": "config",
+            "name": "config.py",
+            "type": "configuration",
+            "responsibility": "API key management and configuration",
+            "dependencies": ["cryptography", "httpx"],
+            "features": [
+              "encrypted_key_storage",
+              "key_validation",
+              "bootstrap_mode"
+            ],
+            "lines_of_code": 100,
+            "status": "complete",
+            "note": "File reference for implementation details"
+          }
+        ]
+      }
+    ]
+  },
+  "views": [
+    {
+      "id": "architect",
+      "name": "Architect (Intention)",
+      "description": "Visual intent map showing Features, Requirements, and User Goals",
+      "data_source": "intent.json",
+      "widgets": ["requirement_map"],
+      "status": "complete"
+    },
+    {
+      "id": "blueprint",
+      "name": "Blueprint (Design)",
+      "description": "Visual translation showing Classes/Methods/API contracts",
+      "data_source": "blueprint.json",
+      "widgets": ["architecture_graph"],
+      "status": "complete"
+    },
+    {
+      "id": "inspector",
+      "name": "Inspector (Verification)",
+      "description": "Context-sensitive verification with three modes",
+      "modes": [
+        {"id": "visual", "description": "UI Match display", "status": "complete"},
+        {"id": "data", "description": "Execution trace and I/O flow", "status": "complete"},
+        {"id": "drift", "description": "Architecture vs Code conflicts", "status": "complete"}
+      ],
+      "status": "complete"
+    },
+    {
+      "id": "mission_control",
+      "name": "Mission Control (Management)",
+      "description": "Task tree with status indicators and approval gates",
+      "widgets": ["task_tree", "gate_controller"],
+      "status": "complete"
+    },
+    {
+      "id": "history",
+      "name": "History (Timeline)",
+      "description": "Git-linked timeline for design and code changes",
+      "data_source": "git_repository",
+      "dependencies": ["GitPython"],
+      "status": "complete"
+    },
+    {
+      "id": "feature_explorer",
+      "name": "Feature Explorer",
+      "description": "Feature → Class → Method navigation tree",
+      "data_source": "intent.json",
+      "widgets": ["feature_tree"],
+      "status": "complete"
+    },
+    {
+      "id": "project_info",
+      "name": "Project Info",
+      "description": "Project architecture and status information",
+      "data_source": "project.json",
+      "status": "complete"
+    }
+  ],
+  "data_models": [
+    {
+      "id": "state",
+      "file": "state.json",
+      "schema": {
+        "version": "string",
+        "mission_tree": "object",
+        "task_checklist": "array",
+        "chat_history": "object",
+        "last_action": "string",
+        "timestamp": "string"
+      },
+      "status": "complete"
+    },
+    {
+      "id": "intent",
+      "file": "intent.json",
+      "schema": {
+        "version": "string",
+        "sprint": "string",
+        "features": "array"
+      },
+      "status": "complete"
+    },
+    {
+      "id": "blueprint",
+      "file": "blueprint.json",
+      "schema": {
+        "version": "string",
+        "zones": {
+          "client": "array",
+          "server": "array",
+          "data": "array"
+        },
+        "components": "array",
+        "contracts": "array"
+      },
+      "status": "complete"
+    },
+    {
+      "id": "architecture",
+      "file": "architecture.json",
+      "schema": {
+        "version": "string",
+        "features": "array",
+        "requirements": "array",
+        "goals": "array"
+      },
+      "status": "complete"
+    }
+  ],
+  "implementation_status": {
+    "phase": "phase1_tui_mvp",
+    "completion_percentage": 100,
+    "completed_features": [
+      "core_infrastructure",
+      "configuration_system",
+      "state_management",
+      "agent_bridge",
+      "drift_auditor",
+      "custom_widgets",
+      "5_view_workspace",
+      "feature_explorer",
+      "testing"
+    ],
+    "partial_features": [
+      {
+        "feature": "bootstrap_ui",
+        "completion": 50,
+        "issues": ["nested_app_event_loop_conflict"]
+      },
+      {
+        "feature": "git_integration",
+        "completion": 70,
+        "missing": ["advanced_features"]
+      }
+    ],
+    "unimplemented_features": [
+      "multi_agent_squad_system",
+      "context_injection_hooks",
+      "structural_spec_first_management",
+      "shadow_manager",
+      "agent_system_integration"
+    ]
+  },
+  "testing": {
+    "test_files": [
+      {"file": "test_state_manager.py", "type": "unit", "status": "complete"},
+      {"file": "test_drift_auditor.py", "type": "unit", "status": "complete"},
+      {"file": "test_bridge.py", "type": "unit", "status": "complete"},
+      {"file": "test_app.py", "type": "integration", "status": "complete"},
+      {"file": "test_app_input.py", "type": "unit", "status": "complete"}
+    ],
+    "coverage": {
+      "core_modules": 80,
+      "ui_modules": 60,
+      "overall": 70
+    },
+    "pass_rate": 100
+  },
+  "dependencies": {
+    "core": [
+      {"name": "textual", "version": ">=0.40.0", "purpose": "TUI framework"},
+      {"name": "asyncio", "version": "builtin", "purpose": "Async processing"}
+    ],
+    "required": [
+      {"name": "aiofiles", "version": ">=23.2.0", "purpose": "Async file I/O"},
+      {"name": "cryptography", "version": ">=41.0.0", "purpose": "API key encryption"},
+      {"name": "httpx", "version": ">=0.24.0", "purpose": "HTTP client for API validation"},
+      {"name": "pytest", "version": ">=7.4.0", "purpose": "Testing framework"}
+    ],
+    "optional": [
+      {"name": "GitPython", "version": ">=3.1.40", "purpose": "Git integration"},
+      {"name": "tree-sitter", "version": ">=0.20.0", "purpose": "Code parsing"}
+    ]
+  },
+  "known_issues": [
+    {
+      "id": "bootstrap_ui_nested_app",
+      "severity": "high",
+      "description": "Bootstrap UI nested app execution causes event loop conflict",
+      "status": "open",
+      "workaround": "Demo mode - keys can be configured manually"
+    },
+    {
+      "id": "input_focus_management",
+      "severity": "medium",
+      "description": "Input field focus management",
+      "status": "resolved",
+      "resolution": "Added has_focus check to prevent loops"
+    }
+  ],
+  "next_steps": {
+    "immediate": [
+      "Resolve bootstrap UI nested app issue",
+      "Enhance input processing tests",
+      "Improve documentation"
+    ],
+    "short_term": [
+      "Multi-Agent System basic structure",
+      "Context Injection Hooks prototype",
+      "Agent System Integration"
+    ],
+    "medium_term": [
+      "Structural Spec-First Management",
+      "Shadow Manager",
+      "Visual Editor"
+    ]
+  },
+  "backlog": [
+    {
+      "id": "agent_squad_monitoring",
+      "name": "Agent Squad Monitoring & Watchdog System",
+      "priority": "medium",
+      "status": "planned",
+      "description": "Agent squad의 작업을 실시간으로 모니터링하고 문제를 감지/방지하는 시스템",
+      "requirements": [
+        "Agent 작업 모니터링 (실행 상태, 진행률, 리소스 사용량)",
+        "문제 감지 (terminal command hanging, 무한 루프, 데드락, 타임아웃, 메모리 누수, 무응답 프로세스)",
+        "자동 복구 메커니즘 (hanging 작업 종료, 실패 작업 재시도, agent 상태 복구, 리소스 정리)",
+        "알림 및 로깅 (사용자 알림, 감사 로그, 성능 메트릭, 문제 패턴 분석)"
+      ],
+      "implementation_notes": [
+        "Agent 실행을 프로세스/스레드 레벨에서 추적",
+        "Heartbeat 메커니즘으로 agent 생존 확인",
+        "Command timeout 설정 및 강제 종료",
+        "Resource limits 설정 (CPU, memory)",
+        "Watchdog thread/process로 전체 시스템 감시"
+      ],
+      "dependencies": [
+        "Multi-Agent System 기본 구조 완성",
+        "Agent Bridge와의 통합",
+        "State Manager 확장"
+      ],
+      "note": "후순위 - Multi-agent 시스템 뼈대 구현 후 구현 예정"
+    }
+  ],
+  "metrics": {
+    "code_statistics": {
+      "total_python_files": 14,
+      "total_test_files": 5,
+      "total_lines_of_code": 1660,
+      "test_coverage_percentage": 70
+    },
+    "performance": {
+      "app_startup_time_ms": "< 1000",
+      "drift_detection_time_ms": "project_size_dependent",
+      "state_save_time_ms": "< 100",
+      "view_switch_time_ms": "immediate"
+    }
+  },
+  "documentation": {
+    "files": [
+      {"file": "README.md", "type": "user_guide", "status": "complete"},
+      {"file": "DEV_SETUP.md", "type": "developer_guide", "status": "complete"},
+      {"file": "IMPLEMENTATION_SUMMARY.md", "type": "summary", "status": "complete"},
+      {"file": "ARCHITECTURE.md", "type": "architecture", "status": "complete"},
+      {"file": "PROJECT_STATUS.md", "type": "status", "status": "complete"}
+    ],
+    "note": "Markdown files are for reference. Primary documentation is in JSON format (this file)."
+  }
+}

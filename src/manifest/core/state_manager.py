@@ -557,7 +557,8 @@ class StateManager:
         name: Optional[str] = None,
         description: Optional[str] = None,
         status: Optional[str] = None,
-        stage: Optional[str] = None
+        stage: Optional[str] = None,
+        sprint_id: Optional[str] = None
     ) -> bool:
         """Update properties of an existing task.
 
@@ -570,13 +571,14 @@ class StateManager:
             description: New description for the task (optional).
             status: New status for the task (optional).
             stage: New stage for the task (optional).
+            sprint_id: Sprint to assign the task to (optional).
 
         Returns:
             True if task was found and updated, False otherwise.
         """
         from manifest.core.task_manager import TaskManager
         task_manager = TaskManager(self)
-        return task_manager.update_task(task_id, name, description, status, stage)
+        return task_manager.update_task(task_id, name, description, status, stage, sprint_id)
 
     def cancel_task(self, task_id: str) -> bool:
         """Cancel a task by setting its status to "cancelled".

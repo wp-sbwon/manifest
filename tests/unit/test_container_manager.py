@@ -12,8 +12,9 @@ from manifest.agents.container_manager import ContainerManager
 def container_manager():
     """Create a ContainerManager instance."""
     # Mock docker client to avoid Docker connection errors
+    # Use require_docker=False for tests so they don't fail when Docker is unavailable
     with patch('docker.from_env', side_effect=Exception("Docker not available")):
-        return ContainerManager(docker_client=None)
+        return ContainerManager(docker_client=None, require_docker=False, auto_start=False)
 
 
 def test_container_manager_initialization(container_manager):

@@ -88,7 +88,9 @@ def check_imports() -> Dict[str, Any]:
         Dictionary with import check results.
     """
     imports_to_check = [
-        ("manifest.ui.app", "ManifestApp"),
+        ("manifest.__main__", "main"),
+        ("manifest.launcher", "main"),
+        ("manifest.view.app", "ManifestViewApp"),
         ("manifest.core.state_manager", "StateManager"),
         ("manifest.agents.agent_coordinator", "AgentCoordinator"),
         ("manifest.bridge.agent_bridge", "AgentBridge"),
@@ -99,13 +101,17 @@ def check_imports() -> Dict[str, Any]:
     results = {}
     all_passed = True
 
-    for module_name, class_name in imports_to_check:
+    for module_name, attr_name in imports_to_check:
         try:
-            module = __import__(module_name, fromlist=[class_name])
-            getattr(module, class_name)
-            results[f"{module_name}.{class_name}"] = "OK"
+            module = __import__(module_name, fromlist=[attr_name])
+            obj = getattr(module, attr_name)
+            results[f"{module_name}.{attr_name}"] = "OK"
+            if attr_name == "ManifestViewApp" and hasattr(obj, "compose"):
+                if not callable(getattr(obj, "compose")):
+                    results[f"{module_name}.{attr_name}.compose"] = "FAILED: compose not callable"
+                    all_passed = False
         except Exception as e:
-            results[f"{module_name}.{class_name}"] = f"FAILED: {e}"
+            results[f"{module_name}.{attr_name}"] = f"FAILED: {e}"
             all_passed = False
 
     return {

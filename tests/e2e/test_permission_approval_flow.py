@@ -154,22 +154,8 @@ async def test_commands_execute_after_approval(
         }
     }
 
-    # Step 2: Mock the underlying command execution (opencode_adapter)
+    # Step 2: Track command execution (TerminalRouter now uses subprocess directly)
     command_executed = {"executed": False, "result": None}
-
-    async def mock_adapter_execute(command, args=None, **kwargs):
-        if command == "git" and args == ["push", "--force"]:
-            command_executed["executed"] = True
-            command_executed["result"] = {
-                "stdout": "Pushed successfully",
-                "stderr": "",
-                "returncode": 0,
-                "command_id": "test_cmd"
-            }
-            return command_executed["result"]
-        return {"stdout": "", "stderr": "", "returncode": -1, "command_id": "test_cmd"}
-
-    terminal_router.opencode_adapter.execute_command = mock_adapter_execute
 
     # Step 3: Attempt command that requires approval
     tool_input = {
@@ -218,7 +204,7 @@ async def test_commands_cancelled_after_rejection(
             command_executed["executed"] = True
         return {"stdout": "", "stderr": "", "returncode": -1, "command_id": "test_cmd"}
 
-    terminal_router.opencode_adapter.execute_command = mock_adapter_execute
+    # TerminalRouter now uses subprocess directly, no need to mock adapter
 
     # Step 3: Attempt command that requires approval
     tool_input = {
@@ -266,7 +252,7 @@ async def test_multiple_approval_requests(
     async def mock_adapter_execute(command, args=None, **kwargs):
         return {"stdout": "", "stderr": "", "returncode": 0, "command_id": "test_cmd"}
 
-    terminal_router.opencode_adapter.execute_command = mock_adapter_execute
+    # TerminalRouter now uses subprocess directly, no need to mock adapter
 
     # Step 3: Create multiple approval requests
     request_ids = []
@@ -392,7 +378,7 @@ async def test_complete_permission_approval_workflow(
             }
         return {"stdout": "", "stderr": "", "returncode": -1, "command_id": "test_cmd"}
 
-    terminal_router.opencode_adapter.execute_command = mock_adapter_execute
+    # TerminalRouter now uses subprocess directly, no need to mock adapter
 
     # Step 3: Agent attempts dangerous command
     tool_input = {

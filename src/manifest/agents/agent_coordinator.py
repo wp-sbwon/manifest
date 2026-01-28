@@ -89,8 +89,8 @@ class AgentCoordinator:
         self.orchestrator = agent_bridge.orchestrator
         self.agent_manager = agent_bridge.agent_manager
 
-        # Set up container management if Docker is available
-        self.container_manager = ContainerManager()
+        # Set up container management. Docker is required for worker squad containers.
+        self.container_manager = ContainerManager(require_docker=True, auto_start=True)
         self.use_containers = self.container_manager.is_docker_available()
 
         # Initialize container state synchronization if using containers
@@ -375,6 +375,18 @@ class AgentCoordinator:
             - parsed_data: Parsed/structured data from output (if available)
             - status: Agent completion status
             - error: Optional error message if failed
+
+        Completion detection order (canonical, checked in this sequence):
+        1. task_id not in active_agents (agent was removed from coordinator's active list)
+        2. bridge._active_agents[task_id].completed or status in [completed, stopped, failed]
+           (PRIMARY CHECK: bridge sets completed=True when it receives a type=complete chunk)
+        3. executor.active_sessions[session_id].status == "completed" (if executor available)
+        4. get_agent_status() returning completed/stopped/failed (fallback status check)
+        5. Channel history completion markers (text-based indicators like "[complete]", "[done]")
+        6. completed_at timestamp in bridge._active_agents (after 10s of no new messages)
+
+        Note: The bridge marks agents as completed immediately when receiving a "complete" chunk
+        (see agent_bridge.py:_handle_agent_chunk). This is the most reliable completion signal.
         """
         import asyncio
 

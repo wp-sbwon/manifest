@@ -229,6 +229,17 @@ def test_update_task_with_stage(task_manager):
     assert task.get("stage") == "implementation"
 
 
+def test_update_task_sprint_id(task_manager):
+    """Test updating task sprint_id (used by /create_sprint to link tasks)."""
+    task_id = task_manager.create_task(name="Test", sprint_id=None)
+
+    result = task_manager.update_task(task_id, sprint_id="sprint-my-sprint-123")
+    assert result is True
+
+    task = task_manager.get_task(task_id)
+    assert task.get("sprint_id") == "sprint-my-sprint-123"
+
+
 # ========== TDL: Task Management Tests ==========
 
 def test_task_creation_with_validation(task_manager):

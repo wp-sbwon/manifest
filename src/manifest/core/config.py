@@ -20,6 +20,17 @@ from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Default settings when .manifest/settings.json is missing.
+# OpenCode is the default backend; use agent.execution_backend: "direct" to use direct LLM API.
+DEFAULT_SETTINGS = {
+    "agent": {"execution_backend": "opencode"},
+    "opencode": {
+        "server_host": "localhost",
+        "server_port": 4096,
+        "auto_start": True,
+    },
+}
+
 
 class ConfigManager:
     """Manages API keys and agent configuration.
@@ -51,6 +62,7 @@ class ConfigManager:
         self.key_file = self.manifest_dir / ".key"
         self._cipher = None
         self._load_or_create_key()
+        self._ensure_default_settings()
 
     def _load_or_create_key(self) -> None:
         """Load the encryption key from disk or create a new one.
@@ -69,6 +81,23 @@ class ConfigManager:
             # Make key file readable only by owner
             os.chmod(self.key_file, 0o600)
         self._cipher = Fernet(key)
+
+    def _ensure_default_settings(self) -> None:
+        """Create .manifest/settings.json with default template if it does not exist.
+
+        Defaults use OpenCode as execution backend. Users can edit the file
+        or set agent.execution_backend to \"direct\" to use direct LLM API.
+        """
+        settings_file = self.manifest_dir / "settings.json"
+        if settings_file.exists():
+            return
+        try:
+            self.manifest_dir.mkdir(parents=True, exist_ok=True)
+            with open(settings_file, "w") as f:
+                json.dump(DEFAULT_SETTINGS, f, indent=2)
+            logger.debug("Created default settings.json in %s", self.manifest_dir)
+        except Exception as e:
+            logger.debug("Could not create default settings.json: %s", e)
 
     def get_api_keys(self) -> Dict[str, Optional[str]]:
         """Get all stored API keys in decrypted form.

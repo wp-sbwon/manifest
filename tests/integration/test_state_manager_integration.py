@@ -17,7 +17,6 @@ from manifest.agents.agent_coordinator import AgentCoordinator
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.task_scoper import TaskScoper
 from manifest.core.config import ConfigManager
-from manifest.ui.channels.channel_manager import ChannelManager
 
 
 @pytest.fixture
@@ -119,17 +118,10 @@ async def test_state_persistence_across_operations_multiple_components(
     await agent_bridge.start()
     await agent_coordinator.start()
 
-    # Create channel manager (another component using state)
-    mock_app = MagicMock()
-    channel_manager = ChannelManager(
-        app=mock_app,
-        state_manager=state_manager
-    )
-
-    # Multiple components modify state
+    # Multiple components modify state (ChannelManager removed; use StateManager directly)
     state_manager.set_mission_tree({"mission1": {"status": "active"}})
     task_id = state_manager.create_task(name="Task 1", description="Desc 1")
-    channel_manager.state_manager.add_chat_message("main", "user", "Message 1")
+    state_manager.add_chat_message("main", "user", "Message 1")
 
     # Save state
     await state_manager.save_state()

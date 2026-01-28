@@ -94,7 +94,8 @@ class TaskManager:
         name: Optional[str] = None,
         description: Optional[str] = None,
         status: Optional[str] = None,
-        stage: Optional[str] = None
+        stage: Optional[str] = None,
+        sprint_id: Optional[str] = None
     ) -> bool:
         """Update one or more properties of an existing task.
 
@@ -107,6 +108,8 @@ class TaskManager:
             description: New description for the task (optional).
             status: New status for the task (optional).
             stage: New stage for the task (optional).
+            sprint_id: Sprint to assign the task to (optional). Use empty string
+                or explicit None to unlink from a sprint.
 
         Returns:
             True if the task was found and updated, False if task doesn't
@@ -123,6 +126,8 @@ class TaskManager:
                     task["status"] = status
                 if stage is not None:
                     task["stage"] = stage
+                if sprint_id is not None:
+                    task["sprint_id"] = sprint_id
                 task["updated_at"] = datetime.now().isoformat()
                 self.state_manager.set_task_checklist(tasks)
                 return True

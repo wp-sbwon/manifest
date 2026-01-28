@@ -2,8 +2,7 @@
 Terminal command routing and execution.
 
 This module provides the TerminalRouter class which executes terminal commands
-on behalf of agents. It integrates with OpenCode (if available) for enhanced
-command execution, with fallback to standard subprocess execution.
+on behalf of agents using standard subprocess execution.
 
 The router handles command execution, streaming output, cancellation, and
 monitoring through an optional watchdog system. It also supports permission
@@ -13,7 +12,6 @@ import asyncio
 import subprocess
 from typing import Dict, Any, Optional, AsyncIterator, TYPE_CHECKING
 from pathlib import Path
-from manifest.runtime.opencode_adapter import OpenCodeAdapter
 from manifest.core.logger import get_logger
 
 if TYPE_CHECKING:
@@ -25,41 +23,37 @@ logger = get_logger(__name__)
 class TerminalRouter:
     """Routes and executes terminal commands for agents.
 
-    Provides a unified interface for executing terminal commands, with
-    optional OpenCode integration for enhanced capabilities. Handles command
-    execution, output streaming, cancellation, and monitoring.
-
-    The router uses OpenCodeAdapter which automatically detects OpenCode
-    availability and falls back to standard subprocess execution if needed.
+    Provides a unified interface for executing terminal commands using
+    standard subprocess execution. Handles command execution, output
+    streaming, cancellation, and monitoring.
 
     Attributes:
         working_dir: Directory where commands are executed.
         active_commands: Dictionary tracking currently running commands.
         watchdog: Optional watchdog instance for monitoring command execution.
-        opencode_adapter: OpenCodeAdapter instance for OpenCode integration.
+        permission_manager: Optional PermissionManager for access control.
+        agent_type: Optional agent type for permission checks.
     """
 
     def __init__(
         self,
         working_dir: Optional[Path] = None,
         watchdog=None,
-        use_opencode: Optional[bool] = None,
+        use_opencode: Optional[bool] = None,  # Deprecated, kept for compatibility
         permission_manager: Optional["PermissionManager"] = None,
         agent_type: Optional[str] = None
     ):
         """Initialize the terminal router.
 
-        Sets up the working directory and OpenCode adapter. The adapter
-        shares the active_commands dictionary and watchdog for unified
-        command tracking.
+        Sets up the working directory and command tracking.
 
         Args:
             working_dir: Directory where commands should be executed.
                 Defaults to current working directory.
             watchdog: Optional watchdog instance for monitoring command
                 execution and resource usage.
-            use_opencode: Force OpenCode usage. True forces OpenCode,
-                False forces internal execution, None auto-detects.
+            use_opencode: Deprecated parameter, kept for compatibility.
+                No longer used.
             permission_manager: Optional PermissionManager for access control.
             agent_type: Optional agent type for permission checks.
         """
@@ -68,14 +62,6 @@ class TerminalRouter:
         self.watchdog = watchdog
         self.permission_manager = permission_manager
         self.agent_type = agent_type
-
-        # Initialize OpenCode adapter with shared resources
-        self.opencode_adapter = OpenCodeAdapter(
-            working_dir=working_dir,
-            use_opencode=use_opencode,
-            active_commands=self.active_commands,  # Share active_commands
-            watchdog=watchdog  # Share watchdog
-        )
 
     async def execute_command(
         self,
@@ -105,7 +91,7 @@ class TerminalRouter:
             - stderr: Standard error text
             - returncode: Exit code of the command
             - command_id: Unique ID for this command execution
-            - backend: Which backend was used ("opencode" or "internal")
+            - backend: Always "internal" (subprocess)
             - permission_denied: True if command was denied (only if denied)
         """
         full_command = [command] + (args or [])
@@ -152,18 +138,35 @@ class TerminalRouter:
         if self.watchdog:
             self.watchdog.register_command(command_id)
 
-        # Use OpenCode adapter (handles OpenCode integration and fallback)
-        result = await self.opencode_adapter.execute_command(
-            command=command,
-            args=args,
-            timeout=timeout,
-            stream=stream
-        )
+        # Execute command directly using subprocess
+        try:
+            if stream:
+                result = await self._execute_streaming(full_command, command_id, timeout)
+            else:
+                result = await self._execute_buffered(full_command, command_id, timeout)
 
-        # Ensure command_id is set
-        result["command_id"] = command_id
-
-        return result
+            result["backend"] = "internal"
+            result["command_id"] = command_id
+            return result
+        except asyncio.TimeoutError:
+            return {
+                "stdout": "",
+                "stderr": "Command timed out",
+                "returncode": -1,
+                "command_id": command_id,
+                "timeout": True,
+                "backend": "internal"
+            }
+        except Exception as e:
+            logger.error(f"Error executing command: {e}", exc_info=True)
+            return {
+                "stdout": "",
+                "stderr": str(e),
+                "returncode": -1,
+                "command_id": command_id,
+                "error": True,
+                "backend": "internal"
+            }
 
     async def _execute_buffered(
         self,
@@ -205,7 +208,8 @@ class TerminalRouter:
                 "stdout": stdout.decode('utf-8', errors='replace'),
                 "stderr": stderr.decode('utf-8', errors='replace'),
                 "returncode": process.returncode,
-                "command_id": command_id
+                "command_id": command_id,
+                "backend": "internal"
             }
         finally:
             if command_id in self.active_commands:
@@ -280,7 +284,8 @@ class TerminalRouter:
                 "stderr": "".join(stderr_lines),
                 "returncode": process.returncode,
                 "command_id": command_id,
-                "streamed": True
+                "streamed": True,
+                "backend": "internal"
             }
         finally:
             if command_id in self.active_commands:
@@ -308,7 +313,6 @@ class TerminalRouter:
     ) -> AsyncIterator[str]:
         """Stream command output line by line as it's produced.
 
-        Delegates to OpenCodeAdapter which handles OpenCode integration.
         Output is yielded line by line for real-time display, useful for
         long-running commands where you want to show progress.
 
@@ -320,8 +324,24 @@ class TerminalRouter:
             Output lines as strings, one line at a time as they're produced
             by the command.
         """
-        async for line in self.opencode_adapter.stream_command_output(command, args):
-            yield line
+        full_command = [command] + (args or [])
+        process = await asyncio.create_subprocess_exec(
+            *full_command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=str(self.working_dir)
+        )
+
+        try:
+            if process.stdout:
+                async for line in process.stdout:
+                    yield line.decode('utf-8', errors='replace')
+
+            await process.wait()
+        finally:
+            if process.returncode is None:
+                process.terminate()
+                await process.wait()
 
     def cancel_command(self, command_id: str) -> bool:
         """Cancel a currently running command.
@@ -364,7 +384,6 @@ class TerminalRouter:
         """Check if OpenCode is available and configured.
 
         Returns:
-            True if OpenCode adapter reports OpenCode is available and
-            being used, False otherwise.
+            Always False (OpenCode terminal adapter removed).
         """
-        return self.opencode_adapter.is_opencode_available()
+        return False

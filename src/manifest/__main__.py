@@ -1,19 +1,16 @@
 """
-Main entry point for Manifest application.
-Allows running with: python -m manifest
+Main entry point for Manifest.
+
+Runs launcher: View (상시 시각화) + OpenCode 터미널.
+Usage: manifest | python -m manifest
 """
-from manifest.ui.app import ManifestApp
-from manifest.ui.bootstrap_ui import run_bootstrap
-from manifest.core.config import get_config_manager
+
+
+def main() -> int:
+    """Entry point for console script and python -m manifest."""
+    from manifest.launcher import main as launcher_main
+    return launcher_main()
+
 
 if __name__ == "__main__":
-    # Check if API keys are configured
-    config = get_config_manager()
-    if not config.has_all_keys():
-        # Run bootstrap UI to configure keys
-        # This runs in its own event loop and finishes before ManifestApp starts
-        run_bootstrap()
-
-    # Start the main application
-    app = ManifestApp()
-    app.run()
+    raise SystemExit(main())

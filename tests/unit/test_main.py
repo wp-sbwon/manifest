@@ -1,62 +1,35 @@
 """
 Unit tests for __main__ module.
 
-Tests the main entry point for Manifest application.
+Tests the main entry point: launcher (View + OpenCode).
 """
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import patch
+
 from manifest import __main__
 
 
-@patch('manifest.__main__.get_config_manager')
-@patch('manifest.__main__.run_bootstrap')
-@patch('manifest.__main__.ManifestApp')
-def test_main_without_keys(mock_app_class, mock_bootstrap, mock_config):
-    """Test main entry point when API keys are not configured."""
-    mock_config_instance = Mock()
-    mock_config_instance.has_all_keys.return_value = False
-    mock_config.return_value = mock_config_instance
-
-    mock_app = Mock()
-    mock_app_class.return_value = mock_app
-
-    # Simulate running __main__
-    __main__.__name__ = "__main__"
-
-    # Call the main logic
-    config = __main__.get_config_manager()
-    if not config.has_all_keys():
-        __main__.run_bootstrap()
-
-    app = __main__.ManifestApp()
-    app.run()
-
-    mock_bootstrap.assert_called_once()
-    mock_app.run.assert_called_once()
+def test_main_exists_and_returns_int():
+    """__main__.main exists and returns an int (exit code)."""
+    assert hasattr(__main__, "main")
+    assert callable(__main__.main)
+    with patch("manifest.launcher.main", return_value=0):
+        result = __main__.main()
+        assert result == 0
+        assert isinstance(result, int)
+    with patch("manifest.launcher._is_opencode_available", return_value=False), \
+         patch("manifest.launcher._start_view"), \
+         patch("sys.stderr"):
+        result = __main__.main()
+        assert result == 1
+        assert isinstance(result, int)
 
 
-@patch('manifest.__main__.get_config_manager')
-@patch('manifest.__main__.run_bootstrap')
-@patch('manifest.__main__.ManifestApp')
-def test_main_with_keys(mock_app_class, mock_bootstrap, mock_config):
-    """Test main entry point when API keys are configured."""
-    mock_config_instance = Mock()
-    mock_config_instance.has_all_keys.return_value = True
-    mock_config.return_value = mock_config_instance
-
-    mock_app = Mock()
-    mock_app_class.return_value = mock_app
-
-    # Simulate running __main__
-    __main__.__name__ = "__main__"
-
-    # Call the main logic
-    config = __main__.get_config_manager()
-    if not config.has_all_keys():
-        __main__.run_bootstrap()
-
-    app = __main__.ManifestApp()
-    app.run()
-
-    mock_bootstrap.assert_not_called()
-    mock_app.run.assert_called_once()
+def test_main_calls_launcher():
+    """main() delegates to launcher.main and returns its exit code."""
+    with patch("manifest.launcher.main", return_value=0) as m:
+        # __main__.main() does: from manifest.launcher import main as launcher_main; return launcher_main()
+        # So we patch manifest.launcher.main and call __main__.main(); __main__.main will call the real launcher.main
+        # unless we patch it at import time. So we patch manifest.launcher.main before __main__.main runs.
+        result = __main__.main()
+        assert result == 0
+        m.assert_called_once()
