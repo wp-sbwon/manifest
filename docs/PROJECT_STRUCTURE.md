@@ -19,8 +19,14 @@ manifest/
 ├── src/manifest/        # Package
 ├── tests/
 ├── docs/                # Active docs (archive/ = superseded)
-└── scripts/
+├── scripts/
+├── reference/           # Reference materials (implementation_plan, PDF)
+├── htmlcov/             # GENERATED: pytest-cov HTML report (safe to delete; .gitignore)
+├── coverage.json        # GENERATED: coverage data (safe to delete; .gitignore)
+└── pyproject.toml, requirements.txt, pytest.ini, README.md
 ```
+
+**Generated / ignore:** `htmlcov/` is the HTML coverage report from `pytest --cov` (open `htmlcov/index.html` in a browser). `coverage.json`, `.coverage`, `coverage.xml` are coverage data. All are in `.gitignore`; safe to delete.
 
 ## Source (`src/manifest/`)
 
