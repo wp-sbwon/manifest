@@ -10,7 +10,6 @@ Also runs local CI checks to catch issues before pushing.
 import os
 import sys
 import subprocess
-import json
 from pathlib import Path
 from typing import Optional, Dict, Any
 
@@ -157,6 +156,36 @@ def check_workflow_status(
         }
 
 
+# Same pytest invocation as GitHub Actions (test.yml) so local pre-push matches CI.
+CI_TEST_CMD = [
+    "pytest", "tests/", "-v",
+    "--cov=src/manifest", "--cov-report=term-missing", "--cov-report=xml",
+    "--timeout=300",
+]
+CI_TEST_TIMEOUT_SEC = 1500  # 25 min, matches workflow step timeout-minutes: 25
+
+
+def run_ci_equivalent_tests() -> bool:
+    """Run the same test command as CI. Returns True if all tests pass."""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).parent.parent / "src")
+    try:
+        r = subprocess.run(
+            CI_TEST_CMD,
+            env=env,
+            cwd=Path(__file__).parent.parent,
+            timeout=CI_TEST_TIMEOUT_SEC,
+            capture_output=False,
+        )
+        return r.returncode == 0
+    except subprocess.TimeoutExpired:
+        print("❌ Local CI tests timed out (script limit {:.0f}s).".format(CI_TEST_TIMEOUT_SEC))
+        return False
+    except FileNotFoundError:
+        print("❌ pytest not found. Install test deps: pip install -r requirements.txt pytest-cov pytest-timeout")
+        return False
+
+
 def main():
     """Main entry point."""
     # First, run local CI checks
@@ -180,6 +209,13 @@ def main():
     except Exception as e:
         print(f"⚠️  Could not run local CI checks: {e}")
         # Continue to GitHub status check
+
+    # Run same tests as GitHub Actions so we catch failures before push
+    print("Running CI-equivalent tests (pytest tests/ ...)...")
+    if not run_ci_equivalent_tests():
+        print("❌ Local CI-equivalent tests failed. Fix before pushing.")
+        sys.exit(1)
+    print("✅ CI-equivalent tests passed")
 
     # Get current branch
     try:

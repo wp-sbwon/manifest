@@ -109,6 +109,7 @@ def test_should_terminate_workflow(worker_squad_executor):
 @pytest.mark.asyncio
 async def test_execute_workflow(worker_squad_executor):
     """Test executing a workflow."""
+    worker_squad_executor.enable_event_driven(False)  # Use sequential path so mocks apply
     # Mock coordinator methods with AsyncMock
     worker_squad_executor.coordinator.start_worker_agent = AsyncMock(return_value=True)
     worker_squad_executor.coordinator.start_worker_agent_and_wait = AsyncMock(return_value={"success": True})
@@ -164,6 +165,7 @@ async def test_execute_test_stage(worker_squad_executor):
 @pytest.mark.asyncio
 async def test_execute_complete_workflow_sequence(worker_squad_executor):
     """Test complete TDD workflow execution sequence."""
+    worker_squad_executor.enable_event_driven(False)  # Use sequential path so mocks apply
     worker_squad_executor.coordinator.start_worker_agent_and_wait = AsyncMock()
     worker_squad_executor.state_manager.get_task_checklist = Mock(return_value=[{"id": "task-1"}])
     worker_squad_executor.state_manager.save_worker_squad_stage_async = AsyncMock()
@@ -196,6 +198,7 @@ async def test_execute_complete_workflow_sequence(worker_squad_executor):
 @pytest.mark.asyncio
 async def test_stage_failure_handling(worker_squad_executor):
     """Test stage failure handling and retry logic."""
+    worker_squad_executor.enable_event_driven(False)  # Use sequential path so mocks apply
     worker_squad_executor.coordinator.start_worker_agent_and_wait = AsyncMock()
     worker_squad_executor.state_manager.get_task_checklist = Mock(return_value=[{"id": "task-1"}])
     worker_squad_executor.state_manager.save_worker_squad_stage_async = AsyncMock()
@@ -249,6 +252,7 @@ async def test_previous_stage_data_passing(worker_squad_executor):
 @pytest.mark.asyncio
 async def test_workflow_termination_on_critical_failure(worker_squad_executor):
     """Test workflow termination when critical stage fails."""
+    worker_squad_executor.enable_event_driven(False)  # Use sequential path so mocks apply
     worker_squad_executor.coordinator.start_worker_agent_and_wait = AsyncMock()
     worker_squad_executor.state_manager.get_task_checklist = Mock(return_value=[{"id": "task-1"}])
     worker_squad_executor.state_manager.save_worker_squad_stage_async = AsyncMock()
@@ -296,6 +300,7 @@ async def test_event_driven_mode(worker_squad_executor):
 @pytest.mark.asyncio
 async def test_workflow_state_persistence(worker_squad_executor):
     """Test that workflow state is persisted between stages."""
+    worker_squad_executor.enable_event_driven(False)  # Use sequential path so mocks apply
     worker_squad_executor.coordinator.start_worker_agent_and_wait = AsyncMock()
     worker_squad_executor.state_manager.get_task_checklist = Mock(return_value=[{"id": "task-1"}])
     worker_squad_executor.state_manager.save_worker_squad_stage_async = AsyncMock()
