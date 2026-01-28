@@ -167,6 +167,42 @@ async def test_execute_tool_list(tool_executor):
 
 
 @pytest.mark.asyncio
+async def test_execute_tool_task_management(tmp_path):
+    """Test executing task_management tool."""
+    manifest_dir = tmp_path / ".manifest"
+    manifest_dir.mkdir()
+    executor = ToolExecutor(manifest_dir=manifest_dir)
+    tool_input = {
+        "id": "call_tm",
+        "action": "create_task",
+        "name": "Test task",
+    }
+    result = await executor.execute_tool("task_management", tool_input)
+    assert result["tool_name"] == "task_management"
+    assert result.get("error") is None
+    assert result.get("result", {}).get("ok") is True
+    assert result["result"].get("task_id") is not None
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_sprint_management(tmp_path):
+    """Test executing sprint_management tool."""
+    manifest_dir = tmp_path / ".manifest"
+    manifest_dir.mkdir()
+    executor = ToolExecutor(manifest_dir=manifest_dir)
+    tool_input = {
+        "id": "call_sm",
+        "action": "create_sprint",
+        "name": "Sprint 1",
+    }
+    result = await executor.execute_tool("sprint_management", tool_input)
+    assert result["tool_name"] == "sprint_management"
+    assert result.get("error") is None
+    assert result.get("result", {}).get("ok") is True
+    assert result["result"].get("sprint_id") is not None
+
+
+@pytest.mark.asyncio
 async def test_execute_tool_unknown(tool_executor):
     """Test executing unknown tool."""
     tool_input = {
