@@ -423,6 +423,32 @@ async def test_start_worker_agent_and_wait_start_failure(agent_coordinator):
 
 
 @pytest.mark.asyncio
+async def test_start_worker_agent_and_wait_bridge_completed(agent_coordinator):
+    """Test completion is detected when bridge marks agent completed (canonical signal)."""
+    agent_coordinator.state_manager.get_task_checklist = Mock(return_value=[{"id": "task-1"}])
+    agent_coordinator.context_provider.get_worker_context = Mock(return_value={
+        "task_scope": {"components": ["comp-1"]}
+    })
+    agent_coordinator.task_scoper.validate_task_granularity = Mock(return_value={"valid": True})
+    agent_coordinator.config_manager.get_agent_model_config = Mock(return_value={"provider": "opencode"})
+    agent_coordinator.agent_bridge.start_agent_mission = AsyncMock(return_value=True)
+    agent_coordinator.container_manager.is_docker_available = Mock(return_value=False)
+
+    await agent_coordinator.start_worker_agent("task-1", "coder")
+    # Use a real dict so bridge completion signal is visible (canonical completion path)
+    agent_coordinator.agent_bridge._active_agents = {
+        "task-1": {"completed": True, "status": "completed"},
+    }
+    agent_coordinator.state_manager.get_chat_history = Mock(return_value=[])
+    agent_coordinator.get_agent_status = AsyncMock(return_value={"status": "active"})
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        result = await agent_coordinator.start_worker_agent_and_wait("task-1", "coder", timeout=5.0)
+
+    assert result.get("status") == "completed"
+    assert result.get("success") is True
+
+
+@pytest.mark.asyncio
 async def test_start_worker_agent_direct_execution(agent_coordinator):
     """Test worker agent startup in direct execution mode."""
     agent_coordinator.state_manager.get_task_checklist = Mock(return_value=[{"id": "task-1"}])

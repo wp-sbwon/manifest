@@ -84,12 +84,14 @@ class AgentBridge:
         from manifest.agents.resource_monitor import ResourceMonitor
         from manifest.agents.watchdog import AgentWatchdog
 
-        # Resource monitor
+        # Resource monitor (Docker is optional)
         try:
             import docker
             docker_client = docker.from_env()
+            docker_client.ping()  # Test connection
             self.resource_monitor = ResourceMonitor(docker_client)
         except Exception:
+            # Docker not available - resource monitor will work without Docker
             self.resource_monitor = ResourceMonitor(None)
 
         # Watchdog for monitoring

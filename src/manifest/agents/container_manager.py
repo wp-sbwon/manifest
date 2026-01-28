@@ -7,9 +7,14 @@ resource management, isolation, and monitoring capabilities.
 
 The container manager handles container lifecycle (start, stop, status), resource
 monitoring, and inter-container communication via a message bus.
+
+Like OpenCode, this manager automatically starts Docker if it's not running.
 """
 import asyncio
 import docker
+import subprocess
+import platform
+import sys
 from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime
@@ -38,25 +43,66 @@ class ContainerManager:
         _message_bus_connected: Whether the message bus is connected.
     """
 
-    def __init__(self, docker_client: Optional[docker.DockerClient] = None):
+    def __init__(self, docker_client: Optional[docker.DockerClient] = None, require_docker: bool = True, auto_start: bool = True):
         """Initialize the container manager.
 
-        Attempts to connect to Docker and verify it's available. If Docker
-        is not available, the manager will operate in a degraded mode where
-        container operations return None.
+        Attempts to connect to Docker and verify it's available. If Docker is not
+        running and auto_start is True, automatically starts Docker (like OpenCode).
 
         Args:
             docker_client: Optional pre-configured Docker client. If not
                 provided, creates a new client from environment.
+            require_docker: If True, raises exception when Docker is unavailable.
+                           If False, operates in degraded mode (default: True).
+            auto_start: If True, automatically starts Docker if not running (default: True).
+
+        Raises:
+            RuntimeError: If Docker is required but not available and cannot be started.
         """
+        self.require_docker = require_docker
+        self.auto_start = auto_start
+
         try:
             self.client = docker_client or docker.from_env()
             self.client.ping()  # Test connection
             self.docker_available = True
+            logger.info("Docker is available and connected")
         except Exception as e:
-            logger.warning(f"Docker not available: {e}", exc_info=True)
-            self.client = None
-            self.docker_available = False
+            error_msg = str(e)
+            is_connection_error = "No such file or directory" in error_msg or "Connection aborted" in error_msg
+
+            # Try to auto-start Docker if enabled (synchronous attempt)
+            if auto_start and is_connection_error:
+                logger.info("Docker daemon not running, attempting to start automatically...")
+                docker_start_attempted = self._start_docker()
+                if docker_start_attempted:
+                    logger.info("Docker start command executed. Will verify connection when needed.")
+                    # Don't wait here - connection will be verified when actually needed
+                    self.client = None
+                    self.docker_available = False  # Will be set to True when ensure_docker_running succeeds
+                else:
+                    self.client = None
+                    self.docker_available = False
+            else:
+                self.client = None
+                self.docker_available = False
+
+            # Raise exception if Docker is required but unavailable (and auto-start failed or disabled)
+            if require_docker and not self.docker_available:
+                if is_connection_error:
+                    if auto_start:
+                        # Auto-start was attempted, but we'll verify later
+                        logger.warning("Docker daemon not running. Auto-start attempted. Will verify when needed.")
+                    else:
+                        raise RuntimeError(
+                            "Docker daemon is not running. Please start Docker Desktop manually.\n"
+                            "Manifest requires Docker to run agents in isolated containers."
+                        ) from e
+                else:
+                    raise RuntimeError(
+                        f"Docker is required but not available: {error_msg}\n"
+                        "Please ensure Docker is installed and running."
+                    ) from e
 
         self.active_containers: Dict[str, docker.models.containers.Container] = {}
         self.container_metadata: Dict[str, Dict[str, Any]] = {}
@@ -65,6 +111,107 @@ class ContainerManager:
         self.message_bus = ContainerMessageBus()
         self._message_bus_connected = False
 
+    def _start_docker(self) -> bool:
+        """Automatically start Docker daemon (like OpenCode does).
+
+        Attempts to start Docker Desktop on macOS/Windows or Docker daemon on Linux.
+
+        Returns:
+            True if Docker start was attempted, False otherwise.
+        """
+        system = platform.system()
+
+        try:
+            if system == "Darwin":  # macOS
+                # Try to start Docker Desktop
+                docker_app_paths = [
+                    "/Applications/Docker.app",
+                    "/Applications/Docker Desktop.app"
+                ]
+
+                for app_path in docker_app_paths:
+                    if Path(app_path).exists():
+                        logger.info(f"Starting Docker Desktop from {app_path}")
+                        subprocess.Popen(
+                            ["open", "-a", app_path],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE
+                        )
+                        return True
+
+                # If Docker Desktop not found, try docker command
+                try:
+                    subprocess.run(
+                        ["docker", "info"],
+                        check=False,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=2
+                    )
+                    return True
+                except:
+                    logger.warning("Docker Desktop not found. Please install Docker Desktop for macOS.")
+                    return False
+
+            elif system == "Linux":
+                # Try to start Docker daemon
+                logger.info("Attempting to start Docker daemon...")
+                try:
+                    # Check if docker command exists
+                    subprocess.run(
+                        ["docker", "--version"],
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE
+                    )
+                    # Try to start Docker service (may require sudo)
+                    result = subprocess.run(
+                        ["sudo", "systemctl", "start", "docker"],
+                        check=False,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        timeout=5
+                    )
+                    if result.returncode == 0:
+                        logger.info("Docker daemon started successfully")
+                        return True
+                    else:
+                        logger.warning("Could not start Docker daemon (may require sudo privileges)")
+                        return False
+                except FileNotFoundError:
+                    logger.warning("Docker is not installed. Please install Docker Engine.")
+                    return False
+                except subprocess.TimeoutExpired:
+                    logger.warning("Docker start command timed out")
+                    return False
+
+            elif system == "Windows":
+                # Try to start Docker Desktop on Windows
+                docker_paths = [
+                    "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe",
+                    "C:\\Program Files (x86)\\Docker\\Docker\\Docker Desktop.exe"
+                ]
+
+                for docker_path in docker_paths:
+                    if Path(docker_path).exists():
+                        logger.info(f"Starting Docker Desktop from {docker_path}")
+                        subprocess.Popen(
+                            [docker_path],
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE
+                        )
+                        return True
+
+                logger.warning("Docker Desktop not found. Please install Docker Desktop for Windows.")
+                return False
+            else:
+                logger.warning(f"Unsupported platform: {system}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error starting Docker: {e}", exc_info=True)
+            return False
+
     def is_docker_available(self) -> bool:
         """Check if Docker is available and ready to use.
 
@@ -72,6 +219,39 @@ class ContainerManager:
             True if Docker daemon is accessible and working, False otherwise.
         """
         return self.docker_available
+
+    async def ensure_docker_running(self) -> bool:
+        """Ensure Docker is running, starting it if necessary.
+
+        Like OpenCode's server management, this ensures Docker is available
+        before operations that require it.
+
+        Returns:
+            True if Docker is available, False otherwise.
+        """
+        if self.docker_available:
+            return True
+
+        if self.auto_start:
+            logger.info("Docker not available, attempting to start...")
+            if self._start_docker():
+                # Wait for Docker to start
+                for attempt in range(30):  # Wait up to 30 seconds
+                    await asyncio.sleep(1)
+                    try:
+                        self.client = docker.from_env()
+                        self.client.ping()
+                        self.docker_available = True
+                        logger.info("Docker is now available")
+                        return True
+                    except Exception:
+                        continue
+                logger.warning("Docker did not start within timeout")
+                return False
+            else:
+                return False
+
+        return False
 
     async def start_agent_container(
         self,
@@ -204,8 +384,11 @@ class ContainerManager:
             True if container was found and stopped, False if Docker is
             unavailable or container doesn't exist.
         """
+        # Ensure Docker is running before stopping container
         if not self.docker_available:
-            return False
+            if not await self.ensure_docker_running():
+                logger.error("Cannot stop container: Docker is not available")
+                return False
 
         if task_id not in self.active_containers:
             return False
@@ -247,8 +430,10 @@ class ContainerManager:
             Dictionary containing container status, resource usage, and metadata,
             or None if Docker is unavailable or container doesn't exist.
         """
+        # Ensure Docker is running before getting status
         if not self.docker_available:
-            return None
+            if not await self.ensure_docker_running():
+                return None
 
         if task_id not in self.active_containers:
             return None
@@ -313,8 +498,10 @@ class ContainerManager:
         Returns:
             List of log lines
         """
+        # Ensure Docker is running before getting logs
         if not self.docker_available:
-            return []
+            if not await self.ensure_docker_running():
+                return []
 
         if task_id not in self.active_containers:
             return []
@@ -341,5 +528,11 @@ class ContainerManager:
 
     async def cleanup_all(self):
         """Stop and remove all managed containers."""
+        # Ensure Docker is running before cleanup
+        if not self.docker_available:
+            if not await self.ensure_docker_running():
+                logger.warning("Cannot cleanup containers: Docker is not available")
+                return
+
         for task_id in list(self.active_containers.keys()):
             await self.stop_agent_container(task_id)

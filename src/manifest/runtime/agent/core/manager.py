@@ -95,13 +95,14 @@ class AgentManager:
         prompt = self._generate_agent_prompt(agent_type, context, task_id)
 
         # Create actual agent instance based on type
+        # Note: Some agents accept tool_executor, others don't
         agent_instance = None
         if agent_type == "orchestrator" and self.executor:
             from manifest.runtime.agent.agents.orchestrator_agent import OrchestratorAgent
-            agent_instance = OrchestratorAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router, tool_executor=tool_executor)
+            agent_instance = OrchestratorAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router)
         elif agent_type == "planner" and self.executor:
             from manifest.runtime.agent.agents.planner_agent import PlannerAgent
-            agent_instance = PlannerAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router, tool_executor=tool_executor)
+            agent_instance = PlannerAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router)
         elif agent_type == "coder" and self.executor:
             from manifest.runtime.agent.agents.coder_agent import CoderAgent
             agent_instance = CoderAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router, tool_executor=tool_executor)
@@ -113,16 +114,16 @@ class AgentManager:
             agent_instance = DebugAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router, tool_executor=tool_executor)
         elif agent_type == "approver" and self.executor:
             from manifest.runtime.agent.agents.approver_agent import ApproverAgent
-            agent_instance = ApproverAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router, tool_executor=tool_executor)
+            agent_instance = ApproverAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router)
         elif agent_type == "project_review" and self.executor:
             from manifest.runtime.agent.agents.project_review_agent import ProjectReviewAgent
-            agent_instance = ProjectReviewAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router, tool_executor=tool_executor)
+            agent_instance = ProjectReviewAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router)
         elif agent_type == "e2e_test" and self.executor:
             from manifest.runtime.agent.agents.e2e_test_agent import E2ETestAgent
-            agent_instance = E2ETestAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router, tool_executor=tool_executor)
+            agent_instance = E2ETestAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router)
         elif agent_type == "integration_test" and self.executor:
             from manifest.runtime.agent.agents.integration_test_agent import IntegrationTestAgent
-            agent_instance = IntegrationTestAgent(agent_id, self.executor, self.state_manager, terminal_router=terminal_router, tool_executor=tool_executor)
+            agent_instance = IntegrationTestAgent(agent_id, self.executor, self.state_manager)
 
         # Create agent object
         agent = {

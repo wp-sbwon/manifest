@@ -3,6 +3,8 @@ Structure Manager - Manages structural changes based on Blueprint specifications
 Implements Spec-First Management: Blueprint changes drive code changes, and vice versa.
 """
 import json
+import ast
+import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
@@ -47,6 +49,7 @@ class CodeChangeSuggestion:
     blueprint_component_id: str = ""
     reason: str = ""
     affected_components: List[str] = field(default_factory=list)
+    action_data: Optional[Dict[str, Any]] = None  # Additional structured data for parsing
 
 
 class StructureManager:
@@ -356,7 +359,9 @@ class StructureManager:
                             action=f"Add methods to {component.get('name', '')}: {', '.join(missing_methods)}",
                             blueprint_component_id=component.get("id", ""),
                             reason=f"Component '{component.get('name', '')}' is missing methods defined in Blueprint",
-                            affected_components=[component.get("id", "")]
+                            affected_components=[component.get("id", "")],
+                            # Store method names for easier parsing
+                            action_data={"class_name": component.get('name', ''), "methods": list(missing_methods)}
                         ))
 
         # Check for modified components
@@ -381,7 +386,9 @@ class StructureManager:
                             action=f"Add methods: {', '.join(missing_methods)}",
                             blueprint_component_id=component.get("id", ""),
                             reason=f"Component '{component.get('name', '')}' needs methods from updated Blueprint",
-                            affected_components=[component.get("id", "")]
+                            affected_components=[component.get("id", "")],
+                            # Store method names for easier parsing
+                            action_data={"class_name": component.get('name', ''), "methods": list(missing_methods)}
                         ))
 
         # Check for new contracts (dependencies)
@@ -845,7 +852,14 @@ class StructureManager:
         pass
 
     def apply_code_change(self, suggestion: CodeChangeSuggestion) -> bool:
-        """Apply a code change suggestion."""
+        """Apply a code change suggestion.
+
+        Supports:
+        - create_file: Create a new file with class skeleton
+        - add_method: Add methods to an existing class
+        - add_class: Add a class to an existing file
+        - add_import: Add import statements to a file
+        """
         try:
             file_path = Path(suggestion.file_path)
 
@@ -863,17 +877,21 @@ class StructureManager:
 
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(content)
+                logger.info(f"Created file: {file_path}")
                 return True
 
             elif suggestion.suggestion_type == "add_method":
-                # This would require more complex AST manipulation or simple appending
-                # For now, we'll just log it
-                logger.info(f"Would add method to {suggestion.file_path}")
-                return False
+                return self._add_method_to_class(file_path, suggestion)
+
+            elif suggestion.suggestion_type == "add_class":
+                return self._add_class_to_file(file_path, suggestion)
+
+            elif suggestion.suggestion_type == "add_import":
+                return self._add_import_to_file(file_path, suggestion)
 
             return False
         except Exception as e:
-            logger.error(f"Error applying code change: {e}")
+            logger.error(f"Error applying code change: {e}", exc_info=True)
             return False
 
     def _generate_class_skeleton(self, component: Dict[str, Any]) -> str:
@@ -893,3 +911,283 @@ class StructureManager:
                 skeleton += "        pass\n\n"
 
         return skeleton
+
+    def _add_method_to_class(self, file_path: Path, suggestion: CodeChangeSuggestion) -> bool:
+        """Add methods to an existing class using AST manipulation.
+
+        Args:
+            file_path: Path to the Python file
+            suggestion: CodeChangeSuggestion with action containing method names
+
+        Returns:
+            True if methods were added successfully
+        """
+        try:
+            if not file_path.exists():
+                logger.error(f"File not found: {file_path}")
+                return False
+
+            # Extract method names and class name from action_data if available, otherwise parse action
+            if suggestion.action_data and "class_name" in suggestion.action_data:
+                target_class_name = suggestion.action_data["class_name"]
+                method_names = suggestion.action_data.get("methods", [])
+            else:
+                # Fallback: Parse action to extract method names and class name
+                # Format: "Add methods to ClassName: method1, method2" or "Add methods: method1, method2"
+                action = suggestion.action
+                class_match = re.search(r"to\s+(\w+)", action)
+                methods_match = re.search(r":\s*(.+)", action)
+
+                if not class_match:
+                    logger.error(f"Could not extract class name from action: {action}")
+                    return False
+
+                target_class_name = class_match.group(1)
+                method_names = []
+
+                if methods_match:
+                    method_names = [m.strip() for m in methods_match.group(1).split(",")]
+
+            if not method_names:
+                logger.warning(f"No methods specified in action: {suggestion.action}")
+                return False
+
+            # Read file content
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Parse AST
+            try:
+                tree = ast.parse(content, filename=str(file_path))
+            except SyntaxError as e:
+                logger.error(f"Syntax error in {file_path}: {e}")
+                return False
+
+            # Find the target class
+            target_class = None
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ClassDef) and node.name == target_class_name:
+                    target_class = node
+                    break
+
+            if not target_class:
+                logger.error(f"Class '{target_class_name}' not found in {file_path}")
+                return False
+
+            # Check which methods already exist
+            existing_methods = {
+                n.name for n in target_class.body
+                if isinstance(n, ast.FunctionDef)
+            }
+
+            methods_to_add = [m for m in method_names if m not in existing_methods]
+            if not methods_to_add:
+                logger.info(f"All methods already exist in class {target_class_name}")
+                return True
+
+            # Find insertion point (after last method or after docstring)
+            lines = content.split("\n")
+            insertion_line = target_class.lineno - 1  # 0-based index
+
+            # Find the last method's end line
+            last_method_end = insertion_line
+            for node in target_class.body:
+                if isinstance(node, ast.FunctionDef):
+                    # Use end_lineno if available (Python 3.8+), otherwise estimate
+                    if hasattr(node, 'end_lineno') and node.end_lineno:
+                        last_method_end = node.end_lineno - 1  # 0-based index
+                    else:
+                        # Estimate: find the last line of the method by counting lines
+                        method_start = node.lineno - 1
+                        # Count non-empty lines in method body (rough estimate)
+                        method_lines = 1  # def line
+                        for stmt in node.body:
+                            if hasattr(stmt, 'lineno'):
+                                method_lines = max(method_lines, (stmt.lineno - node.lineno) + 1)
+                        last_method_end = method_start + method_lines
+
+            # Generate method code
+            indent = "    "  # Standard Python indentation
+            method_code = []
+            for method_name in methods_to_add:
+                method_code.append(f"{indent}def {method_name}(self):")
+                method_code.append(f'{indent}    """{method_name} implementation."""')
+                method_code.append(f"{indent}    pass")
+                method_code.append("")
+
+            # Insert methods after the last method
+            lines.insert(last_method_end + 1, "\n".join(method_code))
+
+            # Write back
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+
+            logger.info(f"Added methods {methods_to_add} to class {target_class_name} in {file_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error adding methods to class: {e}", exc_info=True)
+            return False
+
+    def _add_class_to_file(self, file_path: Path, suggestion: CodeChangeSuggestion) -> bool:
+        """Add a class to an existing file.
+
+        Args:
+            file_path: Path to the Python file
+            suggestion: CodeChangeSuggestion with blueprint_component_id
+
+        Returns:
+            True if class was added successfully
+        """
+        try:
+            if not file_path.exists():
+                logger.error(f"File not found: {file_path}")
+                return False
+
+            # Load component from blueprint
+            blueprint = self._load_blueprint()
+            comp = self._find_component_in_blueprint(suggestion.blueprint_component_id, blueprint)
+            if not comp:
+                logger.error(f"Component {suggestion.blueprint_component_id} not found in blueprint")
+                return False
+
+            # Read file content
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Check if class already exists
+            try:
+                tree = ast.parse(content, filename=str(file_path))
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.ClassDef) and node.name == comp.get("name"):
+                        logger.info(f"Class {comp.get('name')} already exists in {file_path}")
+                        return True
+            except SyntaxError:
+                # File might have syntax errors, but we'll still try to add the class
+                pass
+
+            # Generate class skeleton
+            class_code = self._generate_class_skeleton(comp)
+
+            # Append to file
+            lines = content.split("\n")
+            # Add blank line if file doesn't end with one
+            if lines and lines[-1].strip():
+                lines.append("")
+            lines.append(class_code)
+
+            # Write back
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+
+            logger.info(f"Added class {comp.get('name')} to {file_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error adding class to file: {e}", exc_info=True)
+            return False
+
+    def _add_import_to_file(self, file_path: Path, suggestion: CodeChangeSuggestion) -> bool:
+        """Add import statement to a file.
+
+        Args:
+            file_path: Path to the Python file
+            suggestion: CodeChangeSuggestion with action containing import statement
+
+        Returns:
+            True if import was added successfully
+        """
+        try:
+            if not file_path.exists():
+                logger.error(f"File not found: {file_path}")
+                return False
+
+            # Parse action to extract import statement
+            # Format: "Import ClassName from module.path"
+            action = suggestion.action
+            import_match = re.search(r"Import\s+(\w+)\s+from\s+(.+)", action)
+
+            if not import_match:
+                logger.error(f"Could not parse import from action: {action}")
+                return False
+
+            import_name = import_match.group(1)
+            module_path = import_match.group(2).strip()
+
+            # Read file content
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
+
+            # Check if import already exists
+            import_line = f"from {module_path} import {import_name}"
+            if import_line in content:
+                logger.info(f"Import already exists: {import_line}")
+                return True
+
+            # Parse AST to find insertion point (after existing imports)
+            try:
+                tree = ast.parse(content, filename=str(file_path))
+                last_import_line = 0
+
+                for node in ast.walk(tree):
+                    if isinstance(node, (ast.Import, ast.ImportFrom)):
+                        if hasattr(node, 'lineno'):
+                            last_import_line = max(last_import_line, node.lineno)
+                        elif isinstance(node, ast.ImportFrom) and node.module:
+                            # Find the line number
+                            for child in ast.walk(tree):
+                                if child == node and hasattr(child, 'lineno'):
+                                    last_import_line = max(last_import_line, child.lineno)
+                                    break
+            except SyntaxError:
+                # If parsing fails, insert at the top
+                last_import_line = 0
+
+            # Insert import
+            lines = content.split("\n")
+            insertion_idx = last_import_line  # 0-based index (lineno is 1-based)
+
+            # Find the actual insertion point (after last import block)
+            if insertion_idx > 0:
+                # Skip to after the last import
+                while insertion_idx < len(lines) and (
+                    lines[insertion_idx].strip().startswith("import ") or
+                    lines[insertion_idx].strip().startswith("from ") or
+                    not lines[insertion_idx].strip()
+                ):
+                    insertion_idx += 1
+            else:
+                # Insert at the beginning, but skip shebang and docstring
+                insertion_idx = 0
+                if lines and lines[0].startswith("#!"):
+                    insertion_idx = 1
+                # Skip module docstring
+                if insertion_idx < len(lines) and (
+                    lines[insertion_idx].strip().startswith('"""') or
+                    lines[insertion_idx].strip().startswith("'''")
+                ):
+                    # Find end of docstring
+                    quote = lines[insertion_idx].strip()[:3]
+                    insertion_idx += 1
+                    while insertion_idx < len(lines) and quote not in lines[insertion_idx]:
+                        insertion_idx += 1
+                    insertion_idx += 1
+
+            # Add blank line before import if needed
+            if insertion_idx > 0 and lines[insertion_idx - 1].strip():
+                lines.insert(insertion_idx, "")
+                insertion_idx += 1
+
+            # Insert import
+            lines.insert(insertion_idx, import_line)
+
+            # Write back
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines))
+
+            logger.info(f"Added import '{import_line}' to {file_path}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error adding import to file: {e}", exc_info=True)
+            return False
