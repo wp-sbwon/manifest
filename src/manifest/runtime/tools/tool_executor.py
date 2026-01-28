@@ -7,6 +7,7 @@ and executes them using the appropriate handlers (TerminalRouter, FileManager).
 Supports permission approval requests for "ask" permissions through the
 PermissionApprovalManager.
 """
+from pathlib import Path
 from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from manifest.runtime.tools.file_manager import FileManager
 from manifest.core.logger import get_logger
@@ -35,7 +36,8 @@ class ToolExecutor:
         auditor: Optional["ToolExecutionAuditor"] = None,
         agent_type: Optional[str] = None,
         task_id: Optional[str] = None,
-        agent_id: Optional[str] = None
+        agent_id: Optional[str] = None,
+        manifest_dir: Optional[Path] = None,
     ):
         """Initialize tool executor.
 
@@ -47,6 +49,7 @@ class ToolExecutor:
             agent_type: Optional agent type for audit logging.
             task_id: Optional task ID for audit logging.
             agent_id: Optional agent ID for audit logging.
+            manifest_dir: Optional path to .manifest for OpenCode tools (task/sprint management).
         """
         self.terminal_router = terminal_router
         self.file_manager = file_manager
@@ -55,6 +58,7 @@ class ToolExecutor:
         self.agent_type = agent_type
         self.task_id = task_id
         self.agent_id = agent_id
+        self.manifest_dir = manifest_dir or Path.cwd() / ".manifest"
 
     async def execute_tool(
         self,
@@ -87,6 +91,16 @@ class ToolExecutor:
                 result = self._execute_glob(tool_input)
             elif tool_name == "list":
                 result = self._execute_list(tool_input)
+            elif tool_name == "task_management":
+                result = self._execute_task_management(tool_input)
+            elif tool_name == "sprint_management":
+                result = self._execute_sprint_management(tool_input)
+            elif tool_name == "worker_squad_spawn":
+                result = self._execute_worker_squad_spawn(tool_input)
+            elif tool_name == "blueprint_sync":
+                result = self._execute_blueprint_sync(tool_input)
+            elif tool_name == "drift_check":
+                result = self._execute_drift_check(tool_input)
             else:
                 result = {
                     "tool_call_id": tool_input.get("id", "unknown"),
@@ -639,3 +653,240 @@ class ToolExecutor:
             "tool_name": "list",
             "result": result
         }
+
+    def _execute_task_management(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute task_management tool (create/update/list/get tasks)."""
+        from manifest.runtime.opencode.tools.task_management import TaskManagementTool
+        tool = TaskManagementTool(self.manifest_dir)
+        action = (tool_input.get("action") or "").strip()
+        if not action:
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "task_management",
+                "error": "Missing action",
+                "result": None
+            }
+        try:
+            if action == "create_task":
+                out = tool.create_task(
+                    name=tool_input.get("name", ""),
+                    sprint_id=tool_input.get("sprint_id"),
+                    blueprint_component_ids=tool_input.get("blueprint_component_ids"),
+                    mission_id=tool_input.get("mission_id"),
+                )
+            elif action == "update_task_status":
+                out = tool.update_task_status(
+                    task_id=tool_input.get("task_id", ""),
+                    status=tool_input.get("status", ""),
+                )
+            elif action == "assign_task":
+                out = tool.assign_task(
+                    task_id=tool_input.get("task_id", ""),
+                    agent_name=tool_input.get("agent_name", ""),
+                )
+            elif action == "update_task_progress":
+                out = tool.update_task_progress(
+                    task_id=tool_input.get("task_id", ""),
+                    percentage=float(tool_input.get("percentage", 0)),
+                )
+            elif action == "update_task_stage":
+                out = tool.update_task_stage(
+                    task_id=tool_input.get("task_id", ""),
+                    stage=tool_input.get("stage", ""),
+                )
+            elif action == "list_tasks":
+                out = {"ok": True, "tasks": tool.list_tasks(sprint_id=tool_input.get("sprint_id"))}
+            elif action == "get_task":
+                t = tool.get_task(tool_input.get("task_id", ""))
+                out = {"ok": t is not None, "task": t}
+            else:
+                return {
+                    "tool_call_id": tool_input.get("id", "unknown"),
+                    "tool_name": "task_management",
+                    "error": f"Unknown action: {action}",
+                    "result": None
+                }
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "task_management",
+                "result": out
+            }
+        except Exception as e:
+            logger.error(f"task_management error: {e}", exc_info=True)
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "task_management",
+                "error": str(e),
+                "result": None
+            }
+
+    def _execute_sprint_management(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute sprint_management tool (create/list/get/update sprints)."""
+        from manifest.runtime.opencode.tools.sprint_management import SprintManagementTool
+        tool = SprintManagementTool(self.manifest_dir)
+        action = (tool_input.get("action") or "").strip()
+        if not action:
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "sprint_management",
+                "error": "Missing action",
+                "result": None
+            }
+        try:
+            if action == "create_sprint":
+                out = tool.create_sprint(
+                    name=tool_input.get("name", ""),
+                    start_date=tool_input.get("start_date"),
+                    end_date=tool_input.get("end_date"),
+                )
+            elif action == "list_sprints":
+                out = {"ok": True, "sprints": tool.list_sprints()}
+            elif action == "get_sprint":
+                s = tool.get_sprint(tool_input.get("sprint_id", ""))
+                out = {"ok": s is not None, "sprint": s}
+            elif action == "update_sprint":
+                out = tool.update_sprint(
+                    sprint_id=tool_input.get("sprint_id", ""),
+                    name=tool_input.get("name"),
+                    status=tool_input.get("status"),
+                    task_ids=tool_input.get("task_ids"),
+                )
+            else:
+                return {
+                    "tool_call_id": tool_input.get("id", "unknown"),
+                    "tool_name": "sprint_management",
+                    "error": f"Unknown action: {action}",
+                    "result": None
+                }
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "sprint_management",
+                "result": out
+            }
+        except Exception as e:
+            logger.error(f"sprint_management error: {e}", exc_info=True)
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "sprint_management",
+                "error": str(e),
+                "result": None
+            }
+
+    def _execute_worker_squad_spawn(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute worker_squad_spawn tool (spawn planner/coder/test/debug/approver)."""
+        from manifest.runtime.opencode.tools.worker_squad_spawn import WorkerSquadSpawnTool
+        tool = WorkerSquadSpawnTool(self.manifest_dir)
+        action = (tool_input.get("action") or "").strip()
+        task_id = (tool_input.get("task_id") or "").strip()
+        if not action or not task_id:
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "worker_squad_spawn",
+                "error": "Missing action or task_id",
+                "result": None
+            }
+        try:
+            if action == "spawn_planner":
+                agent_process_id = tool.spawn_planner(task_id, context=tool_input.get("context"))
+            elif action == "spawn_coder":
+                agent_process_id = tool.spawn_coder(
+                    task_id,
+                    plan=tool_input.get("plan"),
+                    context=tool_input.get("context"),
+                )
+            elif action == "spawn_test":
+                agent_process_id = tool.spawn_test(
+                    task_id,
+                    code_changes=tool_input.get("code_changes"),
+                )
+            elif action == "spawn_debug":
+                agent_process_id = tool.spawn_debug(
+                    task_id,
+                    error_info=tool_input.get("error_info"),
+                )
+            elif action == "spawn_approver":
+                agent_process_id = tool.spawn_approver(
+                    task_id,
+                    work_summary=tool_input.get("work_summary"),
+                )
+            else:
+                return {
+                    "tool_call_id": tool_input.get("id", "unknown"),
+                    "tool_name": "worker_squad_spawn",
+                    "error": f"Unknown action: {action}",
+                    "result": None
+                }
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "worker_squad_spawn",
+                "result": {"ok": True, "agent_process_id": agent_process_id}
+            }
+        except Exception as e:
+            logger.error(f"worker_squad_spawn error: {e}", exc_info=True)
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "worker_squad_spawn",
+                "error": str(e),
+                "result": None
+            }
+
+    def _execute_blueprint_sync(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute blueprint_sync tool (compare_blueprints, detect_drift, sync_blueprint)."""
+        from manifest.runtime.opencode.tools.blueprint_sync import BlueprintSyncTool
+        tool = BlueprintSyncTool(self.manifest_dir)
+        action = (tool_input.get("action") or "").strip()
+        if not action:
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "blueprint_sync",
+                "error": "Missing action",
+                "result": None
+            }
+        try:
+            if action == "compare_blueprints":
+                out = tool.compare_blueprints()
+            elif action == "detect_drift":
+                out = tool.detect_drift()
+            elif action == "sync_blueprint":
+                mode = (tool_input.get("mode") or "workflow").strip()
+                out = tool.sync_blueprint(mode=mode)
+            else:
+                return {
+                    "tool_call_id": tool_input.get("id", "unknown"),
+                    "tool_name": "blueprint_sync",
+                    "error": f"Unknown action: {action}",
+                    "result": None
+                }
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "blueprint_sync",
+                "result": out
+            }
+        except Exception as e:
+            logger.error(f"blueprint_sync error: {e}", exc_info=True)
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "blueprint_sync",
+                "error": str(e),
+                "result": None
+            }
+
+    def _execute_drift_check(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute drift_check tool (returns component statuses)."""
+        from manifest.runtime.opencode.tools.blueprint_sync import DriftCheckTool
+        tool = DriftCheckTool(self.manifest_dir)
+        try:
+            out = tool.check()
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "drift_check",
+                "result": out
+            }
+        except Exception as e:
+            logger.error(f"drift_check error: {e}", exc_info=True)
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "drift_check",
+                "error": str(e),
+                "result": None
+            }
