@@ -157,9 +157,9 @@ def check_workflow_status(
 
 
 # Same pytest invocation as GitHub Actions (test.yml) so local pre-push matches CI.
+# No code-coverage report; test quality is based on actual failproof checklist, not line coverage.
 CI_TEST_CMD = [
     "pytest", "tests/", "-v",
-    "--cov=src/manifest", "--cov-report=term-missing", "--cov-report=xml",
     "--timeout=300",
 ]
 CI_TEST_TIMEOUT_SEC = 1500  # 25 min, matches workflow step timeout-minutes: 25
@@ -182,7 +182,7 @@ def run_ci_equivalent_tests() -> bool:
         print("❌ Local CI tests timed out (script limit {:.0f}s).".format(CI_TEST_TIMEOUT_SEC))
         return False
     except FileNotFoundError:
-        print("❌ pytest not found. Install test deps: pip install -r requirements.txt pytest-cov pytest-timeout")
+        print("❌ pytest not found. Install test deps: pip install -r requirements.txt pytest pytest-timeout")
         return False
 
 

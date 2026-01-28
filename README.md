@@ -19,8 +19,7 @@ See [OpenCode setup](docs/OPENCODE_SETUP.md). Then: `./scripts/setup.sh`, `sourc
 | `src/`, `tests/`, `scripts/`, `docs/` | Source, tests, scripts, documentation |
 | `.manifest/` | Runtime data (tasks, state, blueprints); created at run time |
 | `.opencode/` | OpenCode agent configs (e.g. manifest-orchestrator) |
-| `htmlcov/` | **Generated** – HTML coverage report from `pytest --cov`; safe to delete; open `htmlcov/index.html` to view |
-| `coverage.json`, `.coverage`, `coverage.xml` | **Generated** – coverage data; in `.gitignore`; safe to delete |
+| (no htmlcov) | We do not run pytest with coverage; test quality is based on actual failproof checklist, not line coverage. |
 | `reference/` | Reference materials (e.g. implementation plan, PDF) |
 | `AGENTS.md.example` | Example for project-level AGENTS.md (OpenCode convention) |
 
