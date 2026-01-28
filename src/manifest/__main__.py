@@ -1,7 +1,7 @@
 """
 Main entry point for Manifest.
 
-Runs launcher: View (상시 시각화) + OpenCode 터미널.
+Runs launcher: View (visualization dashboard) and OpenCode terminal.
 Usage: manifest | python -m manifest
 """
 

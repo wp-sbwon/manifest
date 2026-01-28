@@ -21,13 +21,20 @@ from manifest.core.logger import get_logger
 logger = get_logger(__name__)
 
 # Default settings when .manifest/settings.json is missing.
-# OpenCode is the default backend; use agent.execution_backend: "direct" to use direct LLM API.
+# OpenCode is the default backend; use agent.execution_backend: "direct" for direct LLM API.
+# tool_approval.ask_before_tool_run: when True, state-changing tools require user approval before execution.
 DEFAULT_SETTINGS = {
     "agent": {"execution_backend": "opencode"},
     "opencode": {
         "server_host": "localhost",
         "server_port": 4096,
         "auto_start": True,
+    },
+    "tool_approval": {"ask_before_tool_run": False},
+    "resource_limits": {
+        "tokens_per_day": None,
+        "model": None,
+        "cost_limit": None,
     },
 }
 

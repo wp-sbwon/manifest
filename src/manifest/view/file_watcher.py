@@ -13,7 +13,7 @@ from manifest.core.logger import get_logger
 logger = get_logger(__name__)
 
 # Key files/dirs we watch (relative to manifest_dir)
-WATCH_FILES = ("tasks.json", "state.json", "blueprint_code.json", "blueprint.json", "architecture.json")
+WATCH_FILES = ("tasks.json", "state.json", "blueprint_code.json", "blueprint.json", "architecture.json", "design_history.json")
 WATCH_DIR = "conflicts"
 
 

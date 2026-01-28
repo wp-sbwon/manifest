@@ -6,11 +6,11 @@
 
 All documentation is in [`docs/`](docs/). See [docs/README.md](docs/README.md) for the index.
 
-**Quick links:** [Project structure](docs/PROJECT_STRUCTURE.md) · [OpenCode setup](docs/OPENCODE_SETUP.md) · [OpenCode agent](docs/OPENCODE_AGENT_SETUP.md) · [UI redesign plan](docs/UI_REDESIGN_PLAN.md) · [Worker squad](docs/WORKER_SQUAD_AND_AGENTS.md). Older docs are in [docs/archive/](docs/archive/).
+**Quick links:** [Project structure](docs/PROJECT_STRUCTURE.md) · [UI redesign plan](docs/UI_REDESIGN_PLAN.md) · [Worker squad](docs/WORKER_SQUAD_AND_AGENTS.md). **Target architecture:** [Redesign architecture and intent](docs/REDESIGN_ARCHITECTURE_AND_INTENT.md); [implementation status](docs/NEW_ARCHITECTURE_IMPLEMENTATION_STATUS.md). Older docs are in [docs/archive/](docs/archive/).
 
 ## Quick Start
 
-See [OpenCode setup](docs/OPENCODE_SETUP.md). Then: `./scripts/setup.sh`, `source venv/bin/activate`, `PYTHONPATH=src python -m manifest`.
+Then: `./scripts/setup.sh`, `source venv/bin/activate`, `PYTHONPATH=src python -m manifest`.
 
 ## Root directory (what’s what)
 
@@ -18,7 +18,7 @@ See [OpenCode setup](docs/OPENCODE_SETUP.md). Then: `./scripts/setup.sh`, `sourc
 |------|--------|
 | `src/`, `tests/`, `scripts/`, `docs/` | Source, tests, scripts, documentation |
 | `.manifest/` | Runtime data (tasks, state, blueprints); created at run time |
-| `.opencode/` | OpenCode agent configs (e.g. manifest-orchestrator) |
+| `.rules/` | Project rules (task granularity, PRD template, code style) |
 | (no htmlcov) | We do not run pytest with coverage; test quality is based on actual failproof checklist, not line coverage. |
 | `reference/` | Reference materials (e.g. implementation plan, PDF) |
 | `AGENTS.md.example` | Example for project-level AGENTS.md (OpenCode convention) |
@@ -127,7 +127,7 @@ See `requirements.txt` for the complete list.
 **Skills System**:
 - Configure skills for individual agents in `.manifest/agent_config.json`
 - Configure project-scoped skills in `AGENTS.md` (OpenCode convention)
-- Skills are automatically loaded from `.claude/rules/` directory
+- Skills are automatically loaded from `.rules/` directory
 - See [docs/archive/superseded-2026/SKILLS.md](docs/archive/superseded-2026/SKILLS.md) for detailed documentation
 
 ## Development Workflow

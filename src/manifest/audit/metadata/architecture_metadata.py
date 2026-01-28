@@ -135,6 +135,8 @@ def save_architecture_with_metadata(architecture: Dict[str, Any], architecture_f
         architecture_file.parent.mkdir(parents=True, exist_ok=True)
         with open(architecture_file, "w", encoding="utf-8") as f:
             json.dump(architecture, f, indent=2, ensure_ascii=False)
+        from manifest.core.design_history import record_design_save
+        record_design_save(architecture_file.parent, "architecture", "architecture.json")
         return True
     except Exception:
         return False

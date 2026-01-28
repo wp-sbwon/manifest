@@ -1,10 +1,9 @@
 """
-OpenCode Worker Squad Spawn tool: spawn worker agents as OpenCode agent processes.
+Worker Squad Spawn tool for the orchestrator.
 
-Orchestrator uses this tool to spawn planner, coder, test, debug, approver agents.
-When OpenCode API is available, this tool would call it to start agent processes;
-until then it returns a synthetic agent_process_id and records the spawn request
-in .manifest/ for View and future integration.
+Records spawn requests (planner, coder, test, debug, approver) to .manifest/worker_spawns.json
+and returns a synthetic agent_process_id. Full workflow is triggered via run_squad action
+and Container API or worker_squad_runner.
 """
 import json
 import uuid
@@ -17,7 +16,6 @@ from manifest.core.logger import get_logger
 logger = get_logger(__name__)
 
 SPAWN_LOG_FILE = "worker_spawns.json"
-WORKER_AGENTS = ("manifest-planner", "manifest-coder", "manifest-test", "manifest-debug", "manifest-approver")
 
 
 def _default_spawns_data() -> Dict[str, Any]:
@@ -25,11 +23,10 @@ def _default_spawns_data() -> Dict[str, Any]:
 
 
 class WorkerSquadSpawnTool:
-    """Spawn worker squad agents as OpenCode agent processes.
+    """Records worker squad spawn requests and writes to .manifest/worker_spawns.json.
 
-    When OpenCode API is available, spawn_* methods would call it to start
-    the agent process. Until then, returns a synthetic agent_process_id and
-    logs the spawn request to .manifest/worker_spawns.json for View/debugging.
+    Each spawn_* method appends an entry and returns a synthetic agent_process_id.
+    Use the run_squad action on the worker_squad_spawn tool for full workflow execution.
     """
 
     def __init__(self, manifest_dir: Optional[Path] = None):

@@ -201,7 +201,7 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "One of: spawn_planner, spawn_coder, spawn_test, spawn_debug, spawn_approver"
+                        "description": "One of: run_squad (full workflow), spawn_planner, spawn_coder, spawn_test, spawn_debug, spawn_approver"
                     },
                     "task_id": {"type": "string", "description": "Task ID for this agent"},
                     "context": {"type": "object", "description": "Context dict (Tier 1/2/3) for the agent"},

@@ -46,7 +46,10 @@ When a user provides a mission description, break it down into tasks and coordin
             "terminal",
             "code_analysis",
             "task_management",
-            "sprint_management"
+            "sprint_management",
+            "worker_squad_spawn",
+            "blueprint_sync",
+            "drift_check"
         ],
         "model": {
             "provider": "anthropic",
@@ -69,9 +72,34 @@ When a user provides a mission description, break it down into tasks and coordin
 
     print(f"✅ Created OpenCode agent config: {agent_file}")
     print(f"✅ Agent 'manifest-orchestrator' is now available in OpenCode")
+
+    # manifest-full-test: E2E / full-test agent at same level as orchestrator (§7)
+    full_test_config = {
+        "name": "manifest-full-test",
+        "description": "Manifest E2E / full-test agent. Runs project- and sprint-wide E2E and integration tests. Same tier as orchestrator.",
+        "type": "primary",
+        "systemPrompt": """You are the Manifest full-test (E2E) agent. Your role is to:
+
+1. Run project- and sprint-wide end-to-end and integration tests
+2. Execute test suites (pytest, etc.) for the whole scope
+3. Report test results and failures
+4. Work independently of the Worker Squad workflow; triggered by user or orchestrator
+
+Use available tools (terminal, file_read, etc.) to run tests and report outcomes.""",
+        "tools": ["file_read", "file_write", "terminal", "code_analysis"],
+        "model": {"provider": "anthropic", "model": "claude-3-5-sonnet-20241022"},
+        "capabilities": ["e2e_testing", "integration_testing", "test_reporting"],
+    }
+    full_test_file = agents_dir / "manifest-full-test.json"
+    with open(full_test_file, "w", encoding="utf-8") as f:
+        json.dump(full_test_config, f, indent=2, ensure_ascii=False)
+    print(f"✅ Created OpenCode agent config: {full_test_file}")
+    print(f"✅ Agent 'manifest-full-test' is now available in OpenCode (same level as orchestrator)")
+
     print(f"\nTo use it:")
     print(f"  manifest  # Will use manifest-orchestrator by default")
     print(f"  opencode . --agent manifest-orchestrator -c")
+    print(f"  opencode . --agent manifest-full-test -c  # E2E / full-test agent")
 
     return True
 

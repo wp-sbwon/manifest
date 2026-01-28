@@ -1,14 +1,12 @@
 """
-Tool Executor for executing tool calls.
+Tool Executor for executing tool calls from LLMs.
 
-This module provides the ToolExecutor class which takes tool calls from LLMs
-and executes them using the appropriate handlers (TerminalRouter, FileManager).
-
-Supports permission approval requests for "ask" permissions through the
-PermissionApprovalManager.
+Routes tool calls to TerminalRouter (bash) and FileManager (edit, write, read, etc.).
+When tool_approval.ask_before_tool_run is True in .manifest/settings.json,
+state-changing tools require user approval before execution.
 """
 from pathlib import Path
-from typing import Dict, Any, List, Optional, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, TYPE_CHECKING, Callable, Awaitable
 from manifest.runtime.tools.file_manager import FileManager
 from manifest.core.logger import get_logger
 
@@ -18,6 +16,15 @@ if TYPE_CHECKING:
     from manifest.runtime.tools.tool_execution_auditor import ToolExecutionAuditor
 
 logger = get_logger(__name__)
+
+# State-changing tools that require approval when tool_approval.ask_before_tool_run is True.
+STATE_CHANGING_TOOLS = frozenset({
+    "bash", "edit", "write",
+    "task_management", "sprint_management", "worker_squad_spawn", "blueprint_sync",
+})
+
+# Container API port for run_squad fallback when worker_squad_runner is not set.
+CONTAINER_API_PORT = 4097
 
 
 class ToolExecutor:
@@ -38,6 +45,7 @@ class ToolExecutor:
         task_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         manifest_dir: Optional[Path] = None,
+        worker_squad_runner: Optional[Callable[[str], Awaitable[Dict[str, Any]]]] = None,
     ):
         """Initialize tool executor.
 
@@ -50,6 +58,7 @@ class ToolExecutor:
             task_id: Optional task ID for audit logging.
             agent_id: Optional agent ID for audit logging.
             manifest_dir: Optional path to .manifest for OpenCode tools (task/sprint management).
+            worker_squad_runner: Optional async callable(task_id) to run full Worker Squad for a task.
         """
         self.terminal_router = terminal_router
         self.file_manager = file_manager
@@ -59,6 +68,47 @@ class ToolExecutor:
         self.task_id = task_id
         self.agent_id = agent_id
         self.manifest_dir = manifest_dir or Path.cwd() / ".manifest"
+        self.worker_squad_runner = worker_squad_runner
+
+    def _check_tool_approval_gate(self, tool_name: str, tool_input: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Require user approval for state-changing tools when tool_approval.ask_before_tool_run is True.
+
+        Returns:
+            A result dict to return (permission_required), or None to proceed with execution.
+        """
+        if tool_name not in STATE_CHANGING_TOOLS:
+            return None
+        approved_id = tool_input.get("__approved_request_id__")
+        if approved_id and self.approval_manager:
+            req = self.approval_manager.get_request(approved_id)
+            if req and req.get("status") == "approved":
+                return None  # Proceed with execution (caller's tool_input unchanged)
+        try:
+            from manifest.core.config import ConfigManager
+            cm = ConfigManager(self.manifest_dir)
+            if not cm.get_setting("tool_approval.ask_before_tool_run", False):
+                return None
+        except Exception:
+            return None
+        if not self.approval_manager:
+            return None
+        resource = tool_input.get("file_path") or tool_input.get("command") or tool_name
+        request_id = self.approval_manager.create_approval_request(
+            permission_type="tool_run",
+            resource=str(resource),
+            agent_type=self.agent_type or "agent",
+            tool_name=tool_name,
+            tool_input=tool_input,
+            approval_callback=None,
+        )
+        return {
+            "tool_call_id": tool_input.get("id", "unknown"),
+            "tool_name": tool_name,
+            "result": None,
+            "permission_required": True,
+            "approval_request_id": request_id,
+            "message": "Tool execution pending approval. Approve then re-invoke with __approved_request_id__ set to this request_id.",
+        }
 
     async def execute_tool(
         self,
@@ -75,6 +125,10 @@ class ToolExecutor:
             Dict with 'tool_call_id', 'tool_name', 'result', and optional 'error'.
             May also include 'permission_denied' or 'permission_required' flags.
         """
+        gate_result = self._check_tool_approval_gate(tool_name, tool_input)
+        if gate_result is not None:
+            return gate_result
+
         result = None
         try:
             if tool_name == "bash":
@@ -96,7 +150,29 @@ class ToolExecutor:
             elif tool_name == "sprint_management":
                 result = self._execute_sprint_management(tool_input)
             elif tool_name == "worker_squad_spawn":
-                result = self._execute_worker_squad_spawn(tool_input)
+                action = (tool_input.get("action") or "").strip()
+                task_id = (tool_input.get("task_id") or "").strip()
+                if action == "run_squad" and task_id:
+                    if self.worker_squad_runner:
+                        try:
+                            run_result = await self.worker_squad_runner(task_id)
+                            result = {
+                                "tool_call_id": tool_input.get("id", "unknown"),
+                                "tool_name": "worker_squad_spawn",
+                                "result": run_result,
+                            }
+                        except Exception as e:
+                            logger.error(f"worker_squad_spawn run_squad error: {e}", exc_info=True)
+                            result = {
+                                "tool_call_id": tool_input.get("id", "unknown"),
+                                "tool_name": "worker_squad_spawn",
+                                "error": str(e),
+                                "result": None,
+                            }
+                    else:
+                        result = await self._run_squad_via_container_api(task_id, tool_input)
+                else:
+                    result = self._execute_worker_squad_spawn(tool_input)
             elif tool_name == "blueprint_sync":
                 result = self._execute_blueprint_sync(tool_input)
             elif tool_name == "drift_check":
@@ -772,6 +848,50 @@ class ToolExecutor:
                 "result": None
             }
 
+    async def _run_squad_via_container_api(self, task_id: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Run Worker Squad via Container API when worker_squad_runner is not set."""
+        try:
+            port = CONTAINER_API_PORT
+            try:
+                from manifest.core.config import ConfigManager
+                port = ConfigManager(self.manifest_dir).get_setting("container_api.port", port)
+            except Exception:
+                pass
+            import httpx
+            url = f"http://127.0.0.1:{port}/api/worker_squad/run"
+            payload = {"task_id": task_id, "manifest_dir": str(self.manifest_dir)}
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                resp = await client.post(url, json=payload)
+            if resp.status_code == 200:
+                run_result = resp.json()
+                return {
+                    "tool_call_id": tool_input.get("id", "unknown"),
+                    "tool_name": "worker_squad_spawn",
+                    "result": run_result,
+                }
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "worker_squad_spawn",
+                "error": f"Container API returned {resp.status_code}: {resp.text[:200]}",
+                "result": None,
+            }
+        except Exception as e:
+            if "Connect" in type(e).__name__ or "connect" in str(e).lower() or "Connection refused" in str(e):
+                logger.warning("Container API not reachable for run_squad: %s", e)
+                return {
+                    "tool_call_id": tool_input.get("id", "unknown"),
+                    "tool_name": "worker_squad_spawn",
+                    "error": "Container API not reachable. Start Manifest with Launcher (manifest) so Container API runs, or set worker_squad_runner on ToolExecutor.",
+                    "result": None,
+                }
+            logger.error("run_squad via Container API failed: %s", e, exc_info=True)
+            return {
+                "tool_call_id": tool_input.get("id", "unknown"),
+                "tool_name": "worker_squad_spawn",
+                "error": str(e),
+                "result": None,
+            }
+
     def _execute_worker_squad_spawn(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute worker_squad_spawn tool (spawn planner/coder/test/debug/approver)."""
         from manifest.runtime.opencode.tools.worker_squad_spawn import WorkerSquadSpawnTool
@@ -809,6 +929,13 @@ class ToolExecutor:
                     task_id,
                     work_summary=tool_input.get("work_summary"),
                 )
+            elif action == "run_squad":
+                return {
+                    "tool_call_id": tool_input.get("id", "unknown"),
+                    "tool_name": "worker_squad_spawn",
+                    "error": "run_squad is handled by Container API or worker_squad_runner. Use spawn_planner, spawn_coder, etc. for per-stage log-only spawn.",
+                    "result": None,
+                }
             else:
                 return {
                     "tool_call_id": tool_input.get("id", "unknown"),

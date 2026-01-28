@@ -149,7 +149,8 @@ class BlueprintLoader:
             # Save blueprint
             with open(blueprint_file, "w", encoding="utf-8") as f:
                 json.dump(blueprint_data, f, indent=2, ensure_ascii=False)
-
+            from manifest.core.design_history import record_design_save
+            record_design_save(manifest_dir, "blueprint", "blueprint.json")
             logger.info(f"Blueprint saved to {blueprint_file}")
             return True
         except Exception as e:
