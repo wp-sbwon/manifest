@@ -2,28 +2,15 @@
 """
 Setup script to register manifest-orchestrator agent with OpenCode.
 
-This script creates the necessary OpenCode agent configuration files
-so that 'manifest-orchestrator' agent is available when running OpenCode.
+OpenCode loads agents from opencode.json (project root) or from markdown files
+in .opencode/agents/. This script writes/updates opencode.json so the
+manifest-orchestrator and manifest-full-test agents are available.
 """
 import json
 import sys
 from pathlib import Path
 
-def create_opencode_agent_config():
-    """Create OpenCode agent configuration for manifest-orchestrator."""
-    project_root = Path.cwd()
-    opencode_dir = project_root / ".opencode"
-    agents_dir = opencode_dir / "agents"
-
-    # Create directories
-    agents_dir.mkdir(parents=True, exist_ok=True)
-
-    # Agent configuration
-    agent_config = {
-        "name": "manifest-orchestrator",
-        "description": "Manifest orchestrator agent for mission coordination, task management, and workflow orchestration",
-        "type": "primary",
-        "systemPrompt": """You are the Manifest orchestrator agent. Your role is to:
+ORCHESTRATOR_PROMPT = """You are the Manifest orchestrator agent. Your role is to:
 
 1. Receive high-level mission descriptions from users
 2. Break down missions into manageable tasks
@@ -39,68 +26,69 @@ You have access to:
 - Sprint management
 - Drift detection and blueprint synchronization
 
-When a user provides a mission description, break it down into tasks and coordinate execution. Use the available tools and agents to accomplish the mission efficiently.""",
-        "tools": [
-            "file_read",
-            "file_write",
-            "terminal",
-            "code_analysis",
-            "task_management",
-            "sprint_management",
-            "worker_squad_spawn",
-            "blueprint_sync",
-            "drift_check"
-        ],
-        "model": {
-            "provider": "anthropic",
-            "model": "claude-3-5-sonnet-20241022"
-        },
-        "capabilities": [
-            "mission_planning",
-            "task_delegation",
-            "workflow_coordination",
-            "blueprint_sync",
-            "drift_detection",
-            "sprint_management"
-        ]
-    }
+When a user provides a mission description, break it down into tasks and coordinate execution. Use the available tools and agents to accomplish the mission efficiently."""
 
-    # Write agent config
-    agent_file = agents_dir / "manifest-orchestrator.json"
-    with open(agent_file, "w", encoding="utf-8") as f:
-        json.dump(agent_config, f, indent=2, ensure_ascii=False)
-
-    print(f"✅ Created OpenCode agent config: {agent_file}")
-    print(f"✅ Agent 'manifest-orchestrator' is now available in OpenCode")
-
-    # manifest-full-test: E2E / full-test agent at same level as orchestrator (§7)
-    full_test_config = {
-        "name": "manifest-full-test",
-        "description": "Manifest E2E / full-test agent. Runs project- and sprint-wide E2E and integration tests. Same tier as orchestrator.",
-        "type": "primary",
-        "systemPrompt": """You are the Manifest full-test (E2E) agent. Your role is to:
+FULL_TEST_PROMPT = """You are the Manifest full-test (E2E) agent. Your role is to:
 
 1. Run project- and sprint-wide end-to-end and integration tests
 2. Execute test suites (pytest, etc.) for the whole scope
 3. Report test results and failures
 4. Work independently of the Worker Squad workflow; triggered by user or orchestrator
 
-Use available tools (terminal, file_read, etc.) to run tests and report outcomes.""",
-        "tools": ["file_read", "file_write", "terminal", "code_analysis"],
-        "model": {"provider": "anthropic", "model": "claude-3-5-sonnet-20241022"},
-        "capabilities": ["e2e_testing", "integration_testing", "test_reporting"],
+Use available tools (terminal, file_read, etc.) to run tests and report outcomes."""
+
+
+def create_opencode_agent_config():
+    """Create or update opencode.json with manifest agents (OpenCode loads agents from here)."""
+    project_root = Path.cwd()
+    opencode_json = project_root / "opencode.json"
+
+    # OpenCode schema: agent.<id>.description, mode, model, prompt, tools (write/edit/bash)
+    agents = {
+        "manifest-orchestrator": {
+            "description": "Manifest orchestrator agent for mission coordination, task management, and workflow orchestration",
+            "mode": "primary",
+            "model": "anthropic/claude-3-5-sonnet-20241022",
+            "prompt": ORCHESTRATOR_PROMPT,
+            "tools": {"write": True, "edit": True, "bash": True},
+        },
+        "manifest-full-test": {
+            "description": "Manifest E2E / full-test agent. Runs project- and sprint-wide E2E and integration tests. Same tier as orchestrator.",
+            "mode": "primary",
+            "model": "anthropic/claude-3-5-sonnet-20241022",
+            "prompt": FULL_TEST_PROMPT,
+            "tools": {"write": True, "edit": True, "bash": True},
+        },
     }
-    full_test_file = agents_dir / "manifest-full-test.json"
-    with open(full_test_file, "w", encoding="utf-8") as f:
-        json.dump(full_test_config, f, indent=2, ensure_ascii=False)
-    print(f"✅ Created OpenCode agent config: {full_test_file}")
-    print(f"✅ Agent 'manifest-full-test' is now available in OpenCode (same level as orchestrator)")
 
-    print(f"\nTo use it:")
-    print(f"  manifest  # Will use manifest-orchestrator by default")
+    existing = {}
+    if opencode_json.exists():
+        try:
+            with open(opencode_json, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    config = {
+        "$schema": "https://opencode.ai/config.json",
+        "default_agent": "manifest-orchestrator",
+        "agent": {**(existing.get("agent") or {}), **agents},
+    }
+    # Preserve other top-level keys from existing config
+    for key in existing:
+        if key not in ("agent", "default_agent"):
+            config[key] = existing[key]
+
+    with open(opencode_json, "w", encoding="utf-8") as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+    print(f"✅ Updated OpenCode config: {opencode_json}")
+    print(f"✅ Agent 'manifest-orchestrator' is now available (default_agent)")
+    print(f"✅ Agent 'manifest-full-test' is now available")
+    print(f"\nTo use:")
+    print(f"  manifest  # Uses manifest-orchestrator by default")
     print(f"  opencode . --agent manifest-orchestrator -c")
-    print(f"  opencode . --agent manifest-full-test -c  # E2E / full-test agent")
-
+    print(f"  opencode . --agent manifest-full-test -c")
     return True
 
 

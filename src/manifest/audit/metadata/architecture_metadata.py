@@ -11,10 +11,9 @@ def ensure_architecture_metadata(architecture: Dict[str, Any]) -> Dict[str, Any]
     """
     Ensure architecture.json has required metadata and schema extensions.
 
-    Schema extensions:
-    - Features have components list and completion_percentage
-    - Requirements have components list
-    - Components are linked to Features and Requirements
+    Strict schema: features and requirements must be lists of dicts (no strings).
+    Each feature dict: id, name, components, completion_percentage, status, requirements.
+    Each requirement dict: id, name, components, state.
 
     Args:
         architecture: Architecture dictionary
@@ -34,37 +33,39 @@ def ensure_architecture_metadata(architecture: Dict[str, Any]) -> Dict[str, Any]
     if "last_updated" not in architecture:
         architecture["last_updated"] = datetime.utcnow().isoformat()
 
-    # Ensure features have required fields
+    # Ensure features have required fields (strict: list of dicts with id, name, components, etc.)
     if "features" not in architecture:
         architecture["features"] = []
 
     for feature in architecture["features"]:
+        if not isinstance(feature, dict):
+            continue
         if "components" not in feature:
             feature["components"] = []
         if "completion_percentage" not in feature:
             feature["completion_percentage"] = 0
         if "status" not in feature:
             feature["status"] = "pending"
-
-        # Ensure requirements have components list
         if "requirements" not in feature:
             feature["requirements"] = []
 
         for req in feature.get("requirements", []):
-            if "components" not in req:
-                req["components"] = []
-            if "state" not in req:
-                req["state"] = "pending"
+            if isinstance(req, dict):
+                if "components" not in req:
+                    req["components"] = []
+                if "state" not in req:
+                    req["state"] = "pending"
 
-    # Ensure requirements list exists (top-level)
+    # Ensure requirements list exists (top-level); strict: list of dicts
     if "requirements" not in architecture:
         architecture["requirements"] = []
 
     for req in architecture["requirements"]:
-        if "components" not in req:
-            req["components"] = []
-        if "state" not in req:
-            req["state"] = "pending"
+        if isinstance(req, dict):
+            if "components" not in req:
+                req["components"] = []
+            if "state" not in req:
+                req["state"] = "pending"
 
     # Ensure goals list exists
     if "goals" not in architecture:

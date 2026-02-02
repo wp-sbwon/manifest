@@ -18,9 +18,40 @@ logger = get_logger(__name__)
 DEFAULT_AGENT = "manifest-orchestrator"
 CONTAINER_API_PORT = 4097
 
+# Project directory: cwd when running from a target project; in dev (manifest repo) use a temp dir inside the repo.
+# Override with MANIFEST_PROJECT_DIR (e.g. export MANIFEST_PROJECT_DIR=/path/to/project).
+DEV_PROJECT_DIR_NAME = "tmp"
+
+
+def _is_manifest_repo(path: Path) -> bool:
+    """True if path looks like the manifest repo (dev environment)."""
+    return (path / "src" / "manifest").is_dir()
+
+
+def _get_default_project_dir() -> Path:
+    """Return the session project directory. In dev (manifest repo) use tmp/ inside repo; else cwd."""
+    if os.environ.get("MANIFEST_PROJECT_DIR"):
+        p = Path(os.environ.get("MANIFEST_PROJECT_DIR", "")).resolve()
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    cwd = Path.cwd()
+    if _is_manifest_repo(cwd):
+        p = cwd / DEV_PROJECT_DIR_NAME
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    return cwd
+
+
+def _get_session_manifest_dir() -> Path:
+    """Return the .manifest directory for the session project (state, View, logs). Ensures it exists."""
+    d = _get_default_project_dir() / ".manifest"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
 
 def _get_manifest_dir() -> Path:
-    return (Path.cwd() / ".manifest").resolve()
+    """Return manifest dir for current session (project's .manifest)."""
+    return _get_session_manifest_dir()
 
 
 def _get_agent_name() -> str:
@@ -124,11 +155,34 @@ def _is_container_runtime_available() -> bool:
 
 
 def _start_view() -> Optional[subprocess.Popen]:
-    """Start the View app in a subprocess. Returns the Popen or None on failure."""
+    """Start the View app so the TUI is visible. On macOS opens a new Terminal window; otherwise runs in background with log."""
     manifest_dir = _get_manifest_dir()
+    cwd = os.getcwd()
+    src_root = Path(__file__).resolve().parent.parent
+    pypath = os.environ.get("PYTHONPATH", "") or str(src_root)
     try:
+        if platform.system() == "Darwin":
+            manifest_dir.mkdir(parents=True, exist_ok=True)
+            launch_script = manifest_dir / "view_launch.sh"
+            script_lines = [
+                "#!/bin/bash",
+                f'cd "{cwd}"',
+                "[ -f venv/bin/activate ] && source venv/bin/activate",
+                f'export PYTHONPATH="{pypath}"',
+                f'exec python -m manifest.view.app --manifest-dir "{manifest_dir}"',
+            ]
+            launch_script.write_text("\n".join(script_lines), encoding="utf-8")
+            launch_script.chmod(0o755)
+            subprocess.Popen(
+                ["open", "-a", "Terminal.app", str(launch_script)],
+                cwd=cwd,
+                env=os.environ,
+            )
+            logger.info("View launched in new Terminal window: %s", launch_script)
+            print("Manifest View opened in a new Terminal window.", file=sys.stderr)
+            return None
         view_log = manifest_dir.parent / ".manifest_view.log"
-        env = {**os.environ, "PYTHONPATH": os.environ.get("PYTHONPATH", "") or str(Path(__file__).resolve().parent.parent)}
+        env = {**os.environ, "PYTHONPATH": pypath}
         with open(view_log, "w") as log_file:
             proc = subprocess.Popen(
                 [
@@ -141,11 +195,11 @@ def _start_view() -> Optional[subprocess.Popen]:
                 stdin=subprocess.DEVNULL,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
-                cwd=os.getcwd(),
+                cwd=cwd,
                 env=env,
             )
         logger.info("View process started: pid=%s, log=%s", proc.pid, view_log)
-        print(f"Manifest View started (PID: {proc.pid}, log: {view_log})", file=sys.stderr)
+        print(f"Manifest View started in background (PID: {proc.pid}, log: {view_log})", file=sys.stderr)
         return proc
     except Exception as e:
         logger.error("Could not start Manifest View: %s", e, exc_info=True)
@@ -187,21 +241,34 @@ def _start_container_api() -> Optional[subprocess.Popen]:
         return None
 
 
+def _get_opencode_config_path() -> Optional[Path]:
+    """Path to opencode.json so OpenCode finds manifest-orchestrator when run in scratch. Prefer cwd, then manifest app root."""
+    for candidate in [Path.cwd() / "opencode.json", Path(__file__).resolve().parent.parent.parent / "opencode.json"]:
+        if candidate.exists():
+            return candidate.resolve()
+    return None
+
+
 def run_opencode() -> int:
-    """Run OpenCode in the current process (exec). Returns only on exec failure."""
+    """Run OpenCode in the current process (exec). Uses scratch project dir for a clean session."""
     opencode_path = _get_opencode_path()
     if not opencode_path:
         sys.stderr.write("opencode not found on PATH.\n")
         return 127
+    project_dir = _get_default_project_dir()
+    opencode_config = _get_opencode_config_path()
+    env = os.environ.copy()
+    if opencode_config:
+        env["OPENCODE_CONFIG"] = str(opencode_config)
     agent = _get_agent_name()
-    argv = [opencode_path, ".", "-c"]
+    argv = [opencode_path, str(project_dir), "-c"]
     if agent:
         argv.extend(["--agent", agent])
-        print(f"Starting OpenCode with agent: {agent}", file=sys.stderr)
-    else:
-        print("Starting OpenCode", file=sys.stderr)
+    print(f"Starting OpenCode in project: {project_dir}", file=sys.stderr)
+    if agent:
+        print(f"  Agent: {agent}", file=sys.stderr)
     try:
-        os.execv(opencode_path, argv)
+        os.execve(opencode_path, argv, env)
     except OSError as e:
         sys.stderr.write(f"opencode exec failed: {e}\n")
         return 127
