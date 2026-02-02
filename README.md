@@ -65,6 +65,8 @@ This document provides an overview of the development environment setup for the 
    ```
    This starts **OpenCode** (chat/commands) and the **Manifest View** (blueprint, drift, tasks). If OpenCode or Podman are missing, the launcher will try to install and start them; no manual install needed.
 
+   The app uses the **current working directory** as the project: navigate to your target directory in the terminal, then run `manifest`. In **dev** (when you run `manifest` from the manifest repo itself), it uses a temp project dir `tmp/` inside the repo so OpenCode and the View don't load the manifest codebase. Override with `MANIFEST_PROJECT_DIR` if needed.
+
 4. **Deactivate when done:**
    ```bash
    deactivate

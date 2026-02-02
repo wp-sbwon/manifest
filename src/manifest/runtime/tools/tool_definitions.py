@@ -237,7 +237,7 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
         },
         {
             "name": "drift_check",
-            "description": "Detect drift between design and code (component status: implemented/ghost/drift/extra).",
+            "description": "Detect drift between design and code (component status: implemented/design_only/drift/extra).",
             "input_schema": {
                 "type": "object",
                 "properties": {}

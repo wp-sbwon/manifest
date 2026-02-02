@@ -387,7 +387,7 @@ class BlueprintSynchronizer:
         architecture: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Calculate implementation status for components (Ghost/Drift/Implemented).
+        Calculate implementation status for components (design_only/drift/implemented/extra).
         Also calculates completion percentage for features.
 
         Args:
@@ -434,8 +434,8 @@ class BlueprintSynchronizer:
                 bu_comp = bu_components_by_name.get(comp_name)
 
             if not bu_comp:
-                # Component not found in code - Ghost
-                component_statuses[comp_id] = "ghost"
+                # Component in design but not found in code (design only)
+                component_statuses[comp_id] = "design_only"
             else:
                 # Component exists - check for drift
                 conflicts = self.comparator.compare_components([td_comp], [bu_comp])
@@ -479,7 +479,7 @@ class BlueprintSynchronizer:
                 total_count = len(feature_components)
 
                 for comp_id in feature_components:
-                    status = component_statuses.get(comp_id, "ghost")
+                    status = component_statuses.get(comp_id, "design_only")
                     if status == "implemented":
                         implemented_count += 1
                     elif status == "drift":

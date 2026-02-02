@@ -20,12 +20,19 @@ except ImportError:
 class GitManager:
     """Manages Git operations and integration with blueprints and tasks."""
 
-    def __init__(self, project_root: Optional[Path] = None):
-        self.project_root = project_root or Path.cwd()
+    def __init__(
+        self,
+        project_root: Optional[Path] = None,
+        search_parent_directories: bool = True,
+    ):
+        self.project_root = (project_root or Path.cwd()).resolve()
         self.repo = None
         if GIT_AVAILABLE:
             try:
-                self.repo = git.Repo(self.project_root, search_parent_directories=True)
+                self.repo = git.Repo(
+                    self.project_root,
+                    search_parent_directories=search_parent_directories,
+                )
             except Exception:
                 logger.warning("Not a git repository")
 

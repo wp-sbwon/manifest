@@ -2,7 +2,7 @@
 OpenCode Blueprint Sync and Drift Check tools.
 
 Orchestrator uses these to compare top-down vs bottom-up blueprints,
-detect drift (component status: implemented/ghost/drift/extra), and
+detect drift (component status: implemented/design_only/drift/extra), and
 run sync workflow.
 """
 from pathlib import Path
@@ -45,7 +45,7 @@ class BlueprintSyncTool:
             return {"ok": False, "error": str(e), "conflicts": [], "count": 0}
 
     def detect_drift(self) -> Dict[str, Any]:
-        """Detect drift; return component statuses (implemented/ghost/drift/extra)."""
+        """Detect drift; return component statuses (implemented/design_only/drift/extra)."""
         try:
             top_down = BlueprintLoader.load_blueprint(
                 self.manifest_dir,

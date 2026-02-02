@@ -1,13 +1,7 @@
-"""
-Manifest View App: visualization-only dashboard.
-
-Layout: header (metrics), sidebar (tasks, status, viz), main area (chat/terminal via configured backend).
-Task panel toggles with keybind t. Watches .manifest/
-for real-time sync.
-"""
+"""TUI dashboard: views 1–4 (Architect, Blueprint, History, Mission), panels t/i, v/d/f for Inspect."""
 import json
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Set
 from enum import Enum
 
 from textual.app import App, ComposeResult
@@ -28,12 +22,185 @@ from manifest.audit.monitoring.drift_monitor import DriftMonitor
 
 logger = get_logger(__name__)
 
-# Main area: chat and terminal are provided by the configured backend (e.g. OpenCode).
-MAIN_CHAT_PLACEHOLDER = "Chat and terminal are provided by the configured backend. Use that window for conversation and commands."
+
+def _blueprint_component_names(manifest_dir: Path) -> Dict[str, str]:
+    """Component id → display name from blueprint."""
+    try:
+        top_down = BlueprintLoader.load_blueprint(
+            manifest_dir, with_metadata=False, default_source="llm_design"
+        )
+        out: Dict[str, str] = {}
+        for c in top_down.get("components", []):
+            cid = c.get("id")
+            name = (c.get("name") or cid or "?")[:30]
+            if cid:
+                out[cid] = name
+        return out
+    except Exception:
+        return {}
+
+
+def _architecture_features_by_component(architecture: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Component id → feature names that reference it."""
+    comp_to_features: Dict[str, List[str]] = {}
+    for feat in architecture.get("features", []) or []:
+        if not isinstance(feat, dict):
+            continue
+        name = feat.get("name") or feat.get("id") or "?"
+        for cid in feat.get("components", []) or []:
+            comp_to_features.setdefault(cid, []).append(name)
+    return comp_to_features
+
+
+def _box(name: str, width: int) -> Tuple[str, str, str]:
+    """Three lines for a box (top/mid/bot)."""
+    w = max(width, 2)
+    content = name[:w].ljust(w)[:w]
+    top = "┌" + "─" * w + "┐"
+    mid = "│" + content + "│"
+    bot = "└" + "─" * w + "┘"
+    return top, mid, bot
+
+
+def _status_label(status: str) -> str:
+    if status == "implemented":
+        return "in code"
+    if status == "design_only":
+        return "design only"
+    if status == "drift":
+        return "drift"
+    if status == "extra":
+        return "extra"
+    return status
+
+
+def _status_color_tag(status: str) -> str:
+    """Rich color tag for status."""
+    if status == "implemented":
+        return "green"
+    if status == "design_only":
+        return "dim"
+    if status == "drift":
+        return "red"
+    if status == "extra":
+        return "cyan"
+    return "white"
+
+
+def _status_label_markup(status: str, text: Optional[str] = None) -> str:
+    plain = text if text is not None else _status_label(status)
+    tag = _status_color_tag(status)
+    return f"[{tag}]{plain}[/]"
+
+
+def _order_components_by_flow(
+    components: List[Dict[str, Any]],
+    contracts: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Order by contract from→to; append rest."""
+    id_to_comp: Dict[str, Dict[str, Any]] = {}
+    for c in components:
+        cid = c.get("id")
+        if cid:
+            id_to_comp[cid] = c
+    ordered: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+    for contract in contracts:
+        from_id = contract.get("from")
+        to_id = contract.get("to")
+        for cid in (from_id, to_id):
+            if cid and cid not in seen and cid in id_to_comp:
+                ordered.append(id_to_comp[cid])
+                seen.add(cid)
+    for c in components:
+        cid = c.get("id")
+        if cid and cid not in seen:
+            ordered.append(c)
+    return ordered[:12]
+
+
+def _render_blueprint_diagram(
+    blueprint: Dict[str, Any],
+    title: str = "Design",
+    comp_status: Optional[Dict[str, str]] = None,
+) -> str:
+    """Boxes connected by arrows (contract order), status under each."""
+    lines: List[str] = []
+    components = blueprint.get("components", [])
+    contracts = blueprint.get("contracts", [])
+    if not components and not contracts:
+        return ""
+    id_to_name: Dict[str, str] = {}
+    for c in components:
+        cid = c.get("id")
+        name = (c.get("name") or cid or "?")[:20]
+        if cid:
+            id_to_name[cid] = name
+    comp_list = _order_components_by_flow(components, contracts) if contracts else components[:12]
+    if not comp_list:
+        lines.append(title)
+        lines.append("  (no components)")
+        return "\n".join(lines)
+    arrow = " ───► "
+    boxes_top = []
+    boxes_mid = []
+    boxes_bot = []
+    status_labels: List[str] = []
+    for c in comp_list:
+        cid = c.get("id")
+        name = id_to_name.get(cid, (c.get("name") or cid or "?")[:20])
+        w = max(len(name), 2)
+        t, m, b = _box(name, w)
+        boxes_top.append(t)
+        boxes_mid.append(m)
+        boxes_bot.append(b)
+        st = (comp_status or {}).get(cid or "", "?")
+        plain = _status_label(st)[: w + 2].ljust(w + 2)
+        label = _status_label_markup(st, plain)
+        status_labels.append(label)
+    lines.append(title)
+    lines.append("  " + arrow.join(boxes_top))
+    lines.append("  " + arrow.join(boxes_mid))
+    lines.append("  " + arrow.join(boxes_bot))
+    if comp_status:
+        lines.append("  " + arrow.join(status_labels))
+    return "\n".join(lines).strip()
+
+
+def _render_architecture_diagram(architecture: Dict[str, Any]) -> str:
+    """Feature boxes in a row with arrows."""
+    lines: List[str] = []
+    features = architecture.get("features", [])
+    if not features:
+        return ""
+    lines.append("Diagram (architecture):")
+    names: List[str] = []
+    for feat in features[:12]:
+        if isinstance(feat, dict):
+            name = (feat.get("name") or feat.get("id") or "?")[:20]
+            names.append(name)
+    if not names:
+        return "Diagram (architecture):\n  (no features)"
+    arrow = " ───► "
+    boxes_top = []
+    boxes_mid = []
+    boxes_bot = []
+    for name in names:
+        w = max(len(name), 2)
+        t, m, b = _box(name, w)
+        boxes_top.append(t)
+        boxes_mid.append(m)
+        boxes_bot.append(b)
+    sep = "   "
+    lines.append("  " + arrow.join(boxes_top))
+    lines.append("  " + arrow.join(boxes_mid))
+    lines.append("  " + arrow.join(boxes_bot))
+    if len(features) > 12:
+        lines.append("  ...")
+    return "\n".join(lines)
 
 
 class ViewType(Enum):
-    """Sidebar view type."""
     ARCHITECT = "architect"
     BLUEPRINT = "blueprint"
     HISTORY = "history"
@@ -49,8 +216,6 @@ class InspectorMode(Enum):
 
 
 class ManifestViewApp(App[None]):
-    """View app per UI Redesign Plan: Header | Sidebar (Tasks, Status, Viz) | Main Chat Area. Task panel toggle."""
-
     TITLE = "Manifest Dashboard"
     SUB_TITLE = "Metrics"
     CSS = """
@@ -66,15 +231,17 @@ class ManifestViewApp(App[None]):
     .nav-item.active { background: #1f6feb; color: white; }
     #task-panel { height: auto; max-height: 40%; border-top: solid #30363d; background: #161b22; padding: 0 1; }
     .task-panel-hidden { display: none; }
+    #inspect-panel { height: auto; max-height: 40%; border-top: solid #30363d; background: #161b22; padding: 0 1; }
+    .inspect-panel-hidden { display: none; }
     """
 
     BINDINGS = [
         Binding("1", "switch_view('Architect')", "Architect", key_display="1"),
         Binding("2", "switch_view('Blueprint')", "Blueprint", key_display="2"),
         Binding("3", "switch_view('History')", "History", key_display="3"),
-        Binding("4", "switch_view('Inspector')", "Inspector", key_display="4"),
-        Binding("5", "switch_view('Mission')", "Mission", key_display="5"),
+        Binding("4", "switch_view('Mission')", "Mission", key_display="4"),
         Binding("t", "toggle_task_panel", "Task panel", key_display="t"),
+        Binding("i", "toggle_inspect_panel", "Inspect", key_display="i"),
         Binding("v", "switch_inspector_mode('Visual')", "Visual", key_display="v"),
         Binding("d", "switch_inspector_mode('Data')", "Data", key_display="d"),
         Binding("f", "switch_inspector_mode('Drift')", "Drift", key_display="f"),
@@ -88,6 +255,8 @@ class ManifestViewApp(App[None]):
         self.current_view = ViewType.BLUEPRINT
         self.inspector_mode = InspectorMode.DRIFT
         self._task_panel_visible = False
+        self._inspect_panel_visible = False
+        self._last_completed_task_ids: set = set()
         self._state_manager: Optional[StateManager] = None
         self._task_manager: Optional[TaskManager] = None
         self._blueprint_sync: Optional[BlueprintSynchronizer] = None
@@ -111,7 +280,10 @@ class ManifestViewApp(App[None]):
 
     def _get_git_manager(self) -> GitManager:
         if self._git_manager is None:
-            self._git_manager = GitManager(self.manifest_dir.parent)
+            self._git_manager = GitManager(
+                self.manifest_dir.parent,
+                search_parent_directories=False,
+            )
         return self._git_manager
 
     def _get_blueprint_comparator(self) -> BlueprintComparator:
@@ -120,7 +292,7 @@ class ManifestViewApp(App[None]):
         return self._blueprint_comparator
 
     def _get_tasks_and_sprints_from_manifest(self) -> Tuple[List[Dict[str, Any]], List[Any]]:
-        """Load tasks and sprints from .manifest/tasks.json if present; else from state."""
+        """Tasks and sprints from tasks.json or state."""
         tasks_file = self.manifest_dir / "tasks.json"
         if tasks_file.exists():
             try:
@@ -138,19 +310,22 @@ class ManifestViewApp(App[None]):
         return tasks, sprints
 
     def _load_architect_view(self) -> str:
-        """Load Architect View data (intent.json, architecture.json)."""
+        """Intent + architecture features."""
         lines = []
         try:
+            lines.append("Intent + architecture: features/capabilities and requirements. (Blueprint = structure & contracts.)")
+            lines.append("")
             intent_file = self.manifest_dir / "intent.json"
             if intent_file.exists():
                 with open(intent_file, "r", encoding="utf-8") as f:
                     intent = json.load(f)
                 features = intent.get("features", [])
-                lines.append(f"Features: {len(features)}")
+                lines.append(f"Intent Features: {len(features)}")
                 for feat in features[:20]:
-                    fid = feat.get("id", "?")
-                    name = feat.get("name", "?")[:50]
-                    lines.append(f"  · [{fid}] {name}")
+                    if isinstance(feat, dict):
+                        fid = feat.get("id", "?")
+                        name = (feat.get("name") or "?")[:50]
+                        lines.append(f"  · [{fid}] {name}")
                 if len(features) > 20:
                     lines.append(f"  ... and {len(features) - 20} more")
             else:
@@ -159,21 +334,31 @@ class ManifestViewApp(App[None]):
             arch_file = self.manifest_dir / "architecture.json"
             architecture = load_architecture_with_metadata(arch_file)
             features = architecture.get("features", [])
+            comp_names = _blueprint_component_names(self.manifest_dir)
             if features:
-                lines.append(f"\nArchitecture Features: {len(features)}")
+                lines.append(f"\nArchitecture Features: {len(features)} (→ structure = Blueprint component)")
                 for feat in features[:10]:
-                    fid = feat.get("id", "?")
-                    name = feat.get("name", "?")[:50]
-                    lines.append(f"  · [{fid}] {name}")
+                    if isinstance(feat, dict):
+                        fid = feat.get("id", "?")
+                        name = feat.get("name", "?")[:50]
+                        comp_ids = feat.get("components", []) or []
+                        linked = ", ".join(comp_names.get(c, c) for c in comp_ids[:5]) if comp_ids else "—"
+                        lines.append(f"  · [{fid}] {name}  → [{linked}]")
+                diagram = _render_architecture_diagram(architecture)
+                if diagram:
+                    lines.append("")
+                    lines.append(diagram)
         except Exception as e:
             logger.debug("Architect view load failed: %s", e)
             lines.append("Architect: (load failed)")
         return "\n".join(lines) if lines else "Architect: (no data)"
 
     def _load_blueprint_view(self) -> str:
-        """Load Blueprint View data (blueprint.json)."""
+        """Blueprint: components, contracts, status."""
         lines = []
         try:
+            lines.append("Blueprint: structure — components and contracts (who talks to whom). (Architect = intent & features.)")
+            lines.append("")
             top_down = BlueprintLoader.load_blueprint(
                 self.manifest_dir,
                 with_metadata=True,
@@ -185,26 +370,40 @@ class ManifestViewApp(App[None]):
             status_info = self._get_blueprint_sync().calculate_implementation_status(
                 top_down, bottom_up, architecture
             )
-            components = top_down.get("components", []) or bottom_up.get("components", [])
             comp_status = status_info.get("component_statuses", {})
-            lines.append(f"Components: {len(components)}")
-            for c in components[:30]:
-                cid = c.get("id", c.get("name", ""))
-                st = comp_status.get(cid, "unknown")
-                name = c.get("name", cid)[:50]
-                lines.append(f"  · {name}: {st}")
-            if len(components) > 30:
-                lines.append(f"  ... and {len(components) - 30} more")
+            implemented = sum(1 for s in comp_status.values() if s == "implemented")
+            design_only = sum(1 for s in comp_status.values() if s == "design_only")
+            drift = sum(1 for s in comp_status.values() if s == "drift")
+            lines.append(
+                "Summary: "
+                f"{_status_label_markup('implemented', f'{implemented} in code')}, "
+                f"{_status_label_markup('design_only', f'{design_only} design only')}, "
+                f"{_status_label_markup('drift', f'{drift} drift')}."
+            )
+            lines.append("")
+            diagram = _render_blueprint_diagram(top_down, "Design", comp_status)
+            if diagram:
+                lines.append(diagram)
+            else:
+                lines.append("(no components or contracts)")
+            comp_to_feats = _architecture_features_by_component(architecture)
+            id_to_name = {c.get("id"): (c.get("name") or c.get("id") or "?")[:30] for c in top_down.get("components", []) if c.get("id")}
+            if comp_to_feats and id_to_name:
+                lines.append("")
+                lines.append("Linked to Architect (feature per component):")
+                for cid, names in comp_to_feats.items():
+                    comp_name = id_to_name.get(cid, cid)
+                    feats = ", ".join(n[:25] for n in names[:3])
+                    lines.append(f"  {comp_name}  ↔  {feats}")
         except Exception as e:
             logger.debug("Blueprint view load failed: %s", e)
             lines.append("Blueprint: (load failed)")
         return "\n".join(lines) if lines else "Blueprint: (no data)"
 
     def _load_history_view(self) -> str:
-        """Load History View data: design doc history and Git commits."""
+        """Design history + git commits."""
         lines = []
         try:
-            # Design history (PRD, architecture, blueprint – versioned like git)
             from manifest.core.design_history import get_design_history
             design_entries = get_design_history(self.manifest_dir)
             if design_entries:
@@ -218,7 +417,6 @@ class ManifestViewApp(App[None]):
                 if len(design_entries) > 15:
                     lines.append(f"  ... and {len(design_entries) - 15} more")
                 lines.append("")
-            # Git commits
             git_mgr = self._get_git_manager()
             if git_mgr.is_available():
                 try:
@@ -247,10 +445,14 @@ class ManifestViewApp(App[None]):
         return "\n".join(lines) if lines else "History: (no data)"
 
     def _load_inspector_view(self) -> str:
-        """Load Inspector view data (drift, visual status, or data mode)."""
+        """Inspect panel: drift / visual / data."""
         lines = []
         try:
+            lines.append("Inspect: drill-down from Blueprint (v=Visual, d=Data, f=Drift).")
+            lines.append("")
             if self.inspector_mode == InspectorMode.DRIFT:
+                lines.append("Mode: Drift — design vs code conflicts.")
+                lines.append("")
                 top_down = BlueprintLoader.load_blueprint(
                     self.manifest_dir,
                     with_metadata=True,
@@ -268,6 +470,8 @@ class ManifestViewApp(App[None]):
                 if len(conflicts) > 20:
                     lines.append(f"  ... and {len(conflicts) - 20} more")
             elif self.inspector_mode == InspectorMode.VISUAL:
+                lines.append("Mode: Visual — component status counts (implemented / design only / drift).")
+                lines.append("")
                 top_down = BlueprintLoader.load_blueprint(
                     self.manifest_dir,
                     with_metadata=True,
@@ -281,22 +485,22 @@ class ManifestViewApp(App[None]):
                 )
                 comp_status = status_info.get("component_statuses", {})
                 implemented = sum(1 for s in comp_status.values() if s == "implemented")
-                ghost = sum(1 for s in comp_status.values() if s == "ghost")
+                design_only = sum(1 for s in comp_status.values() if s == "design_only")
                 drift = sum(1 for s in comp_status.values() if s == "drift")
-                lines.append(f"Visual Status:")
-                lines.append(f"  Implemented: {implemented}")
-                lines.append(f"  Ghost: {ghost}")
-                lines.append(f"  Drift: {drift}")
-            else:  # DATA mode
-                lines.append("Data Mode: (execution trace and I/O flow)")
-                lines.append("(Use orchestrator commands in OpenCode to view execution data)")
+                lines.append("Visual Status:")
+                lines.append(f"  {_status_label_markup('implemented', f'In code: {implemented}')}")
+                lines.append(f"  {_status_label_markup('design_only', f'Design only: {design_only}')}")
+                lines.append(f"  {_status_label_markup('drift', f'Drift: {drift}')}")
+            else:
+                lines.append("Mode: Data — execution trace and I/O flow from orchestrator/agents.")
+                lines.append("(Use OpenCode/orchestrator to run tasks; data appears when agents run.)")
         except Exception as e:
             logger.debug("Inspector view load failed: %s", e)
             lines.append("Inspector: (load failed)")
         return "\n".join(lines) if lines else "Inspector: (no data)"
 
     def _load_mission_control_view(self) -> str:
-        """Load Mission Control view data (tasks, sprints, channels; read-only). Prefers tasks.json."""
+        """Mission: tasks, sprints, channels, resources."""
         lines = []
         try:
             state_mgr = self._get_state_manager()
@@ -321,7 +525,6 @@ class ManifestViewApp(App[None]):
                     sid = s.get("id", "?") if isinstance(s, dict) else str(s)
                     name = s.get("name", sid)[:40] if isinstance(s, dict) else sid
                     lines.append(f"  · {name}")
-            # Worker squad channels (container/channel output)
             chat_history = state_mgr.get_state().get("chat_history", {})
             squad_channels = [c for c in chat_history if isinstance(c, str) and c.startswith("squad-")]
             if squad_channels:
@@ -335,7 +538,6 @@ class ManifestViewApp(App[None]):
                         lines.append(f"    {role}: {content}...")
             else:
                 lines.append("\nWorker squad channels: (none yet)")
-            # Shadow / per-component output (shadow-* channels)
             shadow_channels = [c for c in chat_history if isinstance(c, str) and c.startswith("shadow-")]
             if shadow_channels:
                 lines.append(f"\nComponent / shadow output: {len(shadow_channels)}")
@@ -348,7 +550,6 @@ class ManifestViewApp(App[None]):
                         lines.append(f"    {role}: {content}...")
             else:
                 lines.append("\nComponent / shadow output: (none yet)")
-            # Resources (tokens, limits, cost)
             lines.append("\nResources")
             try:
                 from manifest.core.config import ConfigManager
@@ -372,21 +573,19 @@ class ManifestViewApp(App[None]):
         return "\n".join(lines) if lines else "Mission Control: (no data)"
 
     def _get_current_view_content(self) -> str:
-        """Get content for current view."""
+        """Content for current view."""
         if self.current_view == ViewType.ARCHITECT:
             return self._load_architect_view()
         elif self.current_view == ViewType.BLUEPRINT:
             return self._load_blueprint_view()
         elif self.current_view == ViewType.HISTORY:
             return self._load_history_view()
-        elif self.current_view == ViewType.INSPECTOR:
-            return self._load_inspector_view()
         elif self.current_view == ViewType.MISSION_CONTROL:
             return self._load_mission_control_view()
         return "Unknown view"
 
     def _get_sidebar_tasks(self) -> str:
-        """Compact task list for sidebar. Prefers .manifest/tasks.json when present."""
+        """Sidebar task list."""
         try:
             tasks, _ = self._get_tasks_and_sprints_from_manifest()
             lines = [f"Tasks ({len(tasks)})"]
@@ -402,7 +601,7 @@ class ManifestViewApp(App[None]):
             return "Tasks (—)"
 
     def _get_sidebar_status(self) -> str:
-        """Component/implementation status summary for sidebar."""
+        """Sidebar status (in code / design only / drift)."""
         try:
             top_down = BlueprintLoader.load_blueprint(
                 self.manifest_dir, with_metadata=True, default_source="llm_design"
@@ -415,80 +614,103 @@ class ManifestViewApp(App[None]):
             )
             comp_status = status_info.get("component_statuses", {})
             imp = sum(1 for s in comp_status.values() if s == "implemented")
-            ghost = sum(1 for s in comp_status.values() if s == "ghost")
+            design_only = sum(1 for s in comp_status.values() if s == "design_only")
             drift = sum(1 for s in comp_status.values() if s == "drift")
-            return f"Status\n  Implemented: {imp}\n  Ghost: {ghost}\n  Drift: {drift}"
+            return (
+                "Status\n"
+                f"  {_status_label_markup('implemented', f'In code: {imp}')}\n"
+                f"  {_status_label_markup('design_only', f'Design only: {design_only}')}\n"
+                f"  {_status_label_markup('drift', f'Drift: {drift}')}"
+            )
         except Exception as e:
             logger.debug("Sidebar status failed: %s", e)
             return "Status (—)"
 
     def _get_sidebar_viz(self) -> str:
-        """Compact viz (current view) for sidebar."""
-        content = self._get_current_view_content()
-        lines = content.split("\n")[:18]
-        if len(content.split("\n")) > 18:
-            lines.append("  ...")
-        return "\n".join(lines) if lines else "Viz (no data)"
+        """Current view name."""
+        name = {
+            ViewType.ARCHITECT: "Architect",
+            ViewType.BLUEPRINT: "Blueprint",
+            ViewType.HISTORY: "History",
+            ViewType.MISSION_CONTROL: "Mission",
+        }.get(self.current_view, "—")
+        return f"View: {name}"
 
     def compose(self) -> ComposeResult:
         yield Header()
         with Container(id="header-strip"):
-            yield Static("Manifest Dashboard | Metrics", id="header-metrics")
+            yield Static(
+                "Manifest Dashboard | Metrics",
+                id="header-metrics",
+            )
         with Horizontal(id="body-row"):
             with Container(id="sidebar"):
                 with VerticalScroll(id="sidebar-scroll"):
                     yield Static("Tasks\n(loading)", id="sidebar-tasks", classes="sidebar-section")
                     yield Static("Status\n(loading)", id="sidebar-status", classes="sidebar-section")
-                    yield Static("Viz\n(loading)", id="sidebar-viz", classes="sidebar-section")
+                    yield Static("View\n(loading)", id="sidebar-viz", classes="sidebar-section")
             with Container(id="main"):
                 with VerticalScroll(id="main-scroll"):
-                    yield Static(MAIN_CHAT_PLACEHOLDER, id="main-chat-text")
+                    yield Static("", id="main-content")
         with Container(id="task-panel", classes="task-panel-hidden"):
             with VerticalScroll(id="task-panel-scroll"):
                 yield Static("", id="task-panel-text")
+        with Container(id="inspect-panel", classes="inspect-panel-hidden"):
+            with VerticalScroll(id="inspect-panel-scroll"):
+                yield Static("", id="inspect-panel-text")
         yield Footer()
 
     def on_mount(self) -> None:
         self._refresh_sidebar()
+        self._refresh_main_content()
         self._refresh_header_metrics()
         self.set_interval(30, self._refresh_sidebar)
         self.set_interval(30, self._refresh_header_metrics)
-        # Real-time sync: watch .manifest/ and refresh on change
         self._view_file_watcher = ViewFileWatcher(
             self.manifest_dir,
             on_change=self._on_manifest_change,
         )
         self.set_interval(2, self._check_manifest_changes)
-        # Drift: periodically update blueprint_code.json from code; View will refresh on file change
         self._drift_monitor = DriftMonitor(
             project_root=self.manifest_dir.parent,
             manifest_dir=self.manifest_dir,
         )
-        self._drift_monitor.start_monitoring(interval_seconds=10.0)
-        self.set_interval(10, self._check_drift)
+        self._check_drift()
 
     def _check_manifest_changes(self) -> None:
-        """Poll .manifest/ for file changes; watcher calls _on_manifest_change if any."""
+        """Check .manifest/ for changes."""
         try:
             self._view_file_watcher.check()
         except Exception as e:
             logger.debug("Manifest watch check failed: %s", e)
 
     def _on_manifest_change(self, changed_paths: List[Path]) -> None:
-        """Called when .manifest/ files change; refresh View."""
+        """On .manifest/ change: refresh; trigger drift if task completed."""
         if not changed_paths:
             return
+        task_or_state = any(
+            p.name in ("tasks.json", "state.json") for p in changed_paths
+        )
+        if task_or_state:
+            try:
+                tasks, _ = self._get_tasks_and_sprints_from_manifest()
+                completed = {t.get("id") for t in tasks if t.get("id") and t.get("status") == "completed"}
+                if completed - self._last_completed_task_ids:
+                    self._check_drift()
+                self._last_completed_task_ids = completed
+            except Exception as e:
+                logger.debug("Task-done drift check failed: %s", e)
         self.refresh_view()
 
     def _check_drift(self) -> None:
-        """Check code changes and update blueprint_code.json; View file watcher will refresh."""
+        """Update blueprint_code.json if code changed."""
         try:
             self._drift_monitor.check_and_update()
         except Exception as e:
             logger.debug("Drift check failed: %s", e)
 
     def _refresh_header_metrics(self) -> None:
-        """Update header metrics (tasks count, etc.). Prefers tasks.json when present."""
+        """Header: task count."""
         try:
             tasks, _ = self._get_tasks_and_sprints_from_manifest()
             n = len(tasks)
@@ -496,8 +718,16 @@ class ManifestViewApp(App[None]):
         except Exception:
             self.sub_title = "Metrics"
 
+    def _refresh_main_content(self) -> None:
+        """Refresh main content."""
+        try:
+            main_w = self.query_one("#main-content", Static)
+            main_w.update(self._get_current_view_content())
+        except Exception as e:
+            logger.debug("Main content refresh failed: %s", e)
+
     def _refresh_sidebar(self) -> None:
-        """Refresh sidebar: Tasks, Status, Viz."""
+        """Refresh sidebar."""
         try:
             tasks_w = self.query_one("#sidebar-tasks", Static)
             tasks_w.update(self._get_sidebar_tasks())
@@ -509,19 +739,21 @@ class ManifestViewApp(App[None]):
             logger.debug("Sidebar refresh failed: %s", e)
 
     def refresh_view(self) -> None:
-        """Refresh sidebar (viz follows current view) and task panel if visible."""
+        """Refresh all."""
         self._refresh_sidebar()
+        self._refresh_main_content()
         self._refresh_header_metrics()
         if self._task_panel_visible:
             self._refresh_task_panel()
+        if self._inspect_panel_visible:
+            self._refresh_inspect_panel()
 
     def action_switch_view(self, view_name: str) -> None:
-        """Switch to a different view."""
+        """Switch view (1–4)."""
         view_map = {
             "Architect": ViewType.ARCHITECT,
             "Blueprint": ViewType.BLUEPRINT,
             "History": ViewType.HISTORY,
-            "Inspector": ViewType.INSPECTOR,
             "Mission": ViewType.MISSION_CONTROL,
         }
         if view_name in view_map:
@@ -529,9 +761,7 @@ class ManifestViewApp(App[None]):
             self.refresh_view()
 
     def action_switch_inspector_mode(self, mode_name: str) -> None:
-        """Switch Inspector View mode (only when Inspector is active)."""
-        if self.current_view != ViewType.INSPECTOR:
-            return
+        """Set Inspect mode (v/d/f) and show panel."""
         mode_map = {
             "Visual": InspectorMode.VISUAL,
             "Data": InspectorMode.DATA,
@@ -539,10 +769,30 @@ class ManifestViewApp(App[None]):
         }
         if mode_name in mode_map:
             self.inspector_mode = mode_map[mode_name]
-            self.refresh_view()
+            if not self._inspect_panel_visible:
+                self._inspect_panel_visible = True
+                try:
+                    panel = self.query_one("#inspect-panel", Container)
+                    panel.remove_class("inspect-panel-hidden")
+                except Exception as e:
+                    logger.debug("Show inspect panel failed: %s", e)
+            self._refresh_inspect_panel()
+
+    def action_toggle_inspect_panel(self) -> None:
+        """Toggle Inspect panel."""
+        self._inspect_panel_visible = not self._inspect_panel_visible
+        try:
+            panel = self.query_one("#inspect-panel", Container)
+            if self._inspect_panel_visible:
+                panel.remove_class("inspect-panel-hidden")
+                self._refresh_inspect_panel()
+            else:
+                panel.add_class("inspect-panel-hidden")
+        except Exception as e:
+            logger.debug("Toggle inspect panel failed: %s", e)
 
     def action_toggle_task_panel(self) -> None:
-        """Toggle optional Task panel (keybind t)."""
+        """Toggle Task panel."""
         self._task_panel_visible = not self._task_panel_visible
         try:
             panel = self.query_one("#task-panel", Container)
@@ -555,13 +805,22 @@ class ManifestViewApp(App[None]):
             logger.debug("Toggle task panel failed: %s", e)
 
     def _refresh_task_panel(self) -> None:
-        """Refresh task panel content."""
+        """Refresh Task panel."""
         try:
             content = self._load_mission_control_view()
             w = self.query_one("#task-panel-text", Static)
             w.update(content)
         except Exception as e:
             logger.debug("Task panel refresh failed: %s", e)
+
+    def _refresh_inspect_panel(self) -> None:
+        """Refresh Inspect panel."""
+        try:
+            content = self._load_inspector_view()
+            w = self.query_one("#inspect-panel-text", Static)
+            w.update(content)
+        except Exception as e:
+            logger.debug("Inspect panel refresh failed: %s", e)
 
     def action_refresh(self) -> None:
         self.refresh_view()
@@ -571,7 +830,6 @@ class ManifestViewApp(App[None]):
 
 
 def run_view(manifest_dir: Optional[Path] = None) -> None:
-    """Run the View app (for launcher or standalone)."""
     app = ManifestViewApp(manifest_dir=manifest_dir)
     app.run()
 

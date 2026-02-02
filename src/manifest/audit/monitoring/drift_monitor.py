@@ -1,10 +1,9 @@
 """
-Drift Monitor: real-time drift monitoring.
+Drift Monitor: drift detection driven by task done or commit.
 
-Integrates with CodeWatcher: when code changes, blueprint_code.json is updated
-and View (which watches .manifest/) refreshes Blueprint and Drift views.
-DriftMonitor can run CodeWatcher on an interval so drift is recalculated
-whenever code changes.
+Integrates with CodeWatcher: call check_and_update() to refresh blueprint_code.json
+from code. View runs it once on mount and when a task becomes completed; commits
+trigger run_bottom_up_docs (which also updates blueprint_code.json). No timer interval.
 """
 from pathlib import Path
 from typing import Optional, Callable

@@ -61,6 +61,9 @@ htmlcov/
 .manifest/.key
 .manifest/conflicts/
 .manifest/blueprint_manifest.json
+.manifest/view_launch.sh
+# Dev: temp project dir when running manifest from this repo
+tmp/
 
 # Package structure (src layout)
 src/manifest/__pycache__/
