@@ -14,7 +14,7 @@ from manifest.core.config import get_config_manager
 from manifest.agents.context_provider import ContextProvider
 from manifest.agents.container_communication import ContainerMessageBus, ContainerStateSync
 from manifest.runtime.agent.core.manager import AgentManager
-from manifest.runtime.agent.core.executor import AgentExecutor
+from manifest.runtime.agent.core.executor_factory import ExecutorFactory
 from manifest.runtime.permissions.permission_manager import PermissionManager
 from manifest.runtime.router.terminal_router import TerminalRouter
 from manifest.runtime.tools.tool_executor import ToolExecutor
@@ -41,7 +41,7 @@ async def run_agent(task_id: str, agent_type: str):
 
     # Initialize communication
     # In a container, the base_url should point to the host machine or main app container
-    # Defaulting to manifest-app which should be defined in the docker network
+    # Defaulting to manifest-app which should be defined in the container network
     base_url = os.environ.get("MANIFEST_API_URL", "http://manifest-app:8000")
     message_bus = ContainerMessageBus(base_url=base_url, agent_id=task_id)
     await message_bus.connect()
@@ -54,8 +54,8 @@ async def run_agent(task_id: str, agent_type: str):
     task_scoper = TaskScoper(manifest_dir)
     context_provider = ContextProvider(manifest_dir, task_scoper)
 
-    executor = AgentExecutor(state_manager, config_manager)
-    agent_manager = AgentManager(executor, state_manager)
+    executor = ExecutorFactory.create_executor(config_manager, state_manager)
+    agent_manager = AgentManager(state_manager, executor=executor)
 
     # Initialize PermissionManager for this agent type
     permission_manager = PermissionManager(

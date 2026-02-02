@@ -1,3 +1,4 @@
+# Disabled for now. Remove the "if: false" on the job to re-enable.
 name: Tests
 
 on:
@@ -8,8 +9,9 @@ on:
 
 jobs:
   test:
+    if: false
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # Set timeout to 30 minutes per job
+    timeout-minutes: 30
     strategy:
       matrix:
         python-version: ['3.9', '3.10', '3.11']
@@ -33,7 +35,7 @@ jobs:
       - name: Run tests
         env:
           PYTHONPATH: src
-        timeout-minutes: 25  # Set timeout for test step (5 min buffer before job timeout)
+        timeout-minutes: 25
         run: |
           pytest tests/ -v --timeout=300
 

@@ -113,7 +113,7 @@ You are in Ideation mode. Your goal is to:
 4. Once all information is gathered, generate a complete PRD document
 5. Validate the PRD using the checklist before finalizing
 
-PRD Template location: `.claude/rules/prd-template.md`
+PRD Template location: `.rules/prd-template.md`
 """
     elif mode == "sprint_planning":
         mode_specific_instructions = """
@@ -125,7 +125,7 @@ You are in Sprint Planning mode. Your goal is to:
 3. Group tasks into Sprint(s) ensuring parallel execution feasibility
 4. Present Sprint plan to user for approval
 
-Task Granularity Rules location: `.claude/rules/task-granularity.md`
+Task Granularity Rules location: `.rules/task-granularity.md`
 """
     elif mode == "task_management":
         mode_specific_instructions = """
@@ -197,7 +197,7 @@ def get_ideation_prompt(
     ideation_history = ideation_history or []
 
     # Load PRD template
-    prd_template_path = Path(".claude/rules/prd-template.md")
+    prd_template_path = Path(".rules/prd-template.md")
     prd_template = ""
     if prd_template_path.exists():
         prd_template = prd_template_path.read_text(encoding="utf-8")

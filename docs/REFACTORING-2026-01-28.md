@@ -1,5 +1,7 @@
 # Refactoring Notes
 
+*Snapshot: 2026-01-28. Snapshot docs use `NAME-YYYY-MM-DD.md` so they are not treated as eternal.*
+
 High-level refactoring opportunities and completed work.
 
 ## Completed

@@ -24,7 +24,8 @@ module = [
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["tests/unit", "tests/integration", "tests/e2e"]
+testpaths = ["tests"]
+norecursedirs = [".git", ".tox", "dist", "build", "*.egg", "__pycache__", "tests/archive"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
@@ -34,6 +35,8 @@ name = "manifest"
 version = "0.1.0"
 description = "AI-Native Orchestration IDE"
 requires-python = ">=3.9"
+[project.scripts]
+manifest = "manifest.__main__:main"
 dependencies = [
     "textual>=0.40.0",
     "aiofiles>=23.2.0",

@@ -66,7 +66,7 @@ class ContextProvider:
         self.task_scoper = task_scoper or TaskScoper(manifest_dir)
         self.skills_manager = SkillsManager(manifest_dir, self.project_root)
         self.state_manager = state_manager or StateManager(manifest_dir)
-        self.policy_file = Path(".claude/rules/manifest-policy.md")
+        self.policy_file = Path(".rules/manifest-policy.md")
         self.intent_file = self.manifest_dir / "intent.json"
         self.architecture_file = self.manifest_dir / "architecture.json"
         self.blueprint_file = self.manifest_dir / "blueprint.json"
@@ -194,19 +194,19 @@ class ContextProvider:
                 with open(self.policy_file, "r", encoding="utf-8") as f:
                     content = f.read()
                 return {
-                    "source": ".claude/rules/manifest-policy.md",
+                    "source": ".rules/manifest-policy.md",
                     "content": content,
                     "type": "policy"
                 }
             except Exception as e:
                 return {
-                    "source": ".claude/rules/manifest-policy.md",
+                    "source": ".rules/manifest-policy.md",
                     "content": f"Error loading policy: {e}",
                     "type": "policy",
                     "error": True
                 }
         return {
-            "source": ".claude/rules/manifest-policy.md",
+            "source": ".rules/manifest-policy.md",
             "content": "",
             "type": "policy",
             "missing": True
@@ -457,8 +457,9 @@ class ContextProvider:
 
     def _get_task_description(self, task_id: str) -> str:
         """Get task description from state."""
-        # This would need state_manager, but to avoid circular dependency,
-        # we'll return a placeholder. In practice, this should be injected.
+        task = self.state_manager.get_task(task_id)
+        if task:
+            return task.get("name") or task.get("description") or f"Task {task_id}"
         return f"Task {task_id}"
 
     def get_sprint_context(self, sprint_id: str) -> Dict[str, Any]:

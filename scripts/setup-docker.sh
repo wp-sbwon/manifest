@@ -1,4 +1,6 @@
 #!/bin/bash
+# Optional: Docker Compose setup. The main app requires Podman (see scripts/setup.sh).
+# Use this script only if you run the app via docker-compose instead of the launcher.
 
 set -e
 

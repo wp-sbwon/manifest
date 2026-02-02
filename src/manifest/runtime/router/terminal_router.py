@@ -1,12 +1,8 @@
 """
-Terminal command routing and execution.
+Terminal command routing for programmatic use.
 
-This module provides the TerminalRouter class which executes terminal commands
-on behalf of agents using standard subprocess execution.
-
-The router handles command execution, streaming output, cancellation, and
-monitoring through an optional watchdog system. It also supports permission
-checking via PermissionManager for role-based access control.
+Terminal and tool execution for agents are handled by the configured backend (primary: OpenCode).
+This router is for programmatic command execution from Manifest code.
 """
 import asyncio
 import subprocess
@@ -39,21 +35,16 @@ class TerminalRouter:
         self,
         working_dir: Optional[Path] = None,
         watchdog=None,
-        use_opencode: Optional[bool] = None,  # Deprecated, kept for compatibility
+        use_opencode: Optional[bool] = None,
         permission_manager: Optional["PermissionManager"] = None,
         agent_type: Optional[str] = None
     ):
         """Initialize the terminal router.
 
-        Sets up the working directory and command tracking.
-
         Args:
             working_dir: Directory where commands should be executed.
-                Defaults to current working directory.
-            watchdog: Optional watchdog instance for monitoring command
-                execution and resource usage.
-            use_opencode: Deprecated parameter, kept for compatibility.
-                No longer used.
+            watchdog: Optional watchdog for monitoring command execution.
+            use_opencode: Unused; kept for compatibility.
             permission_manager: Optional PermissionManager for access control.
             agent_type: Optional agent type for permission checks.
         """

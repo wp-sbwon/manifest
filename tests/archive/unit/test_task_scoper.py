@@ -110,7 +110,7 @@ def test_task_granularity_validation(temp_manifest_dir):
     scoper = TaskScoper(temp_manifest_dir)
 
     # Create granularity rules file
-    rules_file = Path(".claude/rules/task-granularity.md")
+    rules_file = Path(".rules/task-granularity.md")
     rules_file.parent.mkdir(parents=True, exist_ok=True)
     rules_file.write_text("# Task Granularity Rules\n\nMax files: 12\nRecommended: 7")
 

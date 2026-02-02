@@ -1,9 +1,8 @@
 """
-OpenCode LLM adapter for agent execution.
+OpenCode backend adapter for agent execution.
 
-This module provides an adapter that uses OpenCode for LLM interactions instead
- of direct API calls. OpenCode handles context management, tool execution, and
- other optimizations, allowing Manifest to focus on workflow orchestration.
+One of the supported backends (primary). Handles LLM interactions, context management, and tool execution.
+Manifest focuses on workflow orchestration; the backend runs the model and tools.
 """
 import asyncio
 import json
@@ -277,6 +276,53 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
                 return None
 
         return None
+
+    BOTTOM_UP_DOCS_AGENT_ID = "bottom_up_docs"
+
+    async def call_llm_once(
+        self,
+        prompt: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """Send a single prompt to OpenCode and return the full response text.
+
+        Used by bottom-up doc generation (intent_code.json, architecture_code.json).
+        Creates or reuses a dedicated session for bottom-up docs.
+
+        Args:
+            prompt: Full prompt text to send.
+            context: Optional context dict (passed to OpenCode).
+
+        Returns:
+            Concatenated text content from all chunks. Empty string on error.
+        """
+        model_config = {
+            "provider": self.config_manager.get_setting("opencode.model_provider", "anthropic"),
+            "model": self.config_manager.get_setting("opencode.model", "claude-3-5-sonnet-20241022"),
+        }
+        session_id = self.active_sessions.get(self.BOTTOM_UP_DOCS_AGENT_ID, {}).get("session_id")
+        if not session_id:
+            session_id = await self._create_session(
+                model_config.get("model", "claude-3-5-sonnet-20241022"),
+                model_config.get("provider", "anthropic"),
+            )
+            if not session_id:
+                return ""
+            self.active_sessions[self.BOTTOM_UP_DOCS_AGENT_ID] = {
+                "session_id": session_id,
+                "agent_type": "bottom_up_docs",
+                "status": "running",
+            }
+        parts: List[str] = []
+        async for chunk in self._send_prompt(session_id, prompt, context, tools=None):
+            if chunk.get("type") in ("chunk", "complete") and chunk.get("content"):
+                parts.append(chunk["content"])
+            if chunk.get("type") == "error":
+                logger.warning("call_llm_once error chunk: %s", chunk.get("content"))
+                break
+        if self.BOTTOM_UP_DOCS_AGENT_ID in self.active_sessions:
+            self.active_sessions[self.BOTTOM_UP_DOCS_AGENT_ID]["status"] = "completed"
+        return "".join(parts)
 
     async def _send_prompt(
         self,

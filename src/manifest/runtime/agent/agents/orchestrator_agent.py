@@ -11,7 +11,7 @@ planning based on PRD, architecture, and blueprint data.
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List, AsyncIterator, TYPE_CHECKING
-from manifest.runtime.agent.core.executor import AgentExecutor
+from manifest.runtime.agent.core.base_executor import BaseAgentExecutor
 from manifest.runtime.agent.prompts.orchestrator_prompt import get_orchestrator_prompt
 from manifest.core.state_manager import StateManager
 
@@ -31,7 +31,7 @@ class OrchestratorAgent:
 
     Attributes:
         agent_id: Unique identifier for this agent instance.
-        executor: AgentExecutor for making LLM API calls.
+        executor: Backend executor for LLM and tool execution.
         state_manager: StateManager for persisting orchestrator output.
         message_history: List of conversation messages for context.
     """
@@ -39,7 +39,7 @@ class OrchestratorAgent:
     def __init__(
         self,
         agent_id: str,
-        executor: AgentExecutor,
+        executor: BaseAgentExecutor,
         state_manager: StateManager,
         terminal_router: Optional["TerminalRouter"] = None
     ):
@@ -203,7 +203,7 @@ class OrchestratorAgent:
 
         # Load task granularity rules
         granularity_rules = ""
-        granularity_file = Path(".claude/rules/task-granularity.md")
+        granularity_file = Path(".rules/task-granularity.md")
         if granularity_file.exists():
             granularity_rules = granularity_file.read_text(encoding="utf-8")
 

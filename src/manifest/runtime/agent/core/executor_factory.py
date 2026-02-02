@@ -1,34 +1,20 @@
 """
-Executor factory for creating agent executors based on configuration.
+Executor factory: creates the agent executor for the configured backend.
 
-This module provides a factory that creates the appropriate executor backend
-(direct LLM API, OpenCode) based on user settings.
-
-Note: Claude Code support is not currently implemented. OpenCode is the
-recommended backend for LLM interactions.
+Architecture supports multiple backends; the primary one is OpenCode.
+Chat, terminal, and tool execution are handled by the active backend.
 """
 from typing import Optional, Dict, Any, List
 from manifest.core.config import ConfigManager
 from manifest.core.state_manager import StateManager
 from manifest.runtime.agent.core.base_executor import BaseAgentExecutor
-from manifest.runtime.agent.core.executor import AgentExecutor
 from manifest.core.logger import get_logger
-
-# OpenCodeLLMAdapter imported lazily to avoid circular imports
 
 logger = get_logger(__name__)
 
 
 class ExecutorFactory:
-    """Factory for creating agent executors based on configuration.
-
-    Supports multiple execution backends:
-    - "direct": Direct LLM API calls (AgentExecutor)
-    - "opencode": OpenCode HTTP API (OpenCodeLLMAdapter) - Recommended
-
-    OpenCode is the default and recommended backend as it handles context
-    management, tool execution, and other optimizations automatically.
-    """
+    """Creates the executor for the configured backend. Multiple backends supported; primary is OpenCode."""
 
     @staticmethod
     def create_executor(
@@ -36,51 +22,16 @@ class ExecutorFactory:
         state_manager: StateManager,
         backend: Optional[str] = None
     ) -> BaseAgentExecutor:
-        """Create an agent executor based on configuration.
-
-        Args:
-            config_manager: Configuration manager for settings.
-            state_manager: State manager for persistence.
-            backend: Optional backend name. If None, reads from config.
-                Options: "direct", "opencode"
-                Default: "opencode" (recommended)
-
-        Returns:
-            BaseAgentExecutor instance configured for the selected backend.
-
-        Raises:
-            ValueError: If backend is not supported.
-        """
-        # Get backend from config if not provided
+        """Create the executor for the given backend. Default/primary backend is opencode."""
         if backend is None:
             backend = config_manager.get_setting("agent.execution_backend", "opencode")
 
-        logger.info(f"Creating agent executor with backend: {backend}")
-
-        if backend == "direct":
-            from manifest.runtime.hooks.prompt_hooks import HookManager
-            from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
-
-            hook_manager = HookManager()
-            blueprint_synchronizer = BlueprintSynchronizer()
-            from manifest.runtime.hooks.prompt_hooks import PolicyInjectionHook, VisualRealityHook
-            hook_manager.register_hook(PolicyInjectionHook(state_manager))
-            hook_manager.register_hook(VisualRealityHook(state_manager, blueprint_synchronizer))
-
-            return AgentExecutor(
-                config_manager,
-                state_manager,
-                hook_manager=hook_manager
-            )
-
-        elif backend == "opencode":
-            # Import here to avoid circular import
+        if backend == "opencode":
+            logger.info("Creating agent executor (backend: opencode)")
             from manifest.runtime.opencode_llm_adapter import OpenCodeLLMAdapter
-
             server_host = config_manager.get_setting("opencode.server_host", "localhost")
             server_port = config_manager.get_setting("opencode.server_port", 4096)
             auto_start = config_manager.get_setting("opencode.auto_start", True)
-
             return OpenCodeLLMAdapter(
                 config_manager,
                 state_manager,
@@ -89,17 +40,12 @@ class ExecutorFactory:
                 auto_start=auto_start
             )
 
-        else:
-            raise ValueError(
-                f"Unsupported execution backend: {backend}. "
-                f"Supported backends: 'direct', 'opencode'"
-            )
+        raise ValueError(
+            f"Unsupported execution backend: {backend!r}. "
+            "Supported backends: opencode (others may be added via config)."
+        )
 
     @staticmethod
     def get_available_backends() -> List[str]:
-        """Get list of available execution backends.
-
-        Returns:
-            List of backend names. Currently: ["direct", "opencode"]
-        """
-        return ["direct", "opencode"]
+        """Backends that can be used for execution. Primary is opencode; more can be added."""
+        return ["opencode"]

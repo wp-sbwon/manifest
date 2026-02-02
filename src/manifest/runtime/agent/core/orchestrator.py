@@ -86,10 +86,10 @@ class Orchestrator:
             String containing policy content, or default policy message if
             file doesn't exist or can't be read.
         """
-        # Load from .claude/rules/manifest-policy.md
+        # Load from .rules/manifest-policy.md
         try:
             from pathlib import Path
-            policy_path = Path(".claude/rules/manifest-policy.md")
+            policy_path = Path(".rules/manifest-policy.md")
             if policy_path.exists():
                 return policy_path.read_text(encoding="utf-8")
         except Exception:

@@ -1,15 +1,6 @@
 """
-Hooks System
-Context injection hooks and workflow automation.
-"""
-from manifest.runtime.hooks.prompt_hooks import (
-    PromptHook,
-    VisualRealityHook,
-    HookManager
-)
+Hooks package. Reserved for future use.
 
-__all__ = [
-    "PromptHook",
-    "VisualRealityHook",
-    "HookManager"
-]
+Prompt modification and context injection are handled by the configured backend.
+"""
+__all__: list = []

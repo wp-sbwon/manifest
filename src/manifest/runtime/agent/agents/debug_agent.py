@@ -8,7 +8,7 @@ instructions for the coder to implement fixes.
 """
 import json
 from typing import Dict, Any, Optional, List, AsyncIterator, TYPE_CHECKING
-from manifest.runtime.agent.core.executor import AgentExecutor
+from manifest.runtime.agent.core.base_executor import BaseAgentExecutor
 from manifest.core.state_manager import StateManager
 from manifest.runtime.tools.tool_executor import ToolExecutor
 from manifest.runtime.tools.tool_definitions import get_tool_definitions
@@ -50,7 +50,7 @@ class DebugAgent:
 
     Attributes:
         agent_id: Unique identifier for this agent instance.
-        executor: AgentExecutor for making LLM API calls.
+        executor: Backend executor for LLM and tool execution.
         state_manager: StateManager for persisting debug analysis.
         message_history: List of conversation messages for context.
     """
@@ -58,7 +58,7 @@ class DebugAgent:
     def __init__(
         self,
         agent_id: str,
-        executor: AgentExecutor,
+        executor: BaseAgentExecutor,
         state_manager: StateManager,
         terminal_router: Optional["TerminalRouter"] = None,
         tool_executor: Optional[ToolExecutor] = None

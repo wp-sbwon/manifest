@@ -120,10 +120,10 @@ class NetworkError(ManifestError):
 
 
 class ContainerError(ManifestError):
-    """Raised when Docker container operations fail.
+    """Raised when container runtime (Podman/Docker API) operations fail.
 
     Use this for errors related to container management. Examples: container
-    creation failure, Docker daemon not available, container communication
+    creation failure, container runtime not available, container communication
     errors.
     """
     pass

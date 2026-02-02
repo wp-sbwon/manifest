@@ -9,6 +9,11 @@ Manifest uses OpenCode with a custom `manifest-orchestrator` agent that handles:
 - Blueprint synchronization
 - Workflow orchestration
 
+## Model selection
+
+- **Primary (orchestrator)**: The model is **chosen by the user in the OpenCode terminal** when starting the session (or in OpenCode settings). Do not set `model` in agent JSON.
+- **Worker agents**: The user can **change the model per agent** via an OpenCode command (e.g. in-session command or settings per agent type). See OpenCode documentation for the exact command.
+
 ## Setup
 
 The agent configuration is automatically created in `.opencode/agents/manifest-orchestrator.json` when you run:
@@ -24,8 +29,17 @@ Or it's created automatically when you first run `manifest`.
 The agent is configured with:
 - **Name**: `manifest-orchestrator`
 - **Type**: Primary agent (main assistant)
-- **System Prompt**: Full orchestrator identity and workflow modes
+- **System Prompt**: Full orchestrator identity, workflow modes, and **instructions to follow project rules in `.rules/`** (task-granularity.md, prd-template.md, etc.)
 - **Capabilities**: Mission planning, task delegation, workflow coordination
+- **Model**: Not set in the JSON. **You choose the model in the OpenCode terminal** (or OpenCode settings). Do not hardcode a model in this repo.
+
+## Pre-loaded agents
+
+We ship **six agents** in `.opencode/agents/`: manifest-orchestrator (primary), manifest-planner, manifest-coder, manifest-test, manifest-debug, manifest-approver (workers). All have defined scope, role, and guidelines; no `model` field—model is chosen by you. See `.opencode/README.md`.
+
+## Project rules (.rules)
+
+The orchestrator and workers are instructed to **read and follow** `.rules/` (task-granularity.md, prd-template.md, code-style, etc.). That directory is the single source of truth for task granularity, PRD structure, and other policy. See `.rules/README.md` if present.
 
 ## Usage
 
@@ -104,12 +118,15 @@ If the agent doesn't behave correctly:
 
 ## Configuration
 
-You can customize the agent by editing `.opencode/agents/manifest-orchestrator.json`:
+You can customize any agent by editing its JSON under `.opencode/agents/`:
 
 - **systemPrompt**: Change the agent's behavior and instructions
-- **model**: Change the LLM model used
 - **tools**: Modify available tools
 - **capabilities**: Update agent capabilities
+
+**Model selection** (do not set in JSON):
+- **Primary/orchestrator**: Choose the model in the OpenCode terminal when you start the session (or in OpenCode settings).
+- **Worker agents**: Use the OpenCode command to change the model per agent (e.g. in-session command or settings per agent type). See OpenCode docs for the exact command.
 
 After changes, restart OpenCode for them to take effect.
 

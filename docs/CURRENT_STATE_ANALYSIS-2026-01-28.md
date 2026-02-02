@@ -1,8 +1,10 @@
 # Current State Analysis (code-only)
 
+*Snapshot: 2026-01-28. Snapshot docs use `NAME-YYYY-MM-DD.md` so they are not treated as eternal.*
+
 Analyzed without relying on docs. Summary of what the project is, feature completeness, and what needs to be done.
 
-**Note:** For up-to-date implementation status (what is done vs remaining), use **[New Architecture Implementation Status](./NEW_ARCHITECTURE_IMPLEMENTATION_STATUS.md)**. This analysis may describe an older state (e.g. before run_squad via Container API, tool_approval, design history, resources UI).
+**Note:** For up-to-date implementation status (what is done vs remaining), use **[New Architecture Implementation Status](./NEW_ARCHITECTURE_IMPLEMENTATION_STATUS-2026-01-28.md)**. This analysis may describe an older state (e.g. before run_squad via Container API, tool_approval, design history, resources UI).
 
 **Assess implementation and legacy against [Redesign Architecture and Intent](./REDESIGN_ARCHITECTURE_AND_INTENT.md)** for the target architecture and feature list from the redesign.
 
@@ -49,7 +51,7 @@ So we are **not** done with all features: the dashboard + OpenCode path works; t
 ## What the project is
 
 - **Entry**: `python -m manifest` → `__main__.main()` → `launcher.main()`.
-- **Launcher**: (1) Starts **View** (Textual TUI) as subprocess (`manifest.view.app`), (2) **exec**s `opencode . -c [--agent manifest-orchestrator]`. Requires `opencode` on PATH and prefers Docker (tries to install/start if missing).
+- **Launcher**: (1) Starts **View** (Textual TUI) as subprocess (`manifest.view.app`), (2) **exec**s `opencode . -c [--agent manifest-orchestrator]`. Requires `opencode` and **Podman** (tries to install/start if missing; uses Docker-compatible API via DOCKER_HOST).
 - **View** (`manifest.view.app`): Dashboard over `.manifest/` (tasks, blueprint, architect, history, inspector, mission). Reads `tasks.json`, `state.json`, `blueprint.json`, `architecture.json`, `intent.json`; uses StateManager, TaskManager, BlueprintSynchronizer, ViewFileWatcher.
 - **Rules**: `.rules/` holds task-granularity, prd-template, code-style. Loaded by skills_manager, context_provider, task_scoper, orchestrator prompts. No `.opencode/` or `.claude/` (removed).
 - **Runtime**: Agents (orchestrator, planner, coder, test, debug, approver), executor_factory, opencode tools (task_management, sprint_management, worker_squad_spawn, blueprint_sync), opencode_llm_adapter, permissions, terminal_router. All under `src/manifest/`.

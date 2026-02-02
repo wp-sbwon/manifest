@@ -1,7 +1,5 @@
 """
-Deprecated: use manifest.view for visualization.
-
-This package is a stub. Chat and terminal are handled by OpenCode.
-Use manifest.view.app.ManifestViewApp for the dashboard and structure views.
+Use manifest.view for visualization. Chat and terminal are provided by the configured backend.
+ManifestViewApp: manifest.view.app.ManifestViewApp
 """
 __all__: list = []

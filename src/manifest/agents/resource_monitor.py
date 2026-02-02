@@ -23,7 +23,7 @@ class ResourceMonitor:
         Initialize resource monitor.
 
         Args:
-            docker_client: Optional Docker client for container monitoring
+            docker_client: Optional Docker API client for container monitoring (Podman when DOCKER_HOST is set).
         """
         self.docker_client = docker_client
         self.monitoring = False

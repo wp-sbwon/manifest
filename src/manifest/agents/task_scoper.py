@@ -243,7 +243,7 @@ class TaskScoper:
         errors = []
 
         # Load granularity rules
-        granularity_file = Path(".claude/rules/task-granularity.md")
+        granularity_file = Path(".rules/task-granularity.md")
         if granularity_file.exists():
             rules_content = granularity_file.read_text(encoding="utf-8")
 

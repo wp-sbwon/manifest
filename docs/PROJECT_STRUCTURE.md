@@ -1,6 +1,6 @@
-# Project Structure (OpenCode-First)
+# Project Structure (multi-backend; primary: OpenCode)
 
-Current layout after the OpenCode-first redesign. Entry: `python -m manifest` → launcher → View (TUI) + OpenCode.
+Architecture supports multiple execution backends; the primary one is OpenCode. Entry: `python -m manifest` → launcher → View (TUI) + configured backend (e.g. OpenCode).
 
 **Assess the codebase against [Redesign Architecture and Intent](./REDESIGN_ARCHITECTURE_AND_INTENT.md)** for target architecture, feature list, and legacy removal/alter list.
 
@@ -52,7 +52,7 @@ manifest/
 | `core/` | StateManager, TaskManager, SprintManager, Config, … |
 | `agents/` | AgentCoordinator, ContextProvider, WorkerSquadExecutor, … |
 | `bridge/` | AgentBridge |
-| **ui/** | **Deprecated stub** – use `manifest.view` |
+| **ui/** | Stub – use `manifest.view` |
 
 ## Data flow
 
@@ -66,5 +66,5 @@ manifest/
 
 ## Docs
 
-- **Active**: `docs/README.md`, `docs/REDESIGN_ARCHITECTURE_AND_INTENT.md`, `docs/UI_REDESIGN_PLAN.md`, `docs/WORKER_SQUAD_AND_AGENTS.md`, `docs/PROJECT_STRUCTURE.md` (this file).
+- **Active**: `docs/README.md`, `docs/REDESIGN_ARCHITECTURE_AND_INTENT.md`, `docs/UI_REDESIGN_PLAN.md`, `docs/WORKER_SQUAD_AND_AGENTS.md`, `docs/PROJECT_STRUCTURE.md` (this file). Snapshot docs use `NAME-YYYY-MM-DD.md`: e.g. `NEW_ARCHITECTURE_IMPLEMENTATION_STATUS-2026-01-28.md`, `REFACTORING-2026-01-28.md`.
 - **Archive**: `docs/archive/superseded-2026/`, `docs/archive/v1.0/` – superseded planning and status docs.

@@ -1,23 +1,16 @@
 """
 Core agent system components.
 
-This package contains the foundational components of the agent system:
-- AgentExecutor: LLM API execution engine
+- BaseAgentExecutor: Base interface for backend executors
 - AgentManager: Agent lifecycle management
 - Orchestrator: High-level mission coordination
-- BaseAgentExecutor: Base interface for executors
-- ExecutorFactory: Factory for creating executors
+- ExecutorFactory: Factory for creating the configured backend executor
 """
-from .executor import AgentExecutor
 from .manager import AgentManager
 from .orchestrator import Orchestrator
 from .base_executor import BaseAgentExecutor
 
-# ExecutorFactory imported lazily to avoid circular imports
-# It imports OpenCodeLLMAdapter which may cause import issues at module level
-
 __all__ = [
-    "AgentExecutor",
     "AgentManager",
     "Orchestrator",
     "BaseAgentExecutor",
