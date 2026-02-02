@@ -916,7 +916,7 @@ class ToolExecutor:
             return self._tool_result(tool_input, "worker_squad_spawn", error=str(e))
 
     def _execute_blueprint_sync(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute blueprint_sync tool (compare_blueprints, detect_drift, sync_blueprint)."""
+        """Execute blueprint_sync tool (compare_blueprints, detect_drift, sync_blueprint, compare_all_docs)."""
         from manifest.runtime.opencode.tools.blueprint_sync import BlueprintSyncTool
         tool = BlueprintSyncTool(self.manifest_dir)
         action = (tool_input.get("action") or "").strip()
@@ -930,6 +930,8 @@ class ToolExecutor:
             elif action == "sync_blueprint":
                 mode = (tool_input.get("mode") or "workflow").strip()
                 out = tool.sync_blueprint(mode=mode)
+            elif action == "compare_all_docs":
+                out = tool.compare_all_docs()
             else:
                 return self._tool_result(tool_input, "blueprint_sync", error=f"Unknown action: {action}")
             return self._tool_result(tool_input, "blueprint_sync", result=out)

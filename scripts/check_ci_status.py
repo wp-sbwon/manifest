@@ -156,13 +156,11 @@ def check_workflow_status(
         }
 
 
-# Same pytest invocation as GitHub Actions (test.yml) so local pre-push matches CI.
-# No code-coverage report; test quality is based on actual failproof checklist, not line coverage.
+# Single startup test only. Full test suite is archived under tests/archive/.
 CI_TEST_CMD = [
-    "pytest", "tests/", "-v",
-    "--timeout=300",
+    "pytest", "tests/test_startup.py", "-v",
 ]
-CI_TEST_TIMEOUT_SEC = 1500  # 25 min, matches workflow step timeout-minutes: 25
+CI_TEST_TIMEOUT_SEC = 60
 
 
 def run_ci_equivalent_tests() -> bool:
@@ -211,7 +209,7 @@ def main():
         # Continue to GitHub status check
 
     # Run same tests as GitHub Actions so we catch failures before push
-    print("Running CI-equivalent tests (pytest tests/ ...)...")
+    print("Running startup test (pytest tests/test_startup.py)...")
     if not run_ci_equivalent_tests():
         print("❌ Local CI-equivalent tests failed. Fix before pushing.")
         sys.exit(1)

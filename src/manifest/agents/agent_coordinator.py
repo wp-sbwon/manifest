@@ -1,15 +1,11 @@
 """
 Agent coordination and lifecycle management for Manifest.
 
-This module provides the AgentCoordinator class which orchestrates the
-execution of different agent types (orchestrator, planner, coder, etc.)
-with proper task boundaries and scoping. It manages agent startup,
-execution, and communication, and supports both direct execution and
-Docker container-based execution.
+Orchestrates execution of agent types (orchestrator, planner, coder, etc.)
+with task boundaries and scoping. Manages agent startup, execution, and
+communication; supports in-process and container-based execution (Podman).
 
-The coordinator delegates complex workflows to specialized executors:
-WorkerSquadExecutor for task execution workflows and SprintExecutor for
-sprint management.
+Delegates workflows to WorkerSquadExecutor and SprintExecutor. LLM and tools are run by the configured backend (primary: OpenCode).
 """
 import asyncio
 from typing import Dict, Any, Optional, List
@@ -30,14 +26,9 @@ logger = get_logger(__name__)
 class AgentCoordinator:
     """Coordinates agent execution and lifecycle management.
 
-    This class serves as the central coordinator for all agent operations.
-    It manages orchestrator and worker agent startup, delegates complex
-    workflows to specialized executors, and handles both direct execution
-    and Docker container-based execution modes.
-
-    The coordinator uses dependency injection to access various services
-    (AgentBridge, ContextProvider, TaskScoper, etc.) and creates executor
-    instances for Worker Squad and Sprint operations.
+    Central coordinator for agent operations: orchestrator and worker startup,
+    workflow delegation to WorkerSquadExecutor and SprintExecutor, and
+    in-process or container-based execution (Podman). LLM and tools are run by the configured backend (primary: OpenCode).
 
     Attributes:
         agent_bridge: Bridge for agent communication and execution.
@@ -49,8 +40,8 @@ class AgentCoordinator:
         terminal_router: Router for terminal command execution.
         orchestrator: Orchestrator agent instance.
         agent_manager: Manager for agent lifecycle.
-        container_manager: Manager for Docker container operations.
-        use_containers: Whether Docker containers are available and enabled.
+        container_manager: Manager for container operations (Podman/Docker API).
+        use_containers: Whether containers are available and enabled.
         state_sync: Container state synchronization handler (if using containers).
         worker_squad_executor: Executor for Worker Squad workflows.
         sprint_executor: Executor for Sprint operations.
@@ -67,8 +58,9 @@ class AgentCoordinator:
         """Initialize the agent coordinator.
 
         Sets up all necessary components including container management,
-        state synchronization, and workflow executors. Detects if Docker
-        is available and configures container execution accordingly.
+        state synchronization, and workflow executors. Detects if the
+        container runtime (Podman/Docker API) is available and configures
+        container execution accordingly.
 
         Args:
             agent_bridge: Bridge instance for agent communication.
@@ -89,7 +81,7 @@ class AgentCoordinator:
         self.orchestrator = agent_bridge.orchestrator
         self.agent_manager = agent_bridge.agent_manager
 
-        # Set up container management. Docker is required for worker squad containers.
+        # Set up container management. Container runtime (Podman) is required for worker squad.
         self.container_manager = ContainerManager(require_docker=True, auto_start=True)
         self.use_containers = self.container_manager.is_docker_available()
 
@@ -183,8 +175,8 @@ class AgentCoordinator:
         """Start a worker agent to work on a specific task.
 
         Worker agents (planner, coder, test, etc.) are started with task-specific
-        context and scope. The agent can run either directly or in a Docker
-        container, depending on configuration and availability.
+        context and scope. The agent can run either directly or in a container
+        (Podman via Docker-compatible API), depending on configuration and availability.
 
         The agent receives context including the task description, scope boundaries,
         and results from previous stages if this is part of a multi-stage workflow.
@@ -194,7 +186,7 @@ class AgentCoordinator:
             agent_type: Type of worker agent to start. Valid values: "planner",
                 "coder", "test", "debug", "approver", "self_review", etc.
             use_container: Whether to force container execution. If None, uses
-                the coordinator's default (auto-detects Docker availability).
+                the coordinator's default (auto-detects container runtime availability).
             stage: Current stage in the workflow (e.g., "planner", "tdd_test",
                 "coder", "test", "debug", "self_review", "approver"). Used to
                 provide stage-specific context.
@@ -263,7 +255,7 @@ class AgentCoordinator:
         should_use_container = use_container if use_container is not None else self.use_containers
 
         if should_use_container and self.container_manager.is_docker_available():
-            # Start agent in Docker container
+            # Start agent in container (Podman/Docker API)
             container_id = await self.container_manager.start_agent_container(
                 task_id=task_id,
                 agent_type=agent_type,
@@ -304,10 +296,10 @@ class AgentCoordinator:
                 await self.state_manager.save_state()
                 return True
             else:
-                # Fall back to direct execution if container fails
-                logger.warning(f"Failed to start container, falling back to direct execution")
+                # Fall back to in-process execution if container fails
+                logger.warning("Failed to start container, falling back to in-process execution")
 
-        # Start via agent bridge (direct execution)
+        # Start via agent bridge (in-process)
         success = await self.agent_bridge.start_agent_mission(
             task_id=task_id,
             agent_type=agent_type,
@@ -430,14 +422,14 @@ class AgentCoordinator:
                 logger.debug(f"Agent {task_id} completed (removed from active_agents)")
                 break
 
-            # Check agent status via bridge (for direct execution) - PRIMARY CHECK
+            # Check agent status via bridge (in-process) - PRIMARY CHECK
             if self.agent_bridge and task_id in self.agent_bridge._active_agents:
                 agent_info = self.agent_bridge._active_agents[task_id]
                 if agent_info.get("completed") or agent_info.get("status") in ["completed", "stopped", "failed"]:
                     logger.debug(f"Agent {task_id} completed (bridge status: {agent_info.get('status')})")
                     break
 
-            # Check AgentExecutor's active_sessions (if available)
+            # Check backend executor's active_sessions (if available)
             if self.agent_bridge and hasattr(self.agent_bridge, 'executor'):
                 executor = self.agent_bridge.executor
                 if executor and hasattr(executor, 'active_sessions'):
@@ -830,7 +822,7 @@ class AgentCoordinator:
         """Stop an agent that's currently working on a task.
 
         Stops the agent and cleans up resources. For containerized agents,
-        stops the Docker container. For direct execution, stops the agent
+        stops the container. For in-process execution, stops the agent
         process through the agent bridge.
 
         Args:
@@ -849,7 +841,7 @@ class AgentCoordinator:
         success = False
 
         if execution_mode == "container":
-            # Stop the Docker container
+            # Stop the container
             success = await self.container_manager.stop_agent_container(task_id)
         else:
             # Stop via agent bridge

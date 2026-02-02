@@ -5,7 +5,7 @@ This module provides the SkillsManager class which manages agent skills from
 multiple sources:
 1. Agent default skills from agent_config.json
 2. Project-scoped skills from AGENTS.md
-3. Skill definitions from .claude/rules/*.md files
+3. Skill definitions from .rules/*.md files
 
 Skills provide agents with capabilities, tools, and knowledge that guide their
 behavior. The manager filters and formats skills based on agent type and task scope.
@@ -23,7 +23,7 @@ class SkillsManager:
     """Manages agent skills from multiple sources.
 
     Loads skills from agent_config.json (agent defaults), AGENTS.md
-    (project-scoped), and .claude/rules/ (skill definitions). Filters
+    (project-scoped), and .rules/ (skill definitions). Filters
     and formats skills based on agent type and task scope.
 
     Attributes:
@@ -31,7 +31,7 @@ class SkillsManager:
         project_root: Root directory of the project.
         agent_config_file: Path to agent_config.json.
         agents_md_file: Path to AGENTS.md.
-        claude_rules_dir: Path to .claude/rules/ directory.
+        rules_dir: Path to .rules/ directory.
         _agent_skills: Dictionary mapping agent types to skill ID lists.
         _project_skills: List of project-scoped skill dictionaries.
         _skill_definitions: Dictionary mapping skill IDs to skill definitions.
@@ -41,7 +41,7 @@ class SkillsManager:
         """Initialize the skills manager.
 
         Sets up paths to skill sources and loads all available skills.
-        Skills are loaded from agent_config.json, AGENTS.md, and .claude/rules/.
+        Skills are loaded from agent_config.json, AGENTS.md, and .rules/.
 
         Args:
             manifest_dir: Path to .manifest directory. Defaults to .manifest.
@@ -51,7 +51,7 @@ class SkillsManager:
         self.project_root = project_root or Path.cwd()
         self.agent_config_file = self.manifest_dir / "agent_config.json"
         self.agents_md_file = self.project_root / "AGENTS.md"
-        self.claude_rules_dir = self.project_root / ".claude" / "rules"
+        self.rules_dir = self.project_root / ".rules"
 
         self._agent_skills = {}  # agent_type -> list of skill IDs
         self._project_skills = []  # List of project-scoped skills
@@ -71,7 +71,7 @@ class SkillsManager:
         # Load project-scoped skills from AGENTS.md
         self._load_project_skills()
 
-        # Load skill definitions from .claude/rules/
+        # Load skill definitions from .rules/
         self._load_skill_definitions()
 
     def _load_agent_default_skills(self) -> None:
@@ -119,7 +119,7 @@ class SkillsManager:
 
         Follows OpenCode conventions for skill definitions in AGENTS.md.
         Looks for skills sections and skill definitions, as well as references
-        to .claude/rules/*.md files.
+        to .rules/*.md files.
 
         Args:
             content: Full text content of AGENTS.md.
@@ -153,11 +153,11 @@ class SkillsManager:
                     "type": "project"
                 })
 
-        # Also look for references to .claude/rules/*.md files
-        rule_ref_pattern = r'\.claude/rules/([\w\-]+)\.md'
+        # Also look for references to .rules/*.md files
+        rule_ref_pattern = r'\.rules/([\w\-]+)\.md'
         for match in re.finditer(rule_ref_pattern, content):
             rule_name = match.group(1)
-            rule_file = self.claude_rules_dir / f"{rule_name}.md"
+            rule_file = self.rules_dir / f"{rule_name}.md"
 
             if rule_file.exists():
                 skills.append({
@@ -171,17 +171,17 @@ class SkillsManager:
         return skills
 
     def _load_skill_definitions(self) -> None:
-        """Load skill definitions from .claude/rules/ directory.
+        """Load skill definitions from .rules/ directory.
 
-        Scans the .claude/rules/ directory for .md files and parses them
+        Scans the .rules/ directory for .md files and parses them
         as skill definitions. Each file becomes a skill with metadata
         extracted from the markdown content.
         """
-        if not self.claude_rules_dir.exists():
+        if not self.rules_dir.exists():
             return
 
-        # Load all .md files in .claude/rules/ as potential skills
-        for rule_file in self.claude_rules_dir.glob("*.md"):
+        # Load all .md files in .rules/ as potential skills
+        for rule_file in self.rules_dir.glob("*.md"):
             # Skip manifest-policy.md (it's Tier 0, not a skill)
             if rule_file.name == "manifest-policy.md":
                 continue
@@ -219,7 +219,7 @@ class SkillsManager:
             "name": skill_id,
             "file": str(file_path.relative_to(self.project_root)),
             "content": content,
-            "source": ".claude/rules/",
+            "source": ".rules/",
             "type": "rule"
         }
 
@@ -343,7 +343,7 @@ class SkillsManager:
         """Get the full content of a skill by its ID.
 
         Retrieves the markdown content of a skill definition. This is the
-        full text from the .claude/rules/*.md file.
+        full text from the .rules/*.md file.
 
         Args:
             skill_id: ID of the skill to retrieve content for.
@@ -441,7 +441,7 @@ class SkillsManager:
             return False
 
     def save_skill_file(self, skill_id: str, content: str) -> bool:
-        """Save a skill definition file to .claude/rules/.
+        """Save a skill definition file to .rules/.
 
         Writes a markdown file containing the skill definition. The file
         is named {skill_id}.md. After saving, reloads skill definitions
@@ -455,9 +455,9 @@ class SkillsManager:
             True if saved successfully, False if file creation fails.
             Errors are logged.
         """
-        skill_file = self.claude_rules_dir / f"{skill_id}.md"
+        skill_file = self.rules_dir / f"{skill_id}.md"
         try:
-            self.claude_rules_dir.mkdir(parents=True, exist_ok=True)
+            self.rules_dir.mkdir(parents=True, exist_ok=True)
             with open(skill_file, "w", encoding="utf-8") as f:
                 f.write(content)
             # Reload skill definitions

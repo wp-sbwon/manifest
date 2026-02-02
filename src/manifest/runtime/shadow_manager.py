@@ -315,28 +315,15 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent / "src"))
 from manifest.core.state_manager import StateManager
 from manifest.core.config import ConfigManager
 from manifest.runtime.agent.core.manager import AgentManager
-from manifest.runtime.agent.core.executor import AgentExecutor
-from manifest.runtime.hooks.prompt_hooks import HookManager, VisualRealityHook
-from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
+from manifest.runtime.agent.core.executor_factory import ExecutorFactory
 
 async def main():
-    """Run agent in shadow process."""
+    """Run agent in shadow process. Uses OpenCode for LLM execution."""
     manifest_dir = Path("{self.manifest_dir}")
 
-    # Initialize managers
     state_manager = StateManager(manifest_dir)
     config_manager = ConfigManager(manifest_dir)
-
-    # Initialize hook manager
-    hook_manager = HookManager()
-    blueprint_synchronizer = BlueprintSynchronizer()
-    visual_reality_hook = VisualRealityHook(state_manager, blueprint_synchronizer)
-    hook_manager.register_hook(visual_reality_hook)
-
-    # Initialize agent executor
-    executor = AgentExecutor(config_manager, state_manager, hook_manager=hook_manager)
-
-    # Initialize agent manager
+    executor = ExecutorFactory.create_executor(config_manager, state_manager)
     agent_manager = AgentManager(state_manager, executor=executor)
 
     # Load context and model config

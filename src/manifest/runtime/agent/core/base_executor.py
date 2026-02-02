@@ -1,9 +1,7 @@
 """
 Base executor interface for agent execution.
 
-This module defines the abstract base class that all agent executors must implement.
-This allows Manifest to support multiple execution backends (direct LLM API calls,
-OpenCode) while maintaining a consistent interface.
+All backends implement this interface. Manifest supports multiple backends; the primary one handles LLM and tool execution.
 """
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List, AsyncIterator

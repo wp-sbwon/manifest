@@ -21,7 +21,6 @@ from manifest.core.logger import get_logger
 logger = get_logger(__name__)
 
 # Default settings when .manifest/settings.json is missing.
-# OpenCode is the default backend; use agent.execution_backend: "direct" for direct LLM API.
 # tool_approval.ask_before_tool_run: when True, state-changing tools require user approval before execution.
 DEFAULT_SETTINGS = {
     "agent": {"execution_backend": "opencode"},
@@ -90,11 +89,7 @@ class ConfigManager:
         self._cipher = Fernet(key)
 
     def _ensure_default_settings(self) -> None:
-        """Create .manifest/settings.json with default template if it does not exist.
-
-        Defaults use OpenCode as execution backend. Users can edit the file
-        or set agent.execution_backend to \"direct\" to use direct LLM API.
-        """
+        """Create .manifest/settings.json with default template if it does not exist."""
         settings_file = self.manifest_dir / "settings.json"
         if settings_file.exists():
             return
@@ -172,32 +167,14 @@ class ConfigManager:
             return False
 
     def has_all_keys(self) -> bool:
-        """Check if all required API keys are present.
-
-        Returns:
-            True if all three required keys (anthropic, google, openai) are
-            set and non-empty, False otherwise.
-        """
+        """Check if API keys are sufficient. When the backend manages keys (e.g. opencode), no keys required here."""
+        if self.get_setting("agent.execution_backend", "opencode") == "opencode":
+            return True
         keys = self.get_api_keys()
-        return all(keys.get(k) for k in ["anthropic", "google", "openai"])
+        return all(keys.get(k) for k in ["anthropic", "openai"])
 
     async def validate_key(self, provider: str, key: str) -> bool:
-        """Validate an API key by making a test request to the provider.
-
-        Makes a minimal API call to verify the key is valid. Different
-        providers use different validation approaches:
-        - Anthropic: Makes a test message request (200 or 400 means valid)
-        - OpenAI: Lists models endpoint (200 means valid)
-        - Google: Currently just checks key is non-empty (placeholder)
-
-        Args:
-            provider: Name of the provider ("anthropic", "openai", "google").
-            key: API key string to validate.
-
-        Returns:
-            True if the key appears to be valid, False otherwise. Returns
-            False on any exception (network error, invalid key, etc.).
-        """
+        """Validate an API key. When using a backend that manages keys (e.g. opencode), keys are not stored here."""
         try:
             if provider == "anthropic":
                 async with httpx.AsyncClient() as client:
@@ -221,13 +198,8 @@ class ConfigManager:
                         timeout=5.0
                     )
                     return response.status_code == 200
-            elif provider == "google":
-                # Placeholder: Google API validation not fully implemented
-                # For now, just check that key is non-empty
-                return len(key) > 0
-            return False
+            return len(key) > 0
         except Exception:
-            # Any exception means validation failed
             return False
 
     async def validate_all_keys(self) -> Dict[str, bool]:

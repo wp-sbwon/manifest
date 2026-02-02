@@ -62,7 +62,7 @@ def temp_manifest_dir(tmp_path):
         json.dump(architecture, f)
 
     # Create policy file
-    policy_dir = tmp_path / ".claude" / "rules"
+    policy_dir = tmp_path / ".rules"
     policy_dir.mkdir(parents=True)
     with open(policy_dir / "manifest-policy.md", "w") as f:
         f.write("# Test Policy")

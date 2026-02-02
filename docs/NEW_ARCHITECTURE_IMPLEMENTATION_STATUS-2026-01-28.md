@@ -1,5 +1,7 @@
 # New Architecture Implementation Status
 
+*Snapshot: 2026-01-28. Snapshot docs use `NAME-YYYY-MM-DD.md` so they are not treated as eternal.*
+
 Audit of **FEATURES_AND_REQUIREMENTS_USER_FLOW.md** (15 features) and **REDESIGN_ARCHITECTURE_AND_INTENT.md** (target architecture + checklist).
 **Design is the source of truth;** this doc answers: *Is everything in the new architecture implemented?*
 
@@ -24,7 +26,7 @@ Audit of **FEATURES_AND_REQUIREMENTS_USER_FLOW.md** (15 features) and **REDESIGN
 | **1** | Use service like OpenCode | **Done** | Launcher starts View + OpenCode; no duplicate chat/terminal. |
 | **2** | Ideate → PRD → top-down docs | **Done** | Ideation mode and PRD path exist. Design history: PRD/architecture/blueprint saves record to .manifest/design_history.json; View History shows design history + Git commits. |
 | **3** | Sprints and tasks | **Done** | task_management / sprint_management tools, .manifest/tasks.json, View task list and progress. |
-| **4** | Task breakdown for Worker Squad (TDD) | **Done** | WorkflowDefinition, WorkerSquadExecutor, stages. **Trigger:** run_squad works via Container API (ToolExecutor calls POST /api/worker_squad/run when worker_squad_runner not set; Launcher starts Container API when Docker available). Optional: inject worker_squad_runner on ToolExecutor for in-process path. |
+| **4** | Task breakdown for Worker Squad (TDD) | **Done** | WorkflowDefinition, WorkerSquadExecutor, stages. **Trigger:** run_squad works via Container API (ToolExecutor calls POST /api/worker_squad/run when worker_squad_runner not set; Launcher starts Container API when Podman available). Optional: inject worker_squad_runner on ToolExecutor for in-process path. |
 | **5** | Worker squad in containers | **Done** | ContainerManager, runner.py, Container API from Launcher; run_squad triggers full workflow via API. |
 | **6** | Worker traces and read-only rooms | **Done** | State/channels for squad messages; View Mission Control shows worker squad channels (squad-* from chat_history). OpenCode terminal channel switching is integration-dependent. |
 | **7** | E2E test agent at orchestrator level | **Done** | manifest-full-test registered by `scripts/setup_opencode_agent.py`; same tier as manifest-orchestrator. User can run `opencode . --agent manifest-full-test -c`. |
@@ -50,7 +52,7 @@ Audit of **FEATURES_AND_REQUIREMENTS_USER_FLOW.md** (15 features) and **REDESIGN
 | Tasks/sprints → tasks.json → View | **Done** |
 | Blueprint/drift → View | **Done** |
 | State → state.json, Tiered context | **Done** |
-| Workers in containers; host runs Container API | **Done** (Launcher starts Container API when Docker available) |
+| Workers in containers; host runs Container API | **Done** (Launcher starts Container API when Podman available) |
 
 ---
 

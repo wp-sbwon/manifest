@@ -1,14 +1,14 @@
 """
-Docker container management for agent execution.
+Container management for agent execution (Podman via Docker-compatible API).
 
-This module provides the ContainerManager class which manages Docker containers
+This module provides the ContainerManager class which manages containers
 for running agents. Each agent can run in its own isolated container, providing
-resource management, isolation, and monitoring capabilities.
+resource management, isolation, and monitoring capabilities. The launcher
+ensures Podman is installed and running and sets DOCKER_HOST so this manager
+connects to Podman's Docker-compatible API.
 
 The container manager handles container lifecycle (start, stop, status), resource
 monitoring, and inter-container communication via a message bus.
-
-Like OpenCode, this manager automatically starts Docker if it's not running.
 """
 import asyncio
 import docker
@@ -25,18 +25,19 @@ logger = get_logger(__name__)
 
 
 class ContainerManager:
-    """Manages Docker containers for isolated agent execution.
+    """Manages containers for isolated agent execution (Podman via Docker-compatible API).
 
-    Handles the complete lifecycle of Docker containers used for running
-    agents. Each agent runs in its own container, providing isolation,
-    resource limits, and monitoring capabilities.
+    Handles the complete lifecycle of containers used for running agents.
+    Each agent runs in its own container, providing isolation, resource limits,
+    and monitoring capabilities. Connects via docker.from_env() (DOCKER_HOST
+    set by launcher to Podman socket when using Podman).
 
     The manager maintains a message bus for inter-container communication
     and tracks container metadata for status monitoring.
 
     Attributes:
-        client: Docker client instance (None if Docker unavailable).
-        docker_available: Boolean indicating if Docker is available.
+        client: Docker API client instance (None if container runtime unavailable).
+        docker_available: Boolean indicating if the container runtime is available.
         active_containers: Dictionary mapping task IDs to container objects.
         container_metadata: Dictionary mapping task IDs to container metadata.
         message_bus: ContainerMessageBus for inter-container communication.
@@ -46,18 +47,18 @@ class ContainerManager:
     def __init__(self, docker_client: Optional[docker.DockerClient] = None, require_docker: bool = True, auto_start: bool = True):
         """Initialize the container manager.
 
-        Attempts to connect to Docker and verify it's available. If Docker is not
-        running and auto_start is True, automatically starts Docker (like OpenCode).
+        Attempts to connect to the container runtime (Podman when DOCKER_HOST is set)
+        and verify it's available. If the runtime is not running and auto_start is True,
+        attempts to start it (Docker Desktop or Podman machine/socket).
 
         Args:
-            docker_client: Optional pre-configured Docker client. If not
-                provided, creates a new client from environment.
-            require_docker: If True, raises exception when Docker is unavailable.
-                           If False, operates in degraded mode (default: True).
-            auto_start: If True, automatically starts Docker if not running (default: True).
+            docker_client: Optional pre-configured Docker API client. If not
+                provided, creates a new client from environment (DOCKER_HOST).
+            require_docker: If True, raises exception when runtime is unavailable.
+            auto_start: If True, attempts to start the runtime if not running (default: True).
 
         Raises:
-            RuntimeError: If Docker is required but not available and cannot be started.
+            RuntimeError: If container runtime is required but not available and cannot be started.
         """
         self.require_docker = require_docker
         self.auto_start = auto_start
@@ -66,17 +67,17 @@ class ContainerManager:
             self.client = docker_client or docker.from_env()
             self.client.ping()  # Test connection
             self.docker_available = True
-            logger.info("Docker is available and connected")
+            logger.info("Container runtime (Podman/Docker API) is available and connected")
         except Exception as e:
             error_msg = str(e)
             is_connection_error = "No such file or directory" in error_msg or "Connection aborted" in error_msg
 
-            # Try to auto-start Docker if enabled (synchronous attempt)
+            # Try to auto-start runtime if enabled (synchronous attempt)
             if auto_start and is_connection_error:
-                logger.info("Docker daemon not running, attempting to start automatically...")
+                logger.info("Container runtime not running, attempting to start automatically...")
                 docker_start_attempted = self._start_docker()
                 if docker_start_attempted:
-                    logger.info("Docker start command executed. Will verify connection when needed.")
+                    logger.info("Container runtime start command executed. Will verify connection when needed.")
                     # Don't wait here - connection will be verified when actually needed
                     self.client = None
                     self.docker_available = False  # Will be set to True when ensure_docker_running succeeds
@@ -87,21 +88,20 @@ class ContainerManager:
                 self.client = None
                 self.docker_available = False
 
-            # Raise exception if Docker is required but unavailable (and auto-start failed or disabled)
+            # Raise exception if container runtime is required but unavailable
             if require_docker and not self.docker_available:
                 if is_connection_error:
                     if auto_start:
-                        # Auto-start was attempted, but we'll verify later
-                        logger.warning("Docker daemon not running. Auto-start attempted. Will verify when needed.")
+                        logger.warning("Container runtime not running. Auto-start attempted. Will verify when needed.")
                     else:
                         raise RuntimeError(
-                            "Docker daemon is not running. Please start Docker Desktop manually.\n"
-                            "Manifest requires Docker to run agents in isolated containers."
+                            "Container runtime (Podman) is not running. Start Podman (e.g. podman machine start) or set DOCKER_HOST.\n"
+                            "Manifest requires a container runtime to run agents in isolated containers."
                         ) from e
                 else:
                     raise RuntimeError(
-                        f"Docker is required but not available: {error_msg}\n"
-                        "Please ensure Docker is installed and running."
+                        f"Container runtime is required but not available: {error_msg}\n"
+                        "Please ensure Podman (or Docker) is installed and running."
                     ) from e
 
         self.active_containers: Dict[str, docker.models.containers.Container] = {}
@@ -112,18 +112,19 @@ class ContainerManager:
         self._message_bus_connected = False
 
     def _start_docker(self) -> bool:
-        """Automatically start Docker daemon (like OpenCode does).
+        """Attempt to start the container runtime (Docker Desktop or Podman).
 
-        Attempts to start Docker Desktop on macOS/Windows or Docker daemon on Linux.
+        Attempts to start Docker Desktop on macOS/Windows or Docker/Podman on Linux.
+        When Manifest is run via the launcher, Podman is already started and DOCKER_HOST is set.
 
         Returns:
-            True if Docker start was attempted, False otherwise.
+            True if a start was attempted, False otherwise.
         """
         system = platform.system()
 
         try:
             if system == "Darwin":  # macOS
-                # Try to start Docker Desktop
+                # Try to start Docker Desktop (fallback when not using Podman)
                 docker_app_paths = [
                     "/Applications/Docker.app",
                     "/Applications/Docker Desktop.app"
@@ -139,7 +140,7 @@ class ContainerManager:
                         )
                         return True
 
-                # If Docker Desktop not found, try docker command
+                # If Docker Desktop not found, try docker/podman CLI
                 try:
                     subprocess.run(
                         ["docker", "info"],
@@ -150,43 +151,51 @@ class ContainerManager:
                     )
                     return True
                 except:
-                    logger.warning("Docker Desktop not found. Please install Docker Desktop for macOS.")
+                    logger.warning("Docker Desktop not found. Use Podman (launcher installs/starts it) or install Docker Desktop for macOS.")
                     return False
 
             elif system == "Linux":
-                # Try to start Docker daemon
-                logger.info("Attempting to start Docker daemon...")
+                # Try to start Docker or Podman daemon/socket
+                logger.info("Attempting to start container runtime (Docker or Podman)...")
                 try:
-                    # Check if docker command exists
+                    # Check if docker/podman command exists
                     subprocess.run(
                         ["docker", "--version"],
                         check=True,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE
                     )
-                    # Try to start Docker service (may require sudo)
+                    # Try to start Docker or Podman service (may require sudo)
                     result = subprocess.run(
-                        ["sudo", "systemctl", "start", "docker"],
+                        ["sudo", "systemctl", "start", "podman.socket"],
                         check=False,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE,
                         timeout=5
                     )
+                    if result.returncode != 0:
+                        result = subprocess.run(
+                            ["sudo", "systemctl", "start", "docker"],
+                            check=False,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            timeout=5
+                        )
                     if result.returncode == 0:
-                        logger.info("Docker daemon started successfully")
+                        logger.info("Container runtime (Podman/Docker) started successfully")
                         return True
                     else:
-                        logger.warning("Could not start Docker daemon (may require sudo privileges)")
+                        logger.warning("Could not start container runtime (may require sudo privileges)")
                         return False
                 except FileNotFoundError:
-                    logger.warning("Docker is not installed. Please install Docker Engine.")
+                    logger.warning("Container runtime not installed. Install Podman or Docker Engine.")
                     return False
                 except subprocess.TimeoutExpired:
-                    logger.warning("Docker start command timed out")
+                    logger.warning("Container runtime start command timed out")
                     return False
 
             elif system == "Windows":
-                # Try to start Docker Desktop on Windows
+                # Try to start Docker Desktop on Windows (fallback when not using Podman)
                 docker_paths = [
                     "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe",
                     "C:\\Program Files (x86)\\Docker\\Docker\\Docker Desktop.exe"
@@ -202,51 +211,50 @@ class ContainerManager:
                         )
                         return True
 
-                logger.warning("Docker Desktop not found. Please install Docker Desktop for Windows.")
+                logger.warning("Docker Desktop not found. Use Podman (launcher installs/starts it) or install Docker Desktop for Windows.")
                 return False
             else:
                 logger.warning(f"Unsupported platform: {system}")
                 return False
 
         except Exception as e:
-            logger.error(f"Error starting Docker: {e}", exc_info=True)
+            logger.error(f"Error starting container runtime: {e}", exc_info=True)
             return False
 
     def is_docker_available(self) -> bool:
-        """Check if Docker is available and ready to use.
+        """Check if the container runtime (Podman/Docker API) is available and ready to use.
 
         Returns:
-            True if Docker daemon is accessible and working, False otherwise.
+            True if the runtime is accessible and working, False otherwise.
         """
         return self.docker_available
 
     async def ensure_docker_running(self) -> bool:
-        """Ensure Docker is running, starting it if necessary.
+        """Ensure the container runtime (Podman/Docker API) is running, starting it if necessary.
 
-        Like OpenCode's server management, this ensures Docker is available
-        before operations that require it.
+        Ensures the runtime is available before operations that require it.
 
         Returns:
-            True if Docker is available, False otherwise.
+            True if the container runtime is available, False otherwise.
         """
         if self.docker_available:
             return True
 
         if self.auto_start:
-            logger.info("Docker not available, attempting to start...")
+            logger.info("Container runtime not available, attempting to start...")
             if self._start_docker():
-                # Wait for Docker to start
+                # Wait for the runtime to start
                 for attempt in range(30):  # Wait up to 30 seconds
                     await asyncio.sleep(1)
                     try:
                         self.client = docker.from_env()
                         self.client.ping()
                         self.docker_available = True
-                        logger.info("Docker is now available")
+                        logger.info("Container runtime is now available")
                         return True
                     except Exception:
                         continue
-                logger.warning("Docker did not start within timeout")
+                logger.warning("Container runtime did not start within timeout")
                 return False
             else:
                 return False
@@ -261,9 +269,9 @@ class ContainerManager:
         volumes: Optional[Dict[str, Dict[str, str]]] = None,
         network: str = "manifest-network"
     ) -> Optional[str]:
-        """Start a Docker container for an agent.
+        """Start a container for an agent.
 
-        Creates and starts a Docker container running the agent. The container
+        Creates and starts a container running the agent. The container
         is configured with the appropriate environment variables, volume mounts,
         and network settings. If a container with the same name already exists
         and is running, returns its ID.
@@ -275,11 +283,11 @@ class ContainerManager:
                 in the container.
             volumes: Optional dictionary of volume mappings (host path to
                 container path).
-            network: Docker network name to connect the container to.
+            network: Container network name to connect the container to.
                 Defaults to "manifest-network".
 
         Returns:
-            Container ID string if successful, None if Docker is unavailable
+            Container ID string if successful, None if container runtime is unavailable
             or container creation fails.
         """
         if not self.docker_available:
@@ -381,13 +389,13 @@ class ContainerManager:
             task_id: ID of the task whose container should be stopped.
 
         Returns:
-            True if container was found and stopped, False if Docker is
+            True if container was found and stopped, False if container runtime is
             unavailable or container doesn't exist.
         """
-        # Ensure Docker is running before stopping container
+        # Ensure container runtime is running before stopping container
         if not self.docker_available:
             if not await self.ensure_docker_running():
-                logger.error("Cannot stop container: Docker is not available")
+                logger.error("Cannot stop container: container runtime is not available")
                 return False
 
         if task_id not in self.active_containers:
@@ -420,7 +428,7 @@ class ContainerManager:
     async def get_container_status(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Get current status and resource usage of a container.
 
-        Queries Docker for the container's current state, CPU usage, memory
+        Queries the container runtime for the container's current state, CPU usage, memory
         usage, and other metadata. Useful for monitoring and resource tracking.
 
         Args:
@@ -428,9 +436,9 @@ class ContainerManager:
 
         Returns:
             Dictionary containing container status, resource usage, and metadata,
-            or None if Docker is unavailable or container doesn't exist.
+            or None if container runtime is unavailable or container doesn't exist.
         """
-        # Ensure Docker is running before getting status
+        # Ensure container runtime is running before getting status
         if not self.docker_available:
             if not await self.ensure_docker_running():
                 return None
@@ -458,13 +466,13 @@ class ContainerManager:
             return None
 
     def _calculate_cpu_percent(self, stats: Dict[str, Any]) -> float:
-        """Calculate CPU usage percentage from Docker container stats.
+        """Calculate CPU usage percentage from container stats.
 
-        Parses Docker stats dictionary to compute CPU usage as a percentage.
+        Parses container stats dictionary to compute CPU usage as a percentage.
         Returns 0.0 if calculation fails or stats are incomplete.
 
         Args:
-            stats: Docker container stats dictionary from container.stats().
+            stats: Container stats dictionary from container.stats().
 
         Returns:
             CPU usage percentage as a float, or 0.0 if calculation fails.
@@ -498,7 +506,7 @@ class ContainerManager:
         Returns:
             List of log lines
         """
-        # Ensure Docker is running before getting logs
+        # Ensure container runtime is running before getting logs
         if not self.docker_available:
             if not await self.ensure_docker_running():
                 return []
@@ -528,10 +536,10 @@ class ContainerManager:
 
     async def cleanup_all(self):
         """Stop and remove all managed containers."""
-        # Ensure Docker is running before cleanup
+        # Ensure container runtime is running before cleanup
         if not self.docker_available:
             if not await self.ensure_docker_running():
-                logger.warning("Cannot cleanup containers: Docker is not available")
+                logger.warning("Cannot cleanup containers: container runtime is not available")
                 return
 
         for task_id in list(self.active_containers.keys()):

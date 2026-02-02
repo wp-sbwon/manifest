@@ -1,14 +1,8 @@
 """
-Agent bridge for direct integration with the agent system.
+Agent bridge: integration between UI/coordination and agent execution.
 
-This module provides the AgentBridge class which serves as the main integration
-point between the UI/coordination layer and the actual agent execution system.
-It manages the orchestrator, agent manager, terminal router, and handles
-starting agent missions.
-
-The bridge coordinates multiple components including terminal execution,
-resource monitoring, watchdog supervision, and shadow process management for
-isolated agent execution.
+Manages orchestrator, agent manager, terminal router, and starting agent missions.
+Supports multiple execution backends (primary: OpenCode). Coordinates terminal execution, resource monitoring, watchdog, and shadow processes.
 """
 import asyncio
 import json
@@ -20,7 +14,6 @@ from manifest.core.logger import get_logger
 from manifest.runtime.router.terminal_router import TerminalRouter
 from manifest.runtime.agent.core.orchestrator import Orchestrator
 from manifest.runtime.agent.core.manager import AgentManager
-from manifest.runtime.agent.core.executor import AgentExecutor
 
 logger = get_logger(__name__)
 
@@ -33,15 +26,13 @@ class AgentBridge:
     orchestrator, agent manager, terminal router, resource monitoring, and
     watchdog supervision.
 
-    The bridge can operate agents directly or in shadow processes for isolation.
-    It also manages prompt hooks for intercepting and modifying prompts before
-    they reach the LLM.
+    Operates agents in-process or in shadow processes. LLM and tools are run by the configured backend (primary: OpenCode).
 
     Attributes:
         state_manager: Manages application state persistence.
         config_manager: Manages configuration and API keys.
         working_dir: Working directory for agent operations.
-        resource_monitor: Monitors Docker container resources.
+        resource_monitor: Monitors container resources (Podman/Docker API).
         watchdog: Monitors and supervises agent operations.
         terminal_router: Routes terminal commands for execution.
         executor: Executes agents via LLM API calls.
@@ -84,14 +75,14 @@ class AgentBridge:
         from manifest.agents.resource_monitor import ResourceMonitor
         from manifest.agents.watchdog import AgentWatchdog
 
-        # Resource monitor (Docker is optional)
+        # Resource monitor (container runtime optional; uses DOCKER_HOST for Podman)
         try:
             import docker
             docker_client = docker.from_env()
             docker_client.ping()  # Test connection
             self.resource_monitor = ResourceMonitor(docker_client)
         except Exception:
-            # Docker not available - resource monitor will work without Docker
+            # Container runtime not available - resource monitor will work without it
             self.resource_monitor = ResourceMonitor(None)
 
         # Watchdog for monitoring
@@ -105,7 +96,7 @@ class AgentBridge:
         self.watchdog.terminal_router = self.terminal_router
 
         # Agent executor for LLM calls (created via factory)
-        # Factory selects backend based on config (direct, opencode)
+        # Executor from factory (backend from config; primary: opencode)
         from manifest.runtime.agent.core.executor_factory import ExecutorFactory
         self.executor = ExecutorFactory.create_executor(
             config_manager or ConfigManager(),
@@ -238,7 +229,6 @@ class AgentBridge:
             # Use Shadow Manager for isolated execution
             return await self._start_shadow_agent(task_id, agent_type, context, model_config, stage)
         else:
-            # Use direct execution (existing method)
             return await self._start_direct_agent(task_id, agent_type, context, model_config, stage)
 
     async def _start_shadow_agent(
@@ -347,7 +337,7 @@ class AgentBridge:
         model_config: Dict[str, Any],
         stage: Optional[str] = None
     ) -> bool:
-        """Start agent with direct execution (existing method)."""
+        """Start agent using the configured backend executor."""
         # Create ToolExecutor with approval_manager and auditor for permission requests and logging
         from manifest.runtime.tools.tool_executor import ToolExecutor
         from manifest.runtime.tools.file_manager import FileManager

@@ -1,8 +1,8 @@
 """
 Manifest View App: visualization-only dashboard.
 
-Layout: header (metrics), sidebar (tasks, status, viz), main area (placeholder;
-chat runs in OpenCode). Task panel toggles with keybind t. Watches .manifest/
+Layout: header (metrics), sidebar (tasks, status, viz), main area (chat/terminal via configured backend).
+Task panel toggles with keybind t. Watches .manifest/
 for real-time sync.
 """
 import json
@@ -28,16 +28,8 @@ from manifest.audit.monitoring.drift_monitor import DriftMonitor
 
 logger = get_logger(__name__)
 
-# Main chat area placeholder (chat runs in OpenCode)
-MAIN_CHAT_PLACEHOLDER = """Main Chat Area (OpenCode style)
-
-Chat runs in the OpenCode terminal. Use that window for:
-  · Conversation and agent commands
-  · @ file references
-  · ! bash commands
-  · / slash commands
-
-This panel shows dashboard and compact viz; switch sidebar views with 1–5."""
+# Main area: chat and terminal are provided by the configured backend (e.g. OpenCode).
+MAIN_CHAT_PLACEHOLDER = "Chat and terminal are provided by the configured backend. Use that window for conversation and commands."
 
 
 class ViewType(Enum):

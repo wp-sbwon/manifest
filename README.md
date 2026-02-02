@@ -6,7 +6,15 @@
 
 All documentation is in [`docs/`](docs/). See [docs/README.md](docs/README.md) for the index.
 
-**Quick links:** [Project structure](docs/PROJECT_STRUCTURE.md) · [UI redesign plan](docs/UI_REDESIGN_PLAN.md) · [Worker squad](docs/WORKER_SQUAD_AND_AGENTS.md). **Target architecture:** [Redesign architecture and intent](docs/REDESIGN_ARCHITECTURE_AND_INTENT.md); [implementation status](docs/NEW_ARCHITECTURE_IMPLEMENTATION_STATUS.md). Older docs are in [docs/archive/](docs/archive/).
+**Quick links:** [Project structure](docs/PROJECT_STRUCTURE.md) · [UI redesign plan](docs/UI_REDESIGN_PLAN.md) · [Worker squad](docs/WORKER_SQUAD_AND_AGENTS.md). **Target architecture:** [Redesign architecture and intent](docs/REDESIGN_ARCHITECTURE_AND_INTENT.md); [implementation status](docs/NEW_ARCHITECTURE_IMPLEMENTATION_STATUS-2026-01-28.md). Older docs are in [docs/archive/](docs/archive/).
+
+## Execution backend
+
+The project supports **multiple backends** for chat, terminal, and LLM execution; the **primary** one is OpenCode. The backend is configured via `agent.execution_backend` (default: `opencode`). Additional backends can be added by implementing the executor interface and registering them in the executor factory.
+
+- **Chat and terminal** — Provided by the configured backend; the View app is visualization-only.
+- **LLM execution** — Agent execution goes through the configured backend.
+- **Tool execution** — Tools (including bash) are executed by the backend.
 
 ## Quick Start
 
@@ -30,18 +38,17 @@ This document provides an overview of the development environment setup for the 
 ## Prerequisites
 
 - Python 3.9 or higher
-- Docker Desktop (for macOS/Windows) or Docker Engine (for Linux)
+- **OpenCode** and **Podman** are required but **you do not install or run them yourself**: the setup script and the launcher install and start them when missing.
 
 ## Quick Start
 
 ### Option 1: Python Virtual Environment (Recommended for Development)
 
-1. **Setup the environment (Docker is required; install it during setup if missing):**
+1. **Setup the environment (OpenCode and Podman are installed automatically when missing):**
    ```bash
    chmod +x scripts/setup.sh
    ./scripts/setup.sh
    ```
-   To install Docker automatically on macOS/Linux: `INSTALL_DOCKER=1 ./scripts/setup.sh`
 
 2. **Activate the virtual environment:**
    ```bash
@@ -52,38 +59,31 @@ This document provides an overview of the development environment setup for the 
    ```bash
    PYTHONPATH=src python -m manifest
    ```
-   또는 `pip install -e .` 후:
+   Or after `pip install -e .`:
    ```bash
    manifest
    ```
-   이렇게 하면 **OpenCode 터미널**과 **상시 시각화 View**(blueprint·구조·drift·태스크)가 함께 실행됩니다. 채팅/입력은 OpenCode에서 합니다. OpenCode 설치 및 PATH 설정이 필요하며, OpenCode에 `manifest-orchestrator` 에이전트를 설정해 두어야 합니다.
+   This starts **OpenCode** (chat/commands) and the **Manifest View** (blueprint, drift, tasks). If OpenCode or Podman are missing, the launcher will try to install and start them; no manual install needed.
 
 4. **Deactivate when done:**
    ```bash
    deactivate
    ```
 
-### Option 2: Docker
+### Option 2: Docker Compose (optional / alternative deployment)
 
-1. **Install Docker Desktop:**
-   - macOS: Download from [Docker Desktop](https://www.docker.com/products/docker-desktop)
-   - Start Docker Desktop
+The main app requires **Podman** (see Option 1). If you use Docker Compose for deployment:
 
-2. **Setup Docker environment:**
+1. **Install Docker Desktop or Podman** and ensure the runtime is running.
+
+2. **Setup and run:**
    ```bash
    chmod +x setup-docker.sh
    ./setup-docker.sh
-   ```
-
-3. **Run the application:**
-   ```bash
    docker-compose up
    ```
 
-4. **Stop the application:**
-   ```bash
-   docker-compose down
-   ```
+3. **Stop:** `docker-compose down`
 
 ## Project Structure
 
@@ -130,6 +130,13 @@ See `requirements.txt` for the complete list.
 - Skills are automatically loaded from `.rules/` directory
 - See [docs/archive/superseded-2026/SKILLS.md](docs/archive/superseded-2026/SKILLS.md) for detailed documentation
 
+## Git hooks (optional)
+
+- **Bottom-up docs on every commit:** After each commit, Manifest can refresh `blueprint_code.json` from code and generate `intent_code.json` / `architecture_code.json` via the OpenCode session. To enable:
+  `ln -sf ../../scripts/post_commit_bottom_up.sh .git/hooks/post-commit`
+  Requires OpenCode running (or auto-started) for LLM-based intent/architecture; blueprint_code is always refreshed.
+- **CI checks before push:** See `scripts/pre_push_ci_check.sh` and `.pre-commit-config.yaml` (pre-push stage).
+
 ## Development Workflow
 
 ### Using Virtual Environment
@@ -171,11 +178,11 @@ See `requirements.txt` for the complete list.
 - **Virtual environment not found:** Run `./setup.sh` again
 - **Package installation fails:** Ensure pip is upgraded: `pip install --upgrade pip`
 
-### Docker Issues
+### Container runtime issues
 
-- **Docker not running:** Start Docker Desktop
-- **Permission denied:** Ensure Docker Desktop has proper permissions
-- **Port conflicts:** Modify ports in `docker-compose.yml` if needed
+- **Podman not running:** The launcher starts it automatically. To start manually: on macOS run `podman machine start`; on Linux run `sudo systemctl start podman.socket`.
+- **Permission denied:** Ensure the container runtime has proper permissions.
+- **Port conflicts:** Modify ports in `docker-compose.yml` if needed.
 
 ## Environment Variables
 
@@ -184,5 +191,5 @@ Create a `.env` file in the project root for environment-specific variables (thi
 ## Notes
 
 - The virtual environment (`venv/`) should not be committed to version control
-- Docker images are built automatically on first run
+- Container images are built automatically on first run when using Docker Compose
 - Both environments are configured for development with hot-reload capabilities

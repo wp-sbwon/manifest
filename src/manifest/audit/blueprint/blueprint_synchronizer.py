@@ -17,6 +17,8 @@ from dataclasses import dataclass, field, asdict
 
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
 from manifest.audit.code.drift_auditor import Severity
+from manifest.audit import doc_set
+from manifest.audit.doc_comparator import compare_intent, compare_architecture, DocDiff
 
 
 @dataclass
@@ -98,6 +100,37 @@ class BlueprintSynchronizer:
         self.conflicts_dir.mkdir(parents=True, exist_ok=True)
         self.comparator = BlueprintComparator()
 
+    def compare_all_docs(self, manifest_dir: Optional[Path] = None) -> Dict[str, Any]:
+        """
+        Compare all doc types (blueprint, intent, architecture) between top-down and bottom-up.
+        Returns implementation progress (missing in bottom-up) separately from drift (conflicts).
+        """
+        manifest_dir = manifest_dir or self.manifest_dir
+        top_blueprint = doc_set.load_top_down(manifest_dir, "blueprint")
+        bottom_blueprint = doc_set.load_bottom_up(manifest_dir, "blueprint")
+        blueprint_conflicts = self.comparator.compare_blueprints(top_blueprint, bottom_blueprint)
+        implementation_progress = [c for c in blueprint_conflicts if c.severity == Severity.IN_PROGRESS]
+        drift_conflicts = [c for c in blueprint_conflicts if c.severity in [Severity.ERROR, Severity.WARNING]]
+        info_conflicts = [c for c in blueprint_conflicts if c.severity == Severity.INFO]
+
+        top_intent = doc_set.load_top_down(manifest_dir, "intent")
+        bottom_intent = doc_set.load_bottom_up(manifest_dir, "intent")
+        intent_diffs = compare_intent(top_intent, bottom_intent)
+
+        top_architecture = doc_set.load_top_down(manifest_dir, "architecture")
+        bottom_architecture = doc_set.load_bottom_up(manifest_dir, "architecture")
+        architecture_diffs = compare_architecture(top_architecture, bottom_architecture)
+
+        return {
+            "blueprint": {
+                "implementation_progress": [c.to_dict() for c in implementation_progress],
+                "drift_conflicts": [c.to_dict() for c in drift_conflicts],
+                "info": [c.to_dict() for c in info_conflicts],
+            },
+            "intent": {"diffs": [d.to_dict() for d in intent_diffs]},
+            "architecture": {"diffs": [d.to_dict() for d in architecture_diffs]},
+        }
+
     def detect_mismatch(
         self,
         top_down: Dict[str, Any],
@@ -123,7 +156,7 @@ class BlueprintSynchronizer:
         if not conflicts:
             return None
 
-        # Filter out INFO level conflicts for mismatch detection
+        # Filter to significant conflicts only (ERROR, WARNING). IN_PROGRESS = implementation progress, not drift.
         significant_conflicts = [
             c for c in conflicts
             if c.severity in [Severity.ERROR, Severity.WARNING]

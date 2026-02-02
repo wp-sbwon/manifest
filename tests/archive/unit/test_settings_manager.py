@@ -18,8 +18,8 @@ def tmp_manifest_dir(tmp_path):
 @pytest.fixture
 def tmp_project_root(tmp_path):
     """Create temporary project root."""
-    claude_dir = tmp_path / ".claude" / "rules"
-    claude_dir.mkdir(parents=True)
+    rules_dir = tmp_path / ".rules"
+    rules_dir.mkdir(parents=True)
     return tmp_path
 
 
@@ -49,7 +49,7 @@ def sample_agent_config(tmp_manifest_dir):
 @pytest.fixture
 def sample_policy_file(tmp_project_root):
     """Create sample manifest-policy.md."""
-    policy_file = tmp_project_root / ".claude" / "rules" / "manifest-policy.md"
+    policy_file = tmp_project_root / ".rules" / "manifest-policy.md"
     policy_file.write_text("# Manifest Policy\n\nTest policy content.")
     return policy_file
 

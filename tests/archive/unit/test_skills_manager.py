@@ -17,9 +17,9 @@ def tmp_manifest_dir(tmp_path):
 
 @pytest.fixture
 def tmp_project_root(tmp_path):
-    """Create temporary project root with .claude/rules."""
-    claude_dir = tmp_path / ".claude" / "rules"
-    claude_dir.mkdir(parents=True)
+    """Create temporary project root with .rules."""
+    rules_dir = tmp_path / ".rules"
+    rules_dir.mkdir(parents=True)
     return tmp_path
 
 
@@ -47,8 +47,8 @@ def sample_agent_config(tmp_manifest_dir):
 
 @pytest.fixture
 def sample_skill_file(tmp_project_root):
-    """Create sample skill file in .claude/rules."""
-    skill_file = tmp_project_root / ".claude" / "rules" / "default_skill.md"
+    """Create sample skill file in .rules."""
+    skill_file = tmp_project_root / ".rules" / "default_skill.md"
     skill_file.write_text("""# Default Skill
 
 ## Description
@@ -171,7 +171,7 @@ def test_get_skill_content(tmp_manifest_dir, tmp_project_root, sample_skill_file
 
 def test_missing_files_graceful(tmp_manifest_dir, tmp_project_root):
     """Test graceful handling of missing files."""
-    # No agent_config.json, no AGENTS.md, no .claude/rules/
+    # No agent_config.json, no AGENTS.md, no .rules/
     manager = SkillsManager(tmp_manifest_dir, tmp_project_root)
 
     # Should not raise errors

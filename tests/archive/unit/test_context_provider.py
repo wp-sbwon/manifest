@@ -91,7 +91,7 @@ def test_get_tier_3_context(context_provider):
 def test_tier_0_context_loading(context_provider, temp_dir):
     """Test Tier 0 context (manifest-policy.md) loading."""
     # Create policy file
-    policy_file = Path(".claude/rules/manifest-policy.md")
+    policy_file = Path(".rules/manifest-policy.md")
     policy_file.parent.mkdir(parents=True, exist_ok=True)
     policy_file.write_text("# Manifest Policy\n\nTest policy content")
 
@@ -105,7 +105,7 @@ def test_tier_0_context_loading(context_provider, temp_dir):
 def test_tier_0_context_missing_file(context_provider):
     """Test Tier 0 context when policy file doesn't exist."""
     # Ensure policy file doesn't exist
-    policy_file = Path(".claude/rules/manifest-policy.md")
+    policy_file = Path(".rules/manifest-policy.md")
     if policy_file.exists():
         policy_file.unlink()
 

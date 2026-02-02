@@ -396,8 +396,6 @@ class FailureRecoveryManager:
         """
         logger.info(f"Retrying stage {stage} for task {task_id} with simplified prompt")
 
-        # For now, just retry (simplified prompt would require prompt modification)
-        # This is a placeholder for future enhancement
         import asyncio
         await asyncio.sleep(2.0)
 

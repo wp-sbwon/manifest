@@ -99,13 +99,13 @@ class BlueprintComparator:
             if name:
                 bottom_up_by_name[name] = comp
 
-        # Check for missing components (in top-down but not in bottom-up)
+        # Check for missing components (in top-down but not in bottom-up) = implementation in progress
         for name, td_comp in top_down_by_name.items():
             if name not in bottom_up_by_name:
                 conflicts.append(BlueprintConflict(
-                    severity=Severity.ERROR,
+                    severity=Severity.IN_PROGRESS,
                     type=ConflictType.MISSING_COMPONENT,
-                    message=f"Component '{name}' specified in design but not found in code",
+                    message=f"Component '{name}' specified in design but not found in code (implementation in progress)",
                     top_down_component=td_comp,
                     component_id=td_comp.get("id"),
                     file_path=td_comp.get("file")
@@ -155,13 +155,13 @@ class BlueprintComparator:
         td_methods = set(top_down.get("methods", []))
         bu_methods = set(bottom_up.get("methods", []))
 
-        # Missing methods
+        # Missing methods = implementation in progress (design has it, code doesn't yet)
         missing = td_methods - bu_methods
         for method in missing:
             conflicts.append(BlueprintConflict(
-                severity=Severity.WARNING,
+                severity=Severity.IN_PROGRESS,
                 type=ConflictType.METHOD_MISMATCH,
-                message=f"Method '{method}' in component '{top_down.get('name')}' specified in design but not in code",
+                message=f"Method '{method}' in component '{top_down.get('name')}' specified in design but not in code (in progress)",
                 top_down_component=top_down,
                 bottom_up_component=bottom_up,
                 component_id=top_down.get("id"),
@@ -194,13 +194,13 @@ class BlueprintComparator:
         td_attrs = set(top_down.get("attributes", []))
         bu_attrs = set(bottom_up.get("attributes", []))
 
-        # Missing attributes
+        # Missing attributes = implementation in progress
         missing = td_attrs - bu_attrs
         for attr in missing:
             conflicts.append(BlueprintConflict(
-                severity=Severity.INFO,
+                severity=Severity.IN_PROGRESS,
                 type=ConflictType.ATTRIBUTE_MISMATCH,
-                message=f"Attribute '{attr}' in component '{top_down.get('name')}' specified in design but not in code",
+                message=f"Attribute '{attr}' in component '{top_down.get('name')}' specified in design but not in code (in progress)",
                 top_down_component=top_down,
                 bottom_up_component=bottom_up,
                 component_id=top_down.get("id"),
@@ -283,15 +283,19 @@ class BlueprintComparator:
         self,
         conflicts: List[BlueprintConflict]
     ) -> Dict[str, List[BlueprintConflict]]:
-        """Group conflicts by severity."""
+        """Group conflicts by severity (error, warning, info, in_progress)."""
         grouped = {
             "error": [],
             "warning": [],
-            "info": []
+            "info": [],
+            "in_progress": [],
         }
 
         for conflict in conflicts:
-            grouped[conflict.severity.value].append(conflict)
+            key = conflict.severity.value
+            if key not in grouped:
+                grouped[key] = []
+            grouped[key].append(conflict)
 
         return grouped
 

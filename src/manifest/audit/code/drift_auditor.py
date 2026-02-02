@@ -23,6 +23,7 @@ class Severity(Enum):
     ERROR = "error"
     WARNING = "warning"
     INFO = "info"
+    IN_PROGRESS = "in_progress"  # Top-down has it, bottom-up missing; implementation not yet done (not a conflict)
 
 
 class DriftConflict:

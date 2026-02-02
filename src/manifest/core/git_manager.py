@@ -2,6 +2,7 @@
 Git Manager - Handles Git operations and integration with Manifest.
 """
 import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
@@ -70,10 +71,32 @@ class GitManager:
                 self.repo.git.add(A=True)
 
             commit = self.repo.index.commit(message)
-            return commit.hexsha
+            hexsha = commit.hexsha
+            self._trigger_bottom_up_docs_after_commit()
+            return hexsha
         except Exception as e:
             logger.error(f"Error creating commit: {e}")
             return None
+
+    def _trigger_bottom_up_docs_after_commit(self) -> None:
+        """Trigger bottom-up doc generation in background (same as post-commit hook)."""
+        try:
+            root = Path(getattr(self.repo, "working_tree_dir", None) or self.project_root)
+            script = root / "scripts" / "run_bottom_up_docs.py"
+            if not script.exists():
+                return
+            env = {**__import__("os").environ}
+            env["PYTHONPATH"] = str(root / "src") + (f":{env['PYTHONPATH']}" if env.get("PYTHONPATH") else "")
+            subprocess.Popen(
+                [sys.executable, str(script), "--project-root", str(root)],
+                cwd=str(root),
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception as e:
+            logger.debug("Could not start bottom-up docs after commit: %s", e)
 
     def generate_commit_message(self, task: Dict[str, Any]) -> str:
         """Generate a commit message from task details."""

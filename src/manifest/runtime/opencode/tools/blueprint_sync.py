@@ -83,6 +83,16 @@ class BlueprintSyncTool:
             logger.error("sync_blueprint failed: %s", e, exc_info=True)
             return {"ok": False, "error": str(e)}
 
+    def compare_all_docs(self) -> Dict[str, Any]:
+        """Compare all doc types (blueprint, intent, architecture) between top-down and bottom-up.
+        Returns implementation progress (missing in bottom-up) separately from drift (conflicts)."""
+        try:
+            result = self._synchronizer.compare_all_docs(self.manifest_dir)
+            return {"ok": True, "result": result}
+        except Exception as e:
+            logger.error("compare_all_docs failed: %s", e, exc_info=True)
+            return {"ok": False, "error": str(e), "result": None}
+
 
 class DriftCheckTool:
     """Thin wrapper for drift detection (orchestrator drift_check tool)."""

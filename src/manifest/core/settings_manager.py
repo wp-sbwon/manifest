@@ -64,7 +64,7 @@ class SettingsManager:
         self.skills_manager = SkillsManager(self.manifest_dir, self.project_root)
 
         # File paths
-        self.policy_file = self.project_root / ".claude" / "rules" / "manifest-policy.md"
+        self.policy_file = self.project_root / ".rules" / "manifest-policy.md"
         self.agents_md_file = self.project_root / "AGENTS.md"
 
     # API Keys Management
@@ -177,10 +177,10 @@ class SettingsManager:
         return self.skills_manager.get_skill_content(skill_id)
 
     def save_skill_file(self, skill_id: str, content: str) -> bool:
-        """Save a skill file to .claude/rules/."""
-        skill_file = self.claude_rules_dir / f"{skill_id}.md"
+        """Save a skill file to .rules/."""
+        skill_file = self.rules_dir / f"{skill_id}.md"
         try:
-            self.claude_rules_dir.mkdir(parents=True, exist_ok=True)
+            self.rules_dir.mkdir(parents=True, exist_ok=True)
             with open(skill_file, "w", encoding="utf-8") as f:
                 f.write(content)
             # Reload skill definitions
@@ -191,9 +191,9 @@ class SettingsManager:
             return False
 
     @property
-    def claude_rules_dir(self) -> Path:
-        """Get .claude/rules directory."""
-        return self.project_root / ".claude" / "rules"
+    def rules_dir(self) -> Path:
+        """Get .rules directory (project rules and skills)."""
+        return self.project_root / ".rules"
 
     # Policy Management
     def get_policy_content(self) -> str:

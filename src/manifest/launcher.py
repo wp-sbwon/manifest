@@ -1,15 +1,12 @@
 """
-Manifest launcher: starts View and OpenCode.
+Manifest launcher: starts View and the chat/terminal backend.
 
-On run: (1) starts the View process (visualization dashboard), (2) execs OpenCode.
-Docker is required for container features; if unavailable, launcher attempts
-to install or start it instead of exiting.
+Supports multiple backends; the primary one is OpenCode. Requires the configured backend and Podman (for containers) to be installed and running. The launcher does not install them; it checks, warns if missing, and exits.
 """
 import os
 import sys
 import shutil
 import subprocess
-import time
 import platform
 from pathlib import Path
 from typing import Optional
@@ -19,11 +16,6 @@ from manifest.core.logger import get_logger
 logger = get_logger(__name__)
 
 DEFAULT_AGENT = "manifest-orchestrator"
-
-# Seconds to wait for Docker to become available after start/install attempt
-DOCKER_WAIT_SECONDS = 30
-
-# Container API port (Launcher starts API on this port when Docker is available).
 CONTAINER_API_PORT = 4097
 
 
@@ -44,12 +36,17 @@ def _get_agent_name() -> str:
         return DEFAULT_AGENT
 
 
+def _get_opencode_path() -> Optional[str]:
+    return shutil.which("opencode")
+
+
 def _is_opencode_available() -> bool:
-    if shutil.which("opencode"):
-        return True
+    path = _get_opencode_path()
+    if not path:
+        return False
     try:
         r = subprocess.run(
-            ["opencode", "--version"],
+            [path, "--version"],
             capture_output=True,
             timeout=5,
         )
@@ -58,120 +55,80 @@ def _is_opencode_available() -> bool:
         return False
 
 
-def _is_docker_available() -> bool:
-    """Check if Docker daemon is running (required like OpenCode)."""
+def _get_podman_docker_host() -> Optional[str]:
+    """Discover Podman API socket and return DOCKER_HOST value (unix:// or npipe://), or None."""
+    podman = shutil.which("podman")
+    if not podman:
+        return None
+    system = platform.system()
+    env = os.environ.copy()
     try:
+        if system == "Darwin":
+            r = subprocess.run(
+                [podman, "machine", "inspect", "--format", "{{.ConnectionInfo.PodmanSocket.Path}}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env,
+            )
+            if r.returncode != 0 or not r.stdout or not r.stdout.strip():
+                return None
+            path = r.stdout.strip()
+            return f"unix://{path}" if path and not path.startswith("unix://") else path or None
+        if system == "Windows":
+            r = subprocess.run(
+                [podman, "machine", "inspect", "--format", "{{.ConnectionInfo.PodmanPipe.Path}}"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                env=env,
+            )
+            if r.returncode != 0 or not r.stdout or not r.stdout.strip():
+                return None
+            path = r.stdout.strip()
+            return f"npipe://{path}" if path and not path.startswith("npipe://") else path or None
+        r = subprocess.run(
+            [podman, "info", "--format", "{{.Host.RemoteSocket.Path}}"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env,
+        )
+        if r.returncode != 0 or not r.stdout or not r.stdout.strip():
+            return None
+        path = r.stdout.strip()
+        return f"unix://{path}" if path and not path.startswith("unix://") else path or None
+    except (subprocess.TimeoutExpired, Exception):
+        return None
+
+
+def _is_container_runtime_available() -> bool:
+    """Check if Podman is running and Docker-compatible API is reachable."""
+    docker_host = _get_podman_docker_host()
+    if not docker_host:
+        return False
+    prev = os.environ.get("DOCKER_HOST")
+    try:
+        os.environ["DOCKER_HOST"] = docker_host
         import docker
         client = docker.from_env()
         client.ping()
         return True
     except Exception:
         return False
-
-
-def _try_start_docker() -> bool:
-    """Try to start Docker daemon (Desktop on macOS/Windows, systemd on Linux). Returns True if start was attempted."""
-    system = platform.system()
-    try:
-        if system == "Darwin":
-            for app_path in ["/Applications/Docker.app", "/Applications/Docker Desktop.app"]:
-                if Path(app_path).exists():
-                    logger.info("Starting Docker Desktop from %s", app_path)
-                    subprocess.Popen(
-                        ["open", "-a", app_path],
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                    )
-                    return True
-            return False
-        if system == "Linux":
-            try:
-                subprocess.run(
-                    ["docker", "--version"],
-                    check=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
-                r = subprocess.run(
-                    ["sudo", "systemctl", "start", "docker"],
-                    check=False,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=5,
-                )
-                return r.returncode == 0
-            except (FileNotFoundError, subprocess.TimeoutExpired):
-                return False
-        if system == "Windows":
-            for p in [
-                "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe",
-                "C:\\Program Files (x86)\\Docker\\Docker\\Docker Desktop.exe",
-            ]:
-                if Path(p).exists():
-                    subprocess.Popen([p], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    return True
-        return False
-    except Exception as e:
-        logger.warning("Error starting Docker: %s", e)
-        return False
-
-
-def _try_install_docker() -> bool:
-    """Try to install Docker if not in PATH (e.g. brew on macOS). Returns True if install was attempted."""
-    if shutil.which("docker"):
-        return False
-    system = platform.system()
-    try:
-        if system == "Darwin" and shutil.which("brew"):
-            logger.info("Attempting to install Docker via Homebrew...")
-            r = subprocess.run(
-                ["brew", "install", "--cask", "docker"],
-                capture_output=True,
-                timeout=300,
-            )
-            if r.returncode == 0:
-                return True
-            # Even if brew failed, we tried
-            return False
-        # Open install page as fallback so user can install manually
-        if system == "Darwin":
-            subprocess.Popen(["open", "https://www.docker.com/products/docker-desktop"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        elif system == "Windows":
-            subprocess.Popen(["start", "https://www.docker.com/products/docker-desktop"], shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    finally:
+        if prev is None:
+            os.environ.pop("DOCKER_HOST", None)
         else:
-            logger.info("Install Docker: https://docs.docker.com/engine/install/")
-        return False
-    except Exception as e:
-        logger.warning("Error attempting Docker install: %s", e)
-        return False
-
-
-def _ensure_docker_available() -> bool:
-    """
-    Ensure Docker is available: try install (if missing) and start (if not running), then wait.
-    Does not exit; returns True if Docker is available, False otherwise.
-    """
-    if _is_docker_available():
-        return True
-    # If docker binary missing, try install once
-    if not shutil.which("docker"):
-        _try_install_docker()
-        time.sleep(2)
-    _try_start_docker()
-    deadline = time.monotonic() + DOCKER_WAIT_SECONDS
-    while time.monotonic() < deadline:
-        if _is_docker_available():
-            return True
-        time.sleep(1)
-    return False
+            os.environ["DOCKER_HOST"] = prev
 
 
 def _start_view() -> Optional[subprocess.Popen]:
     """Start the View app in a subprocess. Returns the Popen or None on failure."""
     manifest_dir = _get_manifest_dir()
     try:
-        # Use a log file for View output (for debugging)
         view_log = manifest_dir.parent / ".manifest_view.log"
+        env = {**os.environ, "PYTHONPATH": os.environ.get("PYTHONPATH", "") or str(Path(__file__).resolve().parent.parent)}
         with open(view_log, "w") as log_file:
             proc = subprocess.Popen(
                 [
@@ -185,25 +142,26 @@ def _start_view() -> Optional[subprocess.Popen]:
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 cwd=os.getcwd(),
-                env={**os.environ, "PYTHONPATH": os.environ.get("PYTHONPATH", "") or str(Path(__file__).resolve().parent.parent)},
+                env=env,
             )
         logger.info("View process started: pid=%s, log=%s", proc.pid, view_log)
         print(f"Manifest View started (PID: {proc.pid}, log: {view_log})", file=sys.stderr)
         return proc
     except Exception as e:
-        logger.error("Could not start View: %s", e, exc_info=True)
+        logger.error("Could not start Manifest View: %s", e, exc_info=True)
         print(f"Warning: Could not start Manifest View: {e}", file=sys.stderr)
         return None
 
 
 def _start_container_api() -> Optional[subprocess.Popen]:
-    """Start Container API in a subprocess when Docker is available."""
-    if not _is_docker_available():
+    """Start Container API in a subprocess when Podman is available."""
+    if not _is_container_runtime_available():
         return None
     try:
         manifest_dir = _get_manifest_dir()
         api_log = manifest_dir / "container_api.log"
         manifest_dir.mkdir(parents=True, exist_ok=True)
+        env = {**os.environ, "PYTHONPATH": os.environ.get("PYTHONPATH", "") or str(Path(__file__).resolve().parent.parent)}
         with open(api_log, "w") as log_file:
             proc = subprocess.Popen(
                 [
@@ -220,7 +178,7 @@ def _start_container_api() -> Optional[subprocess.Popen]:
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 cwd=os.getcwd(),
-                env={**os.environ, "PYTHONPATH": os.environ.get("PYTHONPATH", "") or str(Path(__file__).resolve().parent.parent)},
+                env=env,
             )
         logger.info("Container API started: pid=%s, port=%s", proc.pid, CONTAINER_API_PORT)
         return proc
@@ -231,41 +189,67 @@ def _start_container_api() -> Optional[subprocess.Popen]:
 
 def run_opencode() -> int:
     """Run OpenCode in the current process (exec). Returns only on exec failure."""
+    opencode_path = _get_opencode_path()
+    if not opencode_path:
+        sys.stderr.write("opencode not found on PATH.\n")
+        return 127
     agent = _get_agent_name()
-    cwd = str(Path.cwd())
-
-    # Try with agent first, fallback to no agent if it fails
-    # OpenCode may not have the agent registered, so we'll let user select in UI
-    argv = ["opencode", ".", "-c"]
-
-    # Add agent if specified (but don't fail if agent doesn't exist)
+    argv = [opencode_path, ".", "-c"]
     if agent:
         argv.extend(["--agent", agent])
         print(f"Starting OpenCode with agent: {agent}", file=sys.stderr)
-        print(f"If agent '{agent}' is not found, you can select it in OpenCode UI.", file=sys.stderr)
     else:
-        print("Starting OpenCode (no agent specified)", file=sys.stderr)
-
+        print("Starting OpenCode", file=sys.stderr)
     try:
-        os.execvp("opencode", argv)
+        os.execv(opencode_path, argv)
     except OSError as e:
         sys.stderr.write(f"opencode exec failed: {e}\n")
         return 127
     return 127
 
 
+def _opencode_hint() -> str:
+    """Install hint for OpenCode."""
+    system = platform.system()
+    if system == "Darwin":
+        return "Install OpenCode: brew install opencode  (or see https://opencode.ai/docs)"
+    if system == "Windows":
+        return "Install OpenCode: winget install OpenCode.OpenCode  (or see https://opencode.ai/docs)"
+    return "Install OpenCode: npm install -g opencode-ai  (or see https://opencode.ai/docs)"
+
+
+def _podman_hint() -> str:
+    """Install/start hint for Podman."""
+    system = platform.system()
+    if shutil.which("podman"):
+        if system == "Darwin":
+            return "Podman is installed but not running. Start it: podman machine start"
+        if system == "Windows":
+            return "Podman is installed but not running. Start it: podman machine start"
+        return "Podman is installed but not running. Start it: sudo systemctl start podman.socket"
+    if system == "Darwin":
+        return "Install Podman: brew install podman  (then run: podman machine init --now)"
+    if system == "Windows":
+        return "Install Podman: winget install RedHat.Podman  (then run: podman machine init)"
+    return "Install Podman: sudo apt-get install podman  or  sudo dnf install podman  (see https://podman.io)"
+
+
 def main() -> int:
-    """Start View then OpenCode. OpenCode is required; Docker is required but we try to install/start it instead of exiting."""
+    """Check OpenCode and Podman; if both available, start View and OpenCode. Otherwise warn and exit."""
     if not _is_opencode_available():
-        sys.stderr.write(
-            "opencode not found. Install OpenCode and ensure 'opencode' is on PATH.\n"
-        )
+        sys.stderr.write("OpenCode is required but not found.\n")
+        sys.stderr.write(f"  {_opencode_hint()}\n")
         return 1
-    if not _ensure_docker_available():
-        sys.stderr.write(
-            "Warning: Docker is not available. Manifest will run; container features may be limited. "
-            "Install/start Docker and restart if you need containers.\n"
-        )
+    docker_host = _get_podman_docker_host()
+    if not docker_host:
+        sys.stderr.write("Podman is required but not found or not running.\n")
+        sys.stderr.write(f"  {_podman_hint()}\n")
+        return 1
+    if not _is_container_runtime_available():
+        sys.stderr.write("Podman is required but the Docker API is not reachable.\n")
+        sys.stderr.write(f"  {_podman_hint()}\n")
+        return 1
+    os.environ["DOCKER_HOST"] = docker_host
     _start_view()
     _start_container_api()
     return run_opencode()

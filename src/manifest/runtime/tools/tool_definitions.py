@@ -219,13 +219,13 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
         },
         {
             "name": "blueprint_sync",
-            "description": "Compare top-down vs bottom-up blueprints, detect drift, or run sync workflow.",
+            "description": "Compare top-down vs bottom-up blueprints, detect drift, run sync workflow, or compare all docs (blueprint, intent, architecture) with implementation progress vs drift.",
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "One of: compare_blueprints, detect_drift, sync_blueprint"
+                        "description": "One of: compare_blueprints, detect_drift, sync_blueprint, compare_all_docs"
                     },
                     "mode": {
                         "type": "string",
