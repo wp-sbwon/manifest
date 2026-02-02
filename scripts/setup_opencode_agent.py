@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-Setup script to register manifest-orchestrator agent with OpenCode.
+Setup script to register Manifest agents with OpenCode.
 
-OpenCode loads agents from opencode.json (project root) or from markdown files
-in .opencode/agents/. This script writes/updates opencode.json so the
-manifest-orchestrator and manifest-full-test agents are available.
+Writes opencode.json:
+- default_agent = manifest-orchestrator (only option in agent switcher).
+- Built-in agents build and plan are disabled.
+- manifest-full-test is a subagent (callable by orchestrator only; not in switcher).
 """
 import json
 import sys
@@ -39,12 +40,13 @@ Use available tools (terminal, file_read, etc.) to run tests and report outcomes
 
 
 def create_opencode_agent_config():
-    """Create or update opencode.json with manifest agents (OpenCode loads agents from here)."""
+    """Create or update opencode.json: orchestrator only in switcher; full-test subagent."""
     project_root = Path.cwd()
     opencode_json = project_root / "opencode.json"
 
-    # OpenCode schema: agent.<id>.description, mode, model, prompt, tools (write/edit/bash)
     agents = {
+        "build": {"disable": True},
+        "plan": {"disable": True},
         "manifest-orchestrator": {
             "description": "Manifest orchestrator agent for mission coordination, task management, and workflow orchestration",
             "mode": "primary",
@@ -53,8 +55,9 @@ def create_opencode_agent_config():
             "tools": {"write": True, "edit": True, "bash": True},
         },
         "manifest-full-test": {
-            "description": "Manifest E2E / full-test agent. Runs project- and sprint-wide E2E and integration tests. Same tier as orchestrator.",
-            "mode": "primary",
+            "description": "Manifest E2E / full-test agent. Callable by orchestrator only (subagent).",
+            "mode": "subagent",
+            "hidden": True,
             "model": "anthropic/claude-3-5-sonnet-20241022",
             "prompt": FULL_TEST_PROMPT,
             "tools": {"write": True, "edit": True, "bash": True},
@@ -83,12 +86,8 @@ def create_opencode_agent_config():
         json.dump(config, f, indent=2, ensure_ascii=False)
 
     print(f"✅ Updated OpenCode config: {opencode_json}")
-    print(f"✅ Agent 'manifest-orchestrator' is now available (default_agent)")
-    print(f"✅ Agent 'manifest-full-test' is now available")
-    print(f"\nTo use:")
-    print(f"  manifest  # Uses manifest-orchestrator by default")
-    print(f"  opencode . --agent manifest-orchestrator -c")
-    print(f"  opencode . --agent manifest-full-test -c")
+    print(f"✅ Only option in switcher: manifest-orchestrator")
+    print(f"✅ manifest-full-test: subagent (callable by orchestrator only)")
     return True
 
 
