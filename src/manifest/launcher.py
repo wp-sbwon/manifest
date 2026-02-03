@@ -15,7 +15,7 @@ from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-DEFAULT_AGENT = "manifest-orchestrator"
+DEFAULT_AGENT = "orchestrator"
 CONTAINER_API_PORT = 4097
 
 # Project directory: cwd when running from a target project; in dev (manifest repo) use a temp dir inside the repo.
@@ -242,7 +242,7 @@ def _start_container_api() -> Optional[subprocess.Popen]:
 
 
 def _get_opencode_config_path() -> Optional[Path]:
-    """Path to opencode.json so OpenCode finds manifest-orchestrator when run in scratch. Prefer cwd, then manifest app root."""
+    """Path to opencode.json so OpenCode finds orchestrator when run in scratch. Prefer cwd, then manifest app root."""
     for candidate in [Path.cwd() / "opencode.json", Path(__file__).resolve().parent.parent.parent / "opencode.json"]:
         if candidate.exists():
             return candidate.resolve()
@@ -301,8 +301,102 @@ def _podman_hint() -> str:
     return "Install Podman: sudo apt-get install podman  or  sudo dnf install podman  (see https://podman.io)"
 
 
+# Worker agent types that can be configured via config worker-model (and /worker-model slash command).
+WORKER_AGENT_TYPES = ("planner", "coder", "test", "review")
+
+
+WORKER_MODEL_HELP = """manifest config worker-model — set or list worker squad models
+
+Usage:
+  manifest config worker-model                    List current models (default = backend default)
+  manifest config worker-model <agent>             Clear model for agent (use backend default)
+  manifest config worker-model <agent> <p> <m>     Set model (e.g. anthropic claude-sonnet-4-5)
+  manifest config worker-model <agent> <p>/<m>    Set model (e.g. anthropic/claude-sonnet-4-5)
+
+Agents: planner, coder, test, review. Config: .manifest/agent_config.json
+"""
+
+
+def _run_config_worker_model(argv: list) -> int:
+    """CLI: manifest config worker-model [agent_type] [provider] [model]. Uses .manifest in cwd."""
+    args = [a for a in argv if a.strip()]
+
+    if args and args[0] in ("--help", "-h"):
+        print(WORKER_MODEL_HELP.strip())
+        return 0
+
+    manifest_dir = Path.cwd() / ".manifest"
+    if not manifest_dir.is_dir():
+        sys.stderr.write("No .manifest directory in current directory. Run from project root.\n")
+        return 1
+    try:
+        from manifest.core.config import ConfigManager
+        cm = ConfigManager(manifest_dir)
+    except Exception as e:
+        sys.stderr.write(f"Config error: {e}\n")
+        return 1
+
+    if not args:
+        # List current worker models and show usage hint
+        lines = ["Worker squad models (empty = use OpenCode/backend default):"]
+        for agent_type in WORKER_AGENT_TYPES:
+            cfg = cm.get_agent_model_config(agent_type)
+            provider = cfg.get("provider", "anthropic")
+            model = cfg.get("model")
+            value = f"{provider}/{model}" if model else "(default)"
+            lines.append(f"  {agent_type}: {value}")
+        lines.append("")
+        lines.append("Usage: manifest config worker-model [agent] [provider] [model]  |  --help")
+        print("\n".join(lines))
+        return 0
+
+    agent_type = args[0].lower()
+    if agent_type not in WORKER_AGENT_TYPES:
+        sys.stderr.write(
+            f"Unknown agent type {agent_type!r}. Use one of: {', '.join(WORKER_AGENT_TYPES)}\n"
+        )
+        return 1
+
+    if len(args) == 1:
+        # Clear model for this agent (use backend default)
+        cfg = cm.get_agent_model_config(agent_type)
+        provider = cfg.get("provider", "anthropic")
+        ok = cm.set_agent_model_config(agent_type, provider, None, None, True)
+        if not ok:
+            sys.stderr.write(f"Failed to save config for {agent_type}.\n")
+            return 1
+        print(f"{agent_type}: cleared model (using OpenCode/backend default)")
+        return 0
+
+    if len(args) == 2:
+        # Allow "provider/model" as single arg
+        part = args[1]
+        if "/" in part:
+            provider, model = part.split("/", 1)
+        else:
+            sys.stderr.write("Use: manifest config worker-model <agent> <provider> <model> or <agent> provider/model\n")
+            return 1
+    elif len(args) >= 3:
+        provider = args[1]
+        model = args[2]
+    else:
+        sys.stderr.write("Use: manifest config worker-model [agent] [provider] [model]\n")
+        return 1
+
+    ok = cm.set_agent_model_config(agent_type, provider, model, None, True)
+    if not ok:
+        sys.stderr.write(f"Failed to save config for {agent_type}.\n")
+        return 1
+    print(f"{agent_type}: {provider}/{model}")
+    return 0
+
+
 def main() -> int:
-    """Check OpenCode and Podman; if both available, start View and OpenCode. Otherwise warn and exit."""
+    """Entry point: dispatch config subcommands or start View + OpenCode."""
+    argv = sys.argv[1:]
+    if len(argv) >= 2 and argv[0] == "config" and argv[1] == "worker-model":
+        return _run_config_worker_model(argv[2:])
+
     if not _is_opencode_available():
         sys.stderr.write("OpenCode is required but not found.\n")
         sys.stderr.write(f"  {_opencode_hint()}\n")
