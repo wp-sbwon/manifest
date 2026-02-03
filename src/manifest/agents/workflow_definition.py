@@ -4,6 +4,9 @@ Workflow definition system for dynamic workflow composition.
 This module provides a flexible system for defining and executing workflows
 dynamically. Workflows can be defined in JSON/YAML format and modified at
 runtime, allowing for different workflow patterns based on task requirements.
+
+Canonical stage order and sets are defined here so coordinator and executor
+use a single source of truth.
 """
 from typing import Dict, Any, Optional, List, Set
 from enum import Enum
@@ -11,6 +14,43 @@ from dataclasses import dataclass, field
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Default Worker Squad stage order (canonical source; used by coordinator and executor)
+DEFAULT_STAGE_ORDER: List[str] = [
+    "planner",
+    "tdd_test",
+    "coder",
+    "test",
+    "debug",
+    "self_review",
+    "approver",
+]
+
+# Stages required for workflow completion (debug is conditional)
+DEFAULT_REQUIRED_STAGES: Set[str] = {"planner", "tdd_test", "coder", "test", "self_review", "approver"}
+
+# Stages whose failure terminates the workflow
+DEFAULT_CRITICAL_STAGES: Set[str] = {"planner", "tdd_test"}
+
+
+def get_next_stage_in_order(
+    current_stage: Optional[str],
+    stage_order: Optional[List[str]] = None,
+) -> Optional[str]:
+    """Return the next stage in the given order, or None if current is last.
+
+    Uses DEFAULT_STAGE_ORDER if stage_order is not given.
+    """
+    order = stage_order or DEFAULT_STAGE_ORDER
+    if not current_stage:
+        return order[0] if order else None
+    try:
+        idx = order.index(current_stage)
+        if idx < len(order) - 1:
+            return order[idx + 1]
+    except ValueError:
+        pass
+    return None
 
 
 class StageCondition(Enum):

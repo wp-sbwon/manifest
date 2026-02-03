@@ -19,6 +19,8 @@ from manifest.core.config import ConfigManager
 from manifest.core.state_manager import StateManager
 from manifest.core.logger import get_logger
 from manifest.agents.workflow_event_bus import WorkflowEventBus, WorkflowEvent, WorkflowEventType
+from manifest.agents.agent_output_parser import parse_agent_output as parse_agent_output_module
+from manifest.agents.workflow_definition import get_next_stage_in_order
 
 logger = get_logger(__name__)
 
@@ -105,6 +107,9 @@ class AgentCoordinator:
         else:
             # Set as attribute if not already set
             self.agent_bridge.message_bus = self.message_bus
+
+        # Worker registration (single responsibility: active_agents + task state)
+        self._worker_registration = WorkerRegistration(state_manager)
 
         # Create workflow executors
         self.worker_squad_executor = WorkerSquadExecutor(self)
@@ -268,31 +273,17 @@ class AgentCoordinator:
 
             if container_id:
                 channel = f"squad-{task_id}-{agent_type}"
-                self.active_agents[task_id] = {
-                    "agent_type": agent_type,
-                    "status": "active",
-                    "channel": channel,
-                    "container_id": container_id,
-                    "execution_mode": "container"
-                }
-
-                # Update task with agent info
-                task["agent"] = {
-                    "type": agent_type,
-                    "status": "active",
-                    "channel": channel,
-                    "container_id": container_id
-                }
-
-                # Update task scope in state
-                task["scope"] = {
-                    "components": task_scope.get("components", []),
-                    "files": task_scope.get("allowed_files", []),
-                    "allowed_modifications": task_scope.get("allowed_modifications", [])
-                }
-
-                self.state_manager.set_task_checklist(tasks)
-                self.state_manager.set_last_action(f"Started {agent_type} agent in container for task {task_id}")
+                self._register_worker_agent(
+                    task_id=task_id,
+                    agent_type=agent_type,
+                    channel=channel,
+                    task_scope=task_scope,
+                    task=task,
+                    tasks=tasks,
+                    execution_mode="container",
+                    container_id=container_id,
+                    last_action_msg=f"Started {agent_type} agent in container for task {task_id}",
+                )
                 await self.state_manager.save_state()
                 return True
             else:
@@ -310,29 +301,16 @@ class AgentCoordinator:
 
         if success:
             channel = f"squad-{task_id}-{agent_type}"
-            self.active_agents[task_id] = {
-                "agent_type": agent_type,
-                "status": "active",
-                "channel": channel,
-                "execution_mode": "direct"
-            }
-
-            # Update task with agent info
-            task["agent"] = {
-                "type": agent_type,
-                "status": "active",
-                "channel": channel
-            }
-
-            # Update task scope in state
-            task["scope"] = {
-                "components": task_scope.get("components", []),
-                "files": task_scope.get("allowed_files", []),
-                "allowed_modifications": task_scope.get("allowed_modifications", [])
-            }
-
-            self.state_manager.set_task_checklist(tasks)
-            self.state_manager.set_last_action(f"Started {agent_type} agent for task {task_id}")
+            self._register_worker_agent(
+                task_id=task_id,
+                agent_type=agent_type,
+                channel=channel,
+                task_scope=task_scope,
+                task=task,
+                tasks=tasks,
+                execution_mode="direct",
+                last_action_msg=f"Started {agent_type} agent for task {task_id}",
+            )
             await self.state_manager.save_state()
 
         return success
@@ -400,101 +378,15 @@ class AgentCoordinator:
         channel = f"squad-{task_id}-{agent_type}"
 
         # Wait for agent completion by monitoring channel
-        start_time = asyncio.get_event_loop().time()
-        last_message_count = 0
-        max_wait_iterations = 300  # 5 minutes max (1 second per iteration)
-        wait_iteration = 0
-
-        while wait_iteration < max_wait_iterations:
-            # Check timeout
-            if timeout and (asyncio.get_event_loop().time() - start_time) > timeout:
-                return {
-                    "success": False,
-                    "output": "",
-                    "parsed_data": {},
-                    "status": "timeout",
-                    "error": f"Agent execution timed out after {timeout} seconds"
-                }
-
-            # Check if agent is still active
-            if task_id not in self.active_agents:
-                # Agent completed (removed from active agents)
-                logger.debug(f"Agent {task_id} completed (removed from active_agents)")
-                break
-
-            # Check agent status via bridge (in-process) - PRIMARY CHECK
-            if self.agent_bridge and task_id in self.agent_bridge._active_agents:
-                agent_info = self.agent_bridge._active_agents[task_id]
-                if agent_info.get("completed") or agent_info.get("status") in ["completed", "stopped", "failed"]:
-                    logger.debug(f"Agent {task_id} completed (bridge status: {agent_info.get('status')})")
-                    break
-
-            # Check backend executor's active_sessions (if available)
-            if self.agent_bridge and hasattr(self.agent_bridge, 'executor'):
-                executor = self.agent_bridge.executor
-                if executor and hasattr(executor, 'active_sessions'):
-                    # Use agent_id format: task_id or f"{task_id}-{agent_type}"
-                    session_id = task_id
-                    if session_id in executor.active_sessions:
-                        session_status = executor.active_sessions[session_id].get("status")
-                        if session_status == "completed":
-                            logger.debug(f"Agent {task_id} completed (executor session status: completed)")
-                            break
-
-            # Check agent status via get_agent_status
-            agent_status = await self.get_agent_status(task_id)
-            if agent_status.get("status") in ["completed", "stopped", "failed"]:
-                logger.debug(f"Agent {task_id} completed (agent_status: {agent_status.get('status')})")
-                break
-
-            # Check channel for "complete" chunk or completion indicators
-            history = self.state_manager.get_chat_history(channel)
-            current_message_count = len(history)
-
-            # If new messages appeared, check for completion
-            if current_message_count > last_message_count and history:
-                # Check last few messages for completion indicators
-                # Look for explicit completion markers or check if agent stopped producing output
-                recent_messages = history[-min(5, len(history)):]  # Check last 5 messages
-
-                for msg in reversed(recent_messages):
-                    content = msg.get("content", "")
-                    role = msg.get("role", "")
-
-                    # Check for explicit completion indicators in message content
-                    if any(indicator in content.lower() for indicator in [
-                        "[complete]", "[finished]", "[done]", "task completed",
-                        "agent completed", "execution completed"
-                    ]):
-                        logger.debug(f"Agent {task_id} completed (completion indicator found in message)")
-                        break
-
-                    # Check if message has completion metadata (if we add it in the future)
-                    if msg.get("completed") or msg.get("type") == "complete":
-                        logger.debug(f"Agent {task_id} completed (completion metadata in message)")
-                        break
-                else:
-                    # If we didn't break, continue to next iteration
-                    pass
-
-            last_message_count = current_message_count
-
-            # Additional check: If no new messages for a while and agent seems idle, check more carefully
-            if wait_iteration > 10 and current_message_count == last_message_count:
-                # After 10 seconds of no new messages, do a more thorough check
-                # This helps catch cases where agent completed but didn't send explicit signal
-                if self.agent_bridge and task_id in self.agent_bridge._active_agents:
-                    agent_info = self.agent_bridge._active_agents[task_id]
-                    # If agent has been running for a while and no new messages, check if it's actually done
-                    completed_at = agent_info.get("completed_at")
-                    if completed_at:
-                        # Agent was marked as completed
-                        logger.debug(f"Agent {task_id} completed (completed_at timestamp found)")
-                        break
-
-            # Wait a bit before checking again
-            await asyncio.sleep(1.0)
-            wait_iteration += 1
+        wait_iteration, timed_out = await self._wait_for_agent_completion(task_id, channel, timeout)
+        if timed_out:
+            return {
+                "success": False,
+                "output": "",
+                "parsed_data": {},
+                "status": "timeout",
+                "error": f"Agent execution timed out after {timeout} seconds"
+            }
 
         # Get final output from channel
         history = self.state_manager.get_chat_history(channel)
@@ -517,6 +409,7 @@ class AgentCoordinator:
         parsed_data = self._parse_agent_output(agent_type, stage, output, tool_execution_summary)
 
         # Determine final status - check multiple sources for reliability
+        max_wait_iterations = 300  # Must match _wait_for_agent_completion
         if wait_iteration >= max_wait_iterations:
             status = "timeout"
             success = False
@@ -605,35 +498,110 @@ class AgentCoordinator:
         }
 
     def _get_next_stage(self, current_stage: Optional[str]) -> Optional[str]:
-        """Get the next stage in the workflow sequence.
+        """Get the next stage in the workflow sequence. Uses canonical order from workflow_definition."""
+        return get_next_stage_in_order(current_stage)
 
-        Args:
-            current_stage: Current stage name.
+    def _register_worker_agent(
+        self,
+        task_id: str,
+        agent_type: str,
+        channel: str,
+        task_scope: Dict[str, Any],
+        task: Dict[str, Any],
+        tasks: List[Dict[str, Any]],
+        execution_mode: str = "direct",
+        container_id: Optional[str] = None,
+        last_action_msg: Optional[str] = None,
+    ) -> None:
+        """Register a worker agent in active_agents and update task state. Delegates to WorkerRegistration."""
+        self._worker_registration.register(
+            active_agents=self.active_agents,
+            task_id=task_id,
+            agent_type=agent_type,
+            channel=channel,
+            task_scope=task_scope,
+            task=task,
+            tasks=tasks,
+            execution_mode=execution_mode,
+            container_id=container_id,
+            last_action_msg=last_action_msg,
+        )
+
+    async def _wait_for_agent_completion(
+        self,
+        task_id: str,
+        channel: str,
+        timeout: Optional[float],
+    ) -> tuple:
+        """Wait for agent completion by polling status and channel.
 
         Returns:
-            Next stage name, or None if current is the last stage.
+            Tuple of (wait_iteration: int, timed_out: bool). If timed_out is True,
+            caller should return a timeout result immediately.
         """
-        stage_sequence = [
-            "planner",
-            "tdd_test",
-            "coder",
-            "test",
-            "debug",
-            "self_review",
-            "approver"
-        ]
+        start_time = asyncio.get_event_loop().time()
+        last_message_count = 0
+        max_wait_iterations = 300  # 5 minutes max (1 second per iteration)
+        wait_iteration = 0
 
-        if not current_stage:
-            return "planner"
+        while wait_iteration < max_wait_iterations:
+            if timeout and (asyncio.get_event_loop().time() - start_time) > timeout:
+                return (wait_iteration, True)
 
-        try:
-            current_index = stage_sequence.index(current_stage)
-            if current_index < len(stage_sequence) - 1:
-                return stage_sequence[current_index + 1]
-        except ValueError:
-            pass
+            if task_id not in self.active_agents:
+                logger.debug(f"Agent {task_id} completed (removed from active_agents)")
+                break
 
-        return None
+            if self.agent_bridge and task_id in self.agent_bridge._active_agents:
+                agent_info = self.agent_bridge._active_agents[task_id]
+                if agent_info.get("completed") or agent_info.get("status") in ["completed", "stopped", "failed"]:
+                    logger.debug(f"Agent {task_id} completed (bridge status: {agent_info.get('status')})")
+                    break
+
+            if self.agent_bridge and hasattr(self.agent_bridge, 'executor'):
+                executor = self.agent_bridge.executor
+                if executor and hasattr(executor, 'active_sessions') and task_id in executor.active_sessions:
+                    if executor.active_sessions[task_id].get("status") == "completed":
+                        logger.debug(f"Agent {task_id} completed (executor session status: completed)")
+                        break
+
+            agent_status = await self.get_agent_status(task_id)
+            if agent_status.get("status") in ["completed", "stopped", "failed"]:
+                logger.debug(f"Agent {task_id} completed (agent_status: {agent_status.get('status')})")
+                break
+
+            history = self.state_manager.get_chat_history(channel)
+            current_message_count = len(history)
+
+            if current_message_count > last_message_count and history:
+                recent_messages = history[-min(5, len(history)):]
+                for msg in reversed(recent_messages):
+                    content = msg.get("content", "")
+                    if any(indicator in content.lower() for indicator in [
+                        "[complete]", "[finished]", "[done]", "task completed",
+                        "agent completed", "execution completed"
+                    ]):
+                        logger.debug(f"Agent {task_id} completed (completion indicator found in message)")
+                        break
+                    if msg.get("completed") or msg.get("type") == "complete":
+                        logger.debug(f"Agent {task_id} completed (completion metadata in message)")
+                        break
+                else:
+                    pass
+
+            last_message_count = current_message_count
+
+            if wait_iteration > 10 and current_message_count == last_message_count:
+                if self.agent_bridge and task_id in self.agent_bridge._active_agents:
+                    agent_info = self.agent_bridge._active_agents[task_id]
+                    if agent_info.get("completed_at"):
+                        logger.debug(f"Agent {task_id} completed (completed_at timestamp found)")
+                        break
+
+            await asyncio.sleep(1.0)
+            wait_iteration += 1
+
+        return (wait_iteration, False)
 
     def _parse_agent_output(
         self,
@@ -642,181 +610,13 @@ class AgentCoordinator:
         output: str,
         tool_execution_summary: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Parse agent output to extract structured data.
-
-        Attempts to extract structured information from agent output based on
-        agent type and stage. This helps Worker Squad use agent results in
-        subsequent stages.
-
-        Args:
-            agent_type: Type of agent that produced the output.
-            stage: Stage in the workflow.
-            output: Raw agent output text.
-
-        Returns:
-            Dictionary with parsed/structured data. Structure varies by agent type.
-        """
-        import re
-        import json
-
-        parsed = {}
-
-        if agent_type == "planner":
-            # Extract plan structure
-            # Look for JSON blocks
-            json_match = re.search(r'\{[^{}]*"plan"[^{}]*\}', output, re.DOTALL)
-            if json_match:
-                try:
-                    plan_data = json.loads(json_match.group(0))
-                    parsed["plan"] = plan_data
-                except:
-                    pass
-
-            # Extract task breakdown
-            task_pattern = r'(?:Task|Step)\s*\d+[:\-]\s*(.+?)(?:\n|$)'
-            tasks = re.findall(task_pattern, output, re.IGNORECASE | re.MULTILINE)
-            if tasks:
-                parsed["tasks"] = [t.strip() for t in tasks]
-
-            # Extract estimated time
-            time_match = re.search(r'(?:estimate|time|duration)[:\s]+(\d+)\s*(?:hours?|hrs?)', output, re.IGNORECASE)
-            if time_match:
-                parsed["estimated_hours"] = int(time_match.group(1))
-
-        elif agent_type == "test" and stage == "tdd_test":
-            # Extract test skeleton (improved - look for all code blocks)
-            code_block_pattern = r'```(?:python|py|test)?\n(.*?)```'
-            code_blocks = re.findall(code_block_pattern, output, re.DOTALL)
-            if code_blocks:
-                # Use the largest code block as test skeleton (likely the main test file)
-                test_skeleton = max(code_blocks, key=len)
-                parsed["test_skeleton"] = test_skeleton
-                # Also include all code blocks
-                parsed["code_blocks"] = code_blocks
-
-            # Extract test plan (improved pattern)
-            plan_patterns = [
-                r'(?:test\s+plan|plan|test\s+strategy)[:\s]+(.+?)(?:\n\n|\Z)',  # After "test plan:"
-                r'##\s*(?:Test\s+)?Plan\s*\n(.+?)(?:\n##|\Z)',  # Markdown section
-                r'Plan:\s*\n(.+?)(?:\n\n|\Z)',  # Simple "Plan:"
-            ]
-            for pattern in plan_patterns:
-                plan_match = re.search(pattern, output, re.IGNORECASE | re.DOTALL)
-                if plan_match:
-                    parsed["test_plan"] = plan_match.group(1).strip()
-                    break
-
-        elif agent_type == "test" and stage == "test":
-            # Use tool_execution_summary if available (for test execution results)
-            if tool_execution_summary:
-                # Test agent might store test results in tool_execution_summary
-                if "test_results" in tool_execution_summary:
-                    parsed["test_results"] = tool_execution_summary["test_results"]
-                if "tests_passed" in tool_execution_summary:
-                    parsed["tests_passed"] = tool_execution_summary["tests_passed"]
-                if "tests_failed" in tool_execution_summary:
-                    parsed["tests_failed"] = tool_execution_summary["tests_failed"]
-                if "errors" in tool_execution_summary:
-                    parsed["errors"] = tool_execution_summary["errors"]
-
-            # Fallback: Extract test results from output text
-            if "tests_passed" not in parsed:
-                passed_match = re.search(r'(?:passed|PASSED)[:\s]+(\d+)', output, re.IGNORECASE)
-                if passed_match:
-                    parsed["tests_passed"] = int(passed_match.group(1))
-
-            if "tests_failed" not in parsed:
-                failed_match = re.search(r'(?:failed|FAILED)[:\s]+(\d+)', output, re.IGNORECASE)
-                if failed_match:
-                    parsed["tests_failed"] = int(failed_match.group(1))
-
-            # Extract error messages (if not already parsed)
-            if "errors" not in parsed or not parsed["errors"]:
-                error_pattern = r'(?:error|ERROR|failure|FAILURE)[:\s]+(.+?)(?:\n|$)'
-                errors = re.findall(error_pattern, output, re.IGNORECASE | re.MULTILINE)
-                if errors:
-                    parsed["errors"] = [e.strip() for e in errors]
-
-        elif agent_type == "coder":
-            # Use tool_execution_summary if available (most reliable)
-            if tool_execution_summary:
-                parsed["files_modified"] = tool_execution_summary.get("modified_files", [])
-                parsed["executed_commands"] = tool_execution_summary.get("executed_commands", [])
-                parsed["read_files"] = tool_execution_summary.get("read_files", [])
-                parsed["errors"] = tool_execution_summary.get("errors", [])
-                parsed["total_tool_calls"] = tool_execution_summary.get("total_tool_calls", 0)
-            else:
-                # Fallback: Extract from output text using regex
-                file_pattern = r'(?:modified|changed|updated)\s+file[:\s]+(.+?)(?:\n|$)'
-                files = re.findall(file_pattern, output, re.IGNORECASE | re.MULTILINE)
-                if files:
-                    parsed["files_modified"] = [f.strip() for f in files]
-
-            # Extract code blocks
-            code_blocks = re.findall(r'```(?:python|py|javascript|js|typescript|ts)?\n(.*?)```', output, re.DOTALL)
-            if code_blocks:
-                parsed["code_blocks"] = code_blocks
-
-        elif agent_type == "approver":
-            # Extract decision (improved patterns)
-            decision_patterns = [
-                r'(?:decision|result|verdict|status)[:\s]+(approved|rejected|pending|accept|deny)',
-                r'(?:I\s+)?(?:approve|reject|accept|deny|pending)',
-                r'\[(?:APPROVED|REJECTED|PENDING)\]',
-            ]
-            for pattern in decision_patterns:
-                decision_match = re.search(pattern, output, re.IGNORECASE)
-                if decision_match:
-                    decision = decision_match.group(1) if decision_match.lastindex else decision_match.group(0)
-                    # Normalize decision values
-                    decision_lower = decision.lower()
-                    if "approve" in decision_lower or "accept" in decision_lower:
-                        parsed["decision"] = "approved"
-                    elif "reject" in decision_lower or "deny" in decision_lower:
-                        parsed["decision"] = "rejected"
-                    else:
-                        parsed["decision"] = "pending"
-                    break
-
-            # Extract feedback (improved patterns)
-            feedback_patterns = [
-                r'(?:feedback|comment|notes|remarks)[:\s]+(.+?)(?:\n\n|\Z)',
-                r'##\s*Feedback\s*\n(.+?)(?:\n##|\Z)',  # Markdown section
-                r'Feedback:\s*\n(.+?)(?:\n\n|\Z)',
-            ]
-            for pattern in feedback_patterns:
-                feedback_match = re.search(pattern, output, re.IGNORECASE | re.DOTALL)
-                if feedback_match:
-                    parsed["feedback"] = feedback_match.group(1).strip()
-                    break
-
-        elif agent_type == "debug":
-            # Use tool_execution_summary if available
-            if tool_execution_summary:
-                if "issues_fixed" in tool_execution_summary:
-                    parsed["issues_fixed"] = tool_execution_summary["issues_fixed"]
-                if "fixes_applied" in tool_execution_summary:
-                    parsed["fixes_applied"] = tool_execution_summary["fixes_applied"]
-                if "errors" in tool_execution_summary:
-                    parsed["errors"] = tool_execution_summary["errors"]
-
-            # Fallback: Extract issues fixed from output
-            if "issues_fixed" not in parsed:
-                issue_patterns = [
-                    r'(?:fixed|resolved|issue|bug)[:\s]+(.+?)(?:\n|$)',
-                    r'[-*]\s*(?:Fixed|Resolved)[:\s]+(.+?)(?:\n|$)',
-                ]
-                all_issues = []
-                for pattern in issue_patterns:
-                    issues = re.findall(pattern, output, re.IGNORECASE | re.MULTILINE)
-                    for issue in issues:
-                        issue_clean = issue.strip()
-                        if issue_clean and issue_clean not in all_issues:
-                            all_issues.append(issue_clean)
-                if all_issues:
-                    parsed["issues_fixed"] = all_issues
-
-        return parsed
+        """Parse agent output to extract structured data. Delegates to agent_output_parser."""
+        return parse_agent_output_module(
+            agent_type=agent_type,
+            stage=stage,
+            output=output,
+            tool_execution_summary=tool_execution_summary,
+        )
 
     async def stop_agent(self, task_id: str) -> bool:
         """Stop an agent that's currently working on a task.
@@ -1014,210 +814,6 @@ class AgentCoordinator:
             results from each stage.
         """
         return await self.worker_squad_executor.execute(task_id)
-
-    async def _execute_planner_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> bool:
-        """Execute the Planner stage of Worker Squad.
-
-        Starts the planner agent to create a plan for the task. This is
-        the first stage in the Worker Squad workflow.
-
-        Args:
-            task_id: ID of the task to plan for.
-            previous_stages: Results from previous stages (empty for planner).
-
-        Returns:
-            True if planner agent started successfully, False otherwise.
-        """
-        return await self.start_worker_agent(task_id, "planner", stage="planner", previous_stages=previous_stages or {})
-
-    async def _execute_coder_stage(
-        self,
-        task_id: str,
-        feedback: str = "",
-        test_plan: Dict[str, Any] = None,
-        previous_stages: Dict[str, Any] = None
-    ) -> bool:
-        """Execute the Coder stage of Worker Squad.
-
-        Starts the coder agent to implement code. If feedback is provided
-        (e.g., from approver rejection), it's added to the task context.
-        If a test plan is provided (from TDD stage), it's also included
-        in the context.
-
-        Args:
-            task_id: ID of the task to code for.
-            feedback: Optional feedback from approver if this is a rework.
-            test_plan: Optional test plan from TDD stage to guide implementation.
-            previous_stages: Results from previous stages in the workflow.
-
-        Returns:
-            True if coder agent started successfully, False otherwise.
-        """
-        # If feedback provided, add it to context
-        if feedback:
-            # Update task with feedback
-            tasks = self.state_manager.get_task_checklist()
-            task = next((t for t in tasks if t.get("id") == task_id), None)
-            if task:
-                if "worker_squad" not in task:
-                    task["worker_squad"] = {}
-                task["worker_squad"]["approver_feedback"] = feedback
-                self.state_manager.set_task_checklist(tasks)
-
-        # If test_plan provided (TDD), add it to context
-        if test_plan:
-            tasks = self.state_manager.get_task_checklist()
-            task = next((t for t in tasks if t.get("id") == task_id), None)
-            if task:
-                if "worker_squad" not in task:
-                    task["worker_squad"] = {}
-                if "stages" not in task["worker_squad"]:
-                    task["worker_squad"]["stages"] = {}
-                task["worker_squad"]["stages"]["tdd_test"] = test_plan
-                self.state_manager.set_task_checklist(tasks)
-
-        return await self.start_worker_agent(
-            task_id, "coder", stage="coder", previous_stages=previous_stages or {}
-        )
-
-    async def _execute_tdd_test_stage(
-        self,
-        task_id: str,
-        planner_result: Dict[str, Any],
-        previous_stages: Dict[str, Any] = None
-    ) -> Dict[str, Any]:
-        """Execute the TDD (Test-Driven Development) test stage.
-
-        In TDD mode, tests are written before implementation. This stage
-        starts the test agent with TDD context to create test skeletons
-        and plans that will guide the coder's implementation.
-
-        Args:
-            task_id: ID of the task to write tests for.
-            planner_result: Results from the planner stage containing the plan.
-            previous_stages: Results from all previous stages.
-
-        Returns:
-            Dictionary with stage results including status, test skeleton,
-            test plan, and TDD mode flag.
-        """
-        # Start test agent in TDD mode (write tests first)
-        success = await self.start_worker_agent(
-            task_id, "test", stage="tdd_test", previous_stages=previous_stages or {}
-        )
-        return {
-            "status": "completed" if success else "failed",
-            "test_skeleton": "",
-            "test_plan": "",
-            "tdd_mode": True
-        }
-
-    async def _execute_test_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Execute the test stage to run tests after implementation.
-
-        This stage runs after the coder has implemented code. The test
-        agent executes the tests (which should pass if TDD was followed
-        correctly) and reports results.
-
-        Args:
-            task_id: ID of the task to test.
-            previous_stages: Results from previous stages including coder output.
-
-        Returns:
-            Dictionary with test execution results including status and
-            test results.
-        """
-        success = await self.start_worker_agent(
-            task_id, "test", stage="test", previous_stages=previous_stages or {}
-        )
-        return {
-            "status": "completed" if success else "failed",
-            "test_results": {}
-        }
-
-    async def _execute_debug_stage(
-        self,
-        task_id: str,
-        test_result: Dict[str, Any],
-        previous_stages: Dict[str, Any] = None
-    ) -> Dict[str, Any]:
-        """Execute the debug stage to fix failing tests.
-
-        This stage runs when tests fail. The debug agent analyzes test
-        failures and fixes issues in the code. This can iterate multiple
-        times until tests pass.
-
-        Args:
-            task_id: ID of the task to debug.
-            test_result: Results from the test stage showing what failed.
-            previous_stages: Results from all previous stages.
-
-        Returns:
-            Dictionary with debug results including status and list of
-            issues that were fixed.
-        """
-        success = await self.start_worker_agent(
-            task_id, "debug", stage="debug", previous_stages=previous_stages or {}
-        )
-        return {
-            "status": "completed" if success else "failed",
-            "issues_fixed": []
-        }
-
-    async def _execute_self_review_stage(self, task_id: str, previous_stages: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Execute the self review stage where coder reviews their own work.
-
-        After tests pass, the coder agent reviews the implementation to
-        ensure it complies with the original plan and meets quality standards.
-        This is done by the coder agent in self-review mode.
-
-        Args:
-            task_id: ID of the task to review.
-            previous_stages: Results from all previous stages.
-
-        Returns:
-            Dictionary with review results including status, plan compliance
-            flag, and any findings.
-        """
-        # Self review is performed by the coder agent in review mode
-        success = await self.start_worker_agent(
-            task_id, "coder", stage="self_review", previous_stages=previous_stages or {}
-        )
-        return {
-            "status": "completed" if success else "failed",
-            "plan_compliance": True,
-            "findings": []
-        }
-
-    async def _execute_approver_stage(
-        self,
-        task_id: str,
-        self_review_result: Dict[str, Any],
-        previous_stages: Dict[str, Any] = None
-    ) -> Dict[str, Any]:
-        """Execute the approver stage for final approval.
-
-        The approver agent reviews the completed work and makes a final
-        decision: approve or reject. If rejected, feedback is provided
-        and the workflow may loop back to the coder stage.
-
-        Args:
-            task_id: ID of the task to approve.
-            self_review_result: Results from the self review stage.
-            previous_stages: Results from all previous stages.
-
-        Returns:
-            Dictionary with approval results including status, decision
-            ("approved" or "rejected"), and optional feedback.
-        """
-        success = await self.start_worker_agent(
-            task_id, "approver", stage="approver", previous_stages=previous_stages or {}
-        )
-        return {
-            "status": "completed" if success else "failed",
-            "decision": "approved" if success else "pending",
-            "feedback": ""
-        }
 
     async def review_project_requirements(self, task_id: str) -> Dict[str, Any]:
         """Review project-level requirements compliance after task completion.
