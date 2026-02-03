@@ -21,7 +21,13 @@ from manifest.core.logger import get_logger
 from manifest.agents.workflow_event_bus import WorkflowEvent, WorkflowEventType
 from manifest.agents.failure_recovery import FailureRecoveryManager
 from manifest.agents.workflow_definition import (
-    WorkflowDefinition, WorkflowRegistry, StageDefinition, StageCondition
+    WorkflowDefinition,
+    WorkflowRegistry,
+    StageDefinition,
+    StageCondition,
+    DEFAULT_REQUIRED_STAGES,
+    DEFAULT_CRITICAL_STAGES,
+    get_next_stage_in_order,
 )
 
 logger = get_logger(__name__)
@@ -659,20 +665,10 @@ class WorkerSquadExecutor:
         Returns:
             Name of next stage to execute, or None if workflow is complete.
         """
-        # Standard workflow sequence
-        stage_sequence = {
-            "planner": "tdd_test",
-            "tdd_test": "coder",
-            "coder": "test",
-            "test": None,  # Conditional: debug if failed, self_review if passed
-            "debug": "test",  # Loop back to test
-            "self_review": "approver",
-            "approver": None  # Workflow complete
-        }
+        # Standard workflow sequence (canonical order from workflow_definition)
+        next_stage = get_next_stage_in_order(completed_stage)
 
-        next_stage = stage_sequence.get(completed_stage)
-
-        # Conditional execution logic
+        # Conditional execution logic (overrides for test/debug/approver/self_review)
 
         # 1. Test stage: Check if tests passed
         if completed_stage == "test":
@@ -802,13 +798,11 @@ class WorkerSquadExecutor:
         Returns:
             True if workflow is complete.
         """
-        # Required stages for workflow completion
-        required_stages = {"planner", "tdd_test", "coder", "test", "self_review", "approver"}
         completed = workflow_state.get("completed_stages", set())
         stages = workflow_state.get("stages", {})
 
-        # Check if all required stages are completed
-        all_completed = required_stages.issubset(completed)
+        # Check if all required stages are completed (canonical set from workflow_definition)
+        all_completed = DEFAULT_REQUIRED_STAGES.issubset(completed)
 
         # Check if approver approved (if approver stage exists)
         if "approver" in stages:
@@ -831,9 +825,7 @@ class WorkerSquadExecutor:
         Returns:
             True if workflow should terminate.
         """
-        # Critical stages that cause workflow termination on failure
-        critical_stages = {"planner", "tdd_test"}
-        return failed_stage in critical_stages
+        return failed_stage in DEFAULT_CRITICAL_STAGES
 
     async def _execute_stage_with_tracking(
         self, task_id: str, stage: str, workflow_state: Dict[str, Any]
@@ -956,6 +948,199 @@ class WorkerSquadExecutor:
         await self._cleanup_event_subscriptions(task_id)
         logger.info(f"Workflow completed for task {task_id}")
 
+    async def _publish_workflow_failed(
+        self, task_id: str, stage: str, error_msg: str, stages: Dict[str, Any]
+    ) -> None:
+        """Publish WORKFLOW_FAILED event. Caller should return immediately after."""
+        if hasattr(self.coordinator, "event_bus"):
+            await self.coordinator.event_bus.publish(WorkflowEvent(
+                event_type=WorkflowEventType.WORKFLOW_FAILED,
+                task_id=task_id,
+                stage=stage,
+                data={"error": error_msg, "recovery_failed": True},
+            ))
+
+    async def _run_stage_with_recovery(
+        self,
+        task_id: str,
+        stage_name: str,
+        agent_type: str,
+        stage_result: Dict[str, Any],
+        stages: Dict[str, Any],
+        previous_stages: Dict[str, Any],
+        default_error: str,
+    ) -> Optional[str]:
+        """Save stage result and attempt recovery if failed.
+
+        Returns None if we can continue (success or recovered), or the error message
+        if workflow should stop (recovery failed).
+        """
+        stage_result["status"] = "completed" if stage_result.get("success") else "failed"
+        stages[stage_name] = stage_result
+        previous_stages[stage_name] = stage_result
+        await self.state_manager.save_worker_squad_stage_async(task_id, stage_name, stage_result)
+
+        if stage_result.get("success"):
+            return None
+
+        failure_result = {
+            "success": False,
+            "error": stage_result.get("error", default_error),
+            "output": stage_result.get("output", ""),
+        }
+        recovery_result = await self.recovery_manager.attempt_recovery(
+            task_id=task_id,
+            stage=stage_name,
+            agent_type=agent_type,
+            failure_result=failure_result,
+            previous_stages=previous_stages,
+        )
+        if recovery_result.get("recovered"):
+            result = recovery_result["result"]
+            result["status"] = "completed"
+            result["recovered"] = True
+            result["recovery_strategy"] = recovery_result["strategy_used"].value
+            stages[stage_name] = result
+            previous_stages[stage_name] = result
+            await self.state_manager.save_worker_squad_stage_async(task_id, stage_name, result)
+            logger.info(
+                f"{stage_name} stage recovered for task {task_id} using "
+                f"{recovery_result['strategy_used'].value}"
+            )
+            return None
+        return recovery_result.get("error", stage_result.get("error", default_error))
+
+    async def _run_debug_loop_until_tests_pass(
+        self,
+        task_id: str,
+        test_result: Dict[str, Any],
+        stages: Dict[str, Any],
+        previous_stages: Dict[str, Any],
+    ) -> Optional[str]:
+        """Run debug loop until tests pass or max iterations. Updates stages/previous_stages in place.
+
+        Returns None if tests passed (or recovered), or error message if workflow should stop.
+        """
+        max_debug_iterations = 5
+        debug_iterations = 0
+
+        while not test_result.get("success") and debug_iterations < max_debug_iterations:
+            debug_result = await self._execute_debug_stage(task_id, test_result, previous_stages)
+            debug_result["iteration"] = debug_iterations + 1
+            stages["debug"] = debug_result
+            previous_stages["debug"] = debug_result
+            await self.state_manager.save_worker_squad_stage_async(task_id, "debug", debug_result)
+            debug_iterations += 1
+
+            if debug_result.get("success"):
+                test_result = await self._execute_test_stage(task_id, previous_stages)
+                test_result["status"] = "completed" if test_result.get("success") else "failed"
+                stages["test"] = test_result
+                previous_stages["test"] = test_result
+                await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
+            else:
+                recovery_result = await self.recovery_manager.attempt_recovery(
+                    task_id=task_id,
+                    stage="debug",
+                    agent_type="debug",
+                    failure_result=debug_result,
+                    previous_stages=previous_stages,
+                )
+                if recovery_result.get("recovered"):
+                    test_result = await self._execute_test_stage(task_id, previous_stages)
+                    test_result["status"] = "completed" if test_result.get("success") else "failed"
+                    stages["test"] = test_result
+                    previous_stages["test"] = test_result
+                    await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
+                else:
+                    break
+
+        if not test_result.get("success"):
+            recovery_result = await self.recovery_manager.attempt_recovery(
+                task_id=task_id,
+                stage="test",
+                agent_type="test",
+                failure_result=test_result,
+                previous_stages=previous_stages,
+            )
+            if recovery_result.get("recovered"):
+                test_result = recovery_result["result"]
+                stages["test"] = test_result
+                previous_stages["test"] = test_result
+                await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
+                return None
+            await self._publish_workflow_failed(
+                task_id, "test", "Tests failed after max debug iterations", stages
+            )
+            return "Tests failed after max debug iterations"
+        return None
+
+    async def _run_approver_loop_until_approved(
+        self,
+        task_id: str,
+        self_review_result: Dict[str, Any],
+        stages: Dict[str, Any],
+        previous_stages: Dict[str, Any],
+    ) -> Optional[str]:
+        """Run self_review, approver, and approver rework loop. Updates stages/previous_stages in place.
+
+        Returns None if approved, or error message if workflow should stop.
+        """
+        stages["self_review"] = self_review_result
+        previous_stages["self_review"] = self_review_result
+        await self.state_manager.save_worker_squad_stage_async(
+            task_id, "self_review", self_review_result
+        )
+
+        approver_result = await self._execute_approver_stage(
+            task_id, self_review_result, previous_stages
+        )
+        stages["approver"] = approver_result
+        previous_stages["approver"] = approver_result
+        await self.state_manager.save_worker_squad_stage_async(task_id, "approver", approver_result)
+
+        max_approver_iterations = 3
+        approver_iterations = 0
+
+        while approver_result.get("decision") == "rejected" and approver_iterations < max_approver_iterations:
+            feedback = approver_result.get("feedback", "")
+            coder_result = await self._execute_coder_stage(
+                task_id, feedback=feedback, previous_stages=previous_stages
+            )
+            coder_result["iteration"] = approver_iterations + 1
+            coder_result["status"] = "completed" if coder_result.get("success") else "failed"
+            stages["coder"] = coder_result
+            previous_stages["coder"] = coder_result
+            await self.state_manager.save_worker_squad_stage_async(task_id, "coder", coder_result)
+
+            if not coder_result.get("success"):
+                return "Coder failed after approver rejection"
+
+            self_review_result = await self._execute_self_review_stage(task_id, previous_stages)
+            stages["self_review"] = self_review_result
+            previous_stages["self_review"] = self_review_result
+            await self.state_manager.save_worker_squad_stage_async(
+                task_id, "self_review", self_review_result
+            )
+
+            approver_result = await self._execute_approver_stage(
+                task_id, self_review_result, previous_stages
+            )
+            stages["approver"] = approver_result
+            previous_stages["approver"] = approver_result
+            await self.state_manager.save_worker_squad_stage_async(task_id, "approver", approver_result)
+            approver_iterations += 1
+
+        if approver_result.get("decision") != "approved":
+            await self._publish_workflow_failed(
+                task_id,
+                "approver",
+                "Approver did not approve after max iterations",
+                stages,
+            )
+            return "Approver did not approve after max iterations"
+        return None
+
     async def execute(self, task_id: str) -> Dict[str, Any]:
         """Execute the complete Worker Squad workflow for a task.
 
@@ -1041,258 +1226,60 @@ class WorkerSquadExecutor:
 
         # 1. Planner
         planner_result = await self._execute_planner_stage(task_id, previous_stages)
-        planner_result["status"] = "completed" if planner_result.get("success") else "failed"
-        stages["planner"] = planner_result
-        previous_stages["planner"] = planner_result
-        # Save stage result
-        await self.state_manager.save_worker_squad_stage_async(task_id, "planner", planner_result)
-        if not planner_result.get("success"):
-            # Attempt recovery
-            recovery_result = await self.recovery_manager.attempt_recovery(
-                task_id=task_id,
-                stage="planner",
-                agent_type="planner",
-                failure_result=planner_result,
-                previous_stages=previous_stages
-            )
-
-            if recovery_result.get("recovered"):
-                # Recovery succeeded, use recovered result
-                planner_result = recovery_result["result"]
-                planner_result["status"] = "completed"
-                planner_result["recovered"] = True
-                planner_result["recovery_strategy"] = recovery_result["strategy_used"].value
-                stages["planner"] = planner_result
-                previous_stages["planner"] = planner_result
-                await self.state_manager.save_worker_squad_stage_async(task_id, "planner", planner_result)
-                logger.info(f"Planner stage recovered for task {task_id} using {recovery_result['strategy_used'].value}")
-            else:
-                # Recovery failed
-                error_msg = recovery_result.get("error", planner_result.get("error", "Planner stage failed"))
-                # Publish workflow failed event
-                if hasattr(self.coordinator, 'event_bus'):
-                    await self.coordinator.event_bus.publish(WorkflowEvent(
-                        event_type=WorkflowEventType.WORKFLOW_FAILED,
-                        task_id=task_id,
-                        stage="planner",
-                        data={"error": error_msg, "recovery_failed": True}
-                    ))
-                return {"success": False, "stages": stages, "error": error_msg}
+        error = await self._run_stage_with_recovery(
+            task_id, "planner", "planner", planner_result, stages, previous_stages, "Planner stage failed"
+        )
+        if error is not None:
+            await self._publish_workflow_failed(task_id, "planner", error, stages)
+            return {"success": False, "stages": stages, "error": error}
+        planner_result = stages["planner"]
 
         # 2. Test (TDD - test first)
         tdd_test_result = await self._execute_tdd_test_stage(task_id, planner_result, previous_stages)
-        stages["tdd_test"] = tdd_test_result
-        previous_stages["tdd_test"] = tdd_test_result
-        # Save stage result
-        await self.state_manager.save_worker_squad_stage_async(task_id, "tdd_test", tdd_test_result)
-        if tdd_test_result.get("status") != "completed":
-            # Attempt recovery
-            failure_result = {
-                "success": tdd_test_result.get('success', False),
-                "error": tdd_test_result.get("error", "TDD test stage failed"),
-                "output": tdd_test_result.get("output", "")
-            }
-            recovery_result = await self.recovery_manager.attempt_recovery(
-                task_id=task_id,
-                stage="tdd_test",
-                agent_type="test",
-                failure_result=failure_result,
-                previous_stages=previous_stages
-            )
-
-            if recovery_result.get("recovered"):
-                tdd_test_result = recovery_result["result"]
-                tdd_test_result["status"] = "completed"
-                tdd_test_result["recovered"] = True
-                tdd_test_result["recovery_strategy"] = recovery_result["strategy_used"].value
-                stages["tdd_test"] = tdd_test_result
-                previous_stages["tdd_test"] = tdd_test_result
-                await self.state_manager.save_worker_squad_stage_async(task_id, "tdd_test", tdd_test_result)
-                logger.info(f"TDD test stage recovered for task {task_id} using {recovery_result['strategy_used'].value}")
-            else:
-                error_msg = recovery_result.get("error", "TDD test stage failed")
-                # Publish workflow failed event
-                if hasattr(self.coordinator, 'event_bus'):
-                    await self.coordinator.event_bus.publish(WorkflowEvent(
-                        event_type=WorkflowEventType.WORKFLOW_FAILED,
-                        task_id=task_id,
-                        stage="tdd_test",
-                        data={"error": error_msg, "recovery_failed": True}
-                    ))
-                return {"success": False, "stages": stages, "error": error_msg}
+        tdd_test_result["success"] = tdd_test_result.get("status") == "completed" or tdd_test_result.get("success")
+        error = await self._run_stage_with_recovery(
+            task_id, "tdd_test", "test", tdd_test_result, stages, previous_stages, "TDD test stage failed"
+        )
+        if error is not None:
+            await self._publish_workflow_failed(task_id, "tdd_test", error, stages)
+            return {"success": False, "stages": stages, "error": error}
+        tdd_test_result = stages["tdd_test"]
 
         # 3. Coder (implement to pass tests)
-        coder_result = await self._execute_coder_stage(task_id, test_plan=tdd_test_result, previous_stages=previous_stages)
-        coder_result["status"] = "completed" if coder_result.get("success") else "failed"
-        stages["coder"] = coder_result
-        previous_stages["coder"] = coder_result
-        # Save stage result
-        await self.state_manager.save_worker_squad_stage_async(task_id, "coder", coder_result)
-        if not coder_result.get("success"):
-            # Attempt recovery
-            recovery_result = await self.recovery_manager.attempt_recovery(
-                task_id=task_id,
-                stage="coder",
-                agent_type="coder",
-                failure_result=coder_result,
-                previous_stages=previous_stages
-            )
+        coder_result = await self._execute_coder_stage(
+            task_id, test_plan=tdd_test_result, previous_stages=previous_stages
+        )
+        error = await self._run_stage_with_recovery(
+            task_id, "coder", "coder", coder_result, stages, previous_stages, "Coder stage failed"
+        )
+        if error is not None:
+            await self._publish_workflow_failed(task_id, "coder", error, stages)
+            return {"success": False, "stages": stages, "error": error}
+        coder_result = stages["coder"]
 
-            if recovery_result.get("recovered"):
-                coder_result = recovery_result["result"]
-                coder_result["status"] = "completed"
-                coder_result["recovered"] = True
-                coder_result["recovery_strategy"] = recovery_result["strategy_used"].value
-                stages["coder"] = coder_result
-                previous_stages["coder"] = coder_result
-                await self.state_manager.save_worker_squad_stage_async(task_id, "coder", coder_result)
-                logger.info(f"Coder stage recovered for task {task_id} using {recovery_result['strategy_used'].value}")
-            else:
-                error_msg = recovery_result.get("error", coder_result.get("error", "Coder stage failed"))
-                # Publish workflow failed event
-                if hasattr(self.coordinator, 'event_bus'):
-                    await self.coordinator.event_bus.publish(WorkflowEvent(
-                        event_type=WorkflowEventType.WORKFLOW_FAILED,
-                        task_id=task_id,
-                        stage="coder",
-                        data={"error": error_msg, "recovery_failed": True}
-                    ))
-                return {"success": False, "stages": stages, "error": error_msg}
-
-        # 4. Test (run tests)
-        # Pass coder's modified files to test stage for better context
+        # 4. Test (run tests) + 5. Debug loop until tests pass
         coder_modified_files = coder_result.get("files_modified") or coder_result.get("parsed_data", {}).get("files_modified", [])
         test_result = await self._execute_test_stage(task_id, previous_stages)
         test_result["status"] = "completed" if test_result.get("success") else "failed"
-        # Add coder's modified files to test result for debugging
         if coder_modified_files:
             if "parsed_data" not in test_result:
                 test_result["parsed_data"] = {}
             test_result["parsed_data"]["coder_modified_files"] = coder_modified_files
         stages["test"] = test_result
         previous_stages["test"] = test_result
-        # Save stage result
         await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
 
-        # 5. Debug (iterative if tests fail)
-        debug_iterations = 0
-        max_debug_iterations = 5
-        while not test_result.get("success") and debug_iterations < max_debug_iterations:
-            debug_result = await self._execute_debug_stage(task_id, test_result, previous_stages)
-            debug_result["iteration"] = debug_iterations + 1
-            stages["debug"] = debug_result
-            previous_stages["debug"] = debug_result
-            # Save stage result
-            await self.state_manager.save_worker_squad_stage_async(task_id, "debug", debug_result)
-            debug_iterations += 1
+        error = await self._run_debug_loop_until_tests_pass(task_id, test_result, stages, previous_stages)
+        if error is not None:
+            return {"success": False, "stages": stages, "error": error}
 
-            if debug_result.get("success"):
-                # Re-run tests after debug
-                test_result = await self._execute_test_stage(task_id, previous_stages)
-                stages["test"] = test_result
-                previous_stages["test"] = test_result
-                await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
-            else:
-                # Attempt recovery for debug failure
-                recovery_result = await self.recovery_manager.attempt_recovery(
-                    task_id=task_id,
-                    stage="debug",
-                    agent_type="debug",
-                    failure_result=debug_result,
-                    previous_stages=previous_stages
-                )
-                if recovery_result.get("recovered"):
-                    debug_result = recovery_result["result"]
-                    # ... handle recovered debug ...
-                    test_result = await self._execute_test_stage(task_id, previous_stages)
-                    stages["test"] = test_result
-                    previous_stages["test"] = test_result
-                    await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
-                else:
-                    break
-
-        if not test_result.get("success"):
-            # Attempt recovery for final test failure
-            recovery_result = await self.recovery_manager.attempt_recovery(
-                task_id=task_id,
-                stage="test",
-                agent_type="test",
-                failure_result=test_result,
-                previous_stages=previous_stages
-            )
-
-            if recovery_result.get("recovered"):
-                test_result = recovery_result["result"]
-                stages["test"] = test_result
-                previous_stages["test"] = test_result
-                await self.state_manager.save_worker_squad_stage_async(task_id, "test", test_result)
-            else:
-                # Publish workflow failed event
-                if hasattr(self.coordinator, 'event_bus'):
-                    await self.coordinator.event_bus.publish(WorkflowEvent(
-                        event_type=WorkflowEventType.WORKFLOW_FAILED,
-                        task_id=task_id,
-                        stage="test",
-                        data={"error": "Tests failed after max debug iterations"}
-                    ))
-                return {"success": False, "stages": stages, "error": "Tests failed after max debug iterations"}
-
-        # 6. Self Review
+        # 6. Self Review + 7. Approver (with rework loop)
         self_review_result = await self._execute_self_review_stage(task_id, previous_stages)
-        stages["self_review"] = self_review_result
-        previous_stages["self_review"] = self_review_result
-        # Save stage result
-        await self.state_manager.save_worker_squad_stage_async(task_id, "self_review", self_review_result)
-
-        # 7. Approver
-        approver_result = await self._execute_approver_stage(task_id, self_review_result, previous_stages)
-        stages["approver"] = approver_result
-        previous_stages["approver"] = approver_result
-        # Save stage result
-        await self.state_manager.save_worker_squad_stage_async(task_id, "approver", approver_result)
-
-        # If approver rejects, go back to coder
-        max_approver_iterations = 3
-        approver_iterations = 0
-        while approver_result.get("decision") == "rejected" and approver_iterations < max_approver_iterations:
-            # Go back to coder
-            coder_result = await self._execute_coder_stage(
-                task_id, approver_result.get("feedback", ""), previous_stages=previous_stages
-            )
-            coder_result["iteration"] = approver_iterations + 1
-            coder_result["status"] = "completed" if coder_result.get("success") else "failed"
-            stages["coder"] = coder_result
-            previous_stages["coder"] = coder_result
-            # Save stage result
-            await self.state_manager.save_worker_squad_stage_async(task_id, "coder", coder_result)
-
-            if not coder_result.get("success"):
-                return {"success": False, "stages": stages, "error": "Coder failed after approver rejection"}
-
-            # Re-run self review and approver
-            self_review_result = await self._execute_self_review_stage(task_id, previous_stages)
-            stages["self_review"] = self_review_result
-            previous_stages["self_review"] = self_review_result
-            # Save stage result
-            await self.state_manager.save_worker_squad_stage_async(task_id, "self_review", self_review_result)
-
-            approver_result = await self._execute_approver_stage(task_id, self_review_result, previous_stages)
-            stages["approver"] = approver_result
-            previous_stages["approver"] = approver_result
-            # Save stage result
-            await self.state_manager.save_worker_squad_stage_async(task_id, "approver", approver_result)
-            approver_iterations += 1
-
-        if approver_result.get("decision") != "approved":
-            # Publish workflow failed event
-            if hasattr(self.coordinator, 'event_bus'):
-                await self.coordinator.event_bus.publish(WorkflowEvent(
-                    event_type=WorkflowEventType.WORKFLOW_FAILED,
-                    task_id=task_id,
-                    stage="approver",
-                    data={"error": "Approver did not approve after max iterations"}
-                ))
-            return {"success": False, "stages": stages, "error": "Approver did not approve after max iterations"}
+        error = await self._run_approver_loop_until_approved(
+            task_id, self_review_result, stages, previous_stages
+        )
+        if error is not None:
+            return {"success": False, "stages": stages, "error": error}
 
         # 8. Run Sprint tests in background (NON-BLOCKING)
         # Get sprint_id from task

@@ -1,4 +1,4 @@
-"""TUI dashboard: views 1–4 (Architect, Blueprint, History, Mission), panels t/i, v/d/f for Inspect."""
+"""TUI dashboard: 1=Design, 2=History, 3=Mission; panel i, v/d/f for Inspect."""
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Set
@@ -52,6 +52,34 @@ def _architecture_features_by_component(architecture: Dict[str, Any]) -> Dict[st
     return comp_to_features
 
 
+def _feature_status_from_components(
+    architecture: Dict[str, Any],
+    comp_status: Dict[str, str],
+) -> Dict[str, str]:
+    """Feature id → status: implemented, design_only, partial, or drift (from linked components)."""
+    out: Dict[str, str] = {}
+    for feat in architecture.get("features", []) or []:
+        if not isinstance(feat, dict):
+            continue
+        fid = feat.get("id")
+        comp_ids = feat.get("components", []) or []
+        if not fid:
+            continue
+        if not comp_ids:
+            out[fid] = "design_only"
+            continue
+        statuses = [comp_status.get(cid, "design_only") for cid in comp_ids]
+        if any(s == "drift" for s in statuses):
+            out[fid] = "drift"
+        elif all(s == "implemented" for s in statuses):
+            out[fid] = "implemented"
+        elif all(s == "design_only" for s in statuses):
+            out[fid] = "design_only"
+        else:
+            out[fid] = "partial"
+    return out
+
+
 def _box(name: str, width: int) -> Tuple[str, str, str]:
     """Three lines for a box (top/mid/bot)."""
     w = max(width, 2)
@@ -64,9 +92,11 @@ def _box(name: str, width: int) -> Tuple[str, str, str]:
 
 def _status_label(status: str) -> str:
     if status == "implemented":
-        return "in code"
+        return "done"
     if status == "design_only":
-        return "design only"
+        return "design"
+    if status == "partial":
+        return "partial"
     if status == "drift":
         return "drift"
     if status == "extra":
@@ -75,16 +105,24 @@ def _status_label(status: str) -> str:
 
 
 def _status_color_tag(status: str) -> str:
-    """Rich color tag for status."""
+    """Rich color: green=done, yellow=design, orange=partial, red=drift."""
     if status == "implemented":
         return "green"
     if status == "design_only":
-        return "dim"
+        return "yellow"
+    if status == "partial":
+        return "orange1"
     if status == "drift":
         return "red"
     if status == "extra":
         return "cyan"
     return "white"
+
+
+def _progress_bar(pct: float, width: int = 6) -> str:
+    """ASCII bar, e.g. [==  ] for 40%."""
+    fill = max(0, min(100, int(pct))) * width // 100
+    return "[" + "=" * fill + " " * (width - fill) + "]"
 
 
 def _status_label_markup(status: str, text: Optional[str] = None) -> str:
@@ -145,53 +183,50 @@ def _render_blueprint_diagram(
     boxes_top = []
     boxes_mid = []
     boxes_bot = []
-    status_labels: List[str] = []
     for c in comp_list:
         cid = c.get("id")
         name = id_to_name.get(cid, (c.get("name") or cid or "?")[:20])
         w = max(len(name), 2)
         t, m, b = _box(name, w)
-        boxes_top.append(t)
-        boxes_mid.append(m)
-        boxes_bot.append(b)
         st = (comp_status or {}).get(cid or "", "?")
-        plain = _status_label(st)[: w + 2].ljust(w + 2)
-        label = _status_label_markup(st, plain)
-        status_labels.append(label)
+        tag = _status_color_tag(st)
+        boxes_top.append(f"[{tag}]{t}[/]")
+        boxes_mid.append(f"[{tag}]{m}[/]")
+        boxes_bot.append(f"[{tag}]{b}[/]")
     lines.append(title)
     lines.append("  " + arrow.join(boxes_top))
     lines.append("  " + arrow.join(boxes_mid))
     lines.append("  " + arrow.join(boxes_bot))
-    if comp_status:
-        lines.append("  " + arrow.join(status_labels))
     return "\n".join(lines).strip()
 
 
-def _render_architecture_diagram(architecture: Dict[str, Any]) -> str:
-    """Feature boxes in a row with arrows."""
+def _render_architecture_diagram(
+    architecture: Dict[str, Any],
+    feature_status: Optional[Dict[str, str]] = None,
+) -> str:
+    """Feature boxes in a row with arrows; color by status (done/design/partial/drift)."""
     lines: List[str] = []
     features = architecture.get("features", [])
     if not features:
         return ""
-    lines.append("Diagram (architecture):")
-    names: List[str] = []
-    for feat in features[:12]:
-        if isinstance(feat, dict):
-            name = (feat.get("name") or feat.get("id") or "?")[:20]
-            names.append(name)
-    if not names:
-        return "Diagram (architecture):\n  (no features)"
     arrow = " ───► "
     boxes_top = []
     boxes_mid = []
     boxes_bot = []
-    for name in names:
+    for feat in features[:12]:
+        if not isinstance(feat, dict):
+            continue
+        fid = feat.get("id")
+        name = (feat.get("name") or feat.get("id") or "?")[:20]
         w = max(len(name), 2)
         t, m, b = _box(name, w)
-        boxes_top.append(t)
-        boxes_mid.append(m)
-        boxes_bot.append(b)
-    sep = "   "
+        st = (feature_status or {}).get(fid or "", "design_only")
+        tag = _status_color_tag(st)
+        boxes_top.append(f"[{tag}]{t}[/]")
+        boxes_mid.append(f"[{tag}]{m}[/]")
+        boxes_bot.append(f"[{tag}]{b}[/]")
+    if not boxes_top:
+        return ""
     lines.append("  " + arrow.join(boxes_top))
     lines.append("  " + arrow.join(boxes_mid))
     lines.append("  " + arrow.join(boxes_bot))
@@ -200,12 +235,67 @@ def _render_architecture_diagram(architecture: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _render_link_diagram(
+    architecture: Dict[str, Any],
+    comp_names: Dict[str, str],
+    feature_status: Optional[Dict[str, str]] = None,
+    comp_status: Optional[Dict[str, str]] = None,
+) -> str:
+    """Diagram: feature boxes above, component boxes below; color by status."""
+    lines: List[str] = []
+    features = architecture.get("features", []) or []
+    if not features or not comp_names:
+        return ""
+    sep = "   "
+    f_tops, f_mids, f_bots = [], [], []
+    c_tops, c_mids, c_bots = [], [], []
+    pipe_parts = []
+    v_parts = []
+    for feat in features[:10]:
+        if not isinstance(feat, dict):
+            continue
+        fid = feat.get("id")
+        fname = (feat.get("name") or feat.get("id") or "?")[:14]
+        comp_ids = feat.get("components", []) or []
+        cid = comp_ids[0] if comp_ids else None
+        cname = comp_names.get(cid, cid[:14] if cid else "—")[:14] if cid else "—"
+        w = max(len(fname), len(cname), 2)
+        ft, fm, fb = _box(fname, w)
+        ct, cm, cb = _box(cname, w)
+        fst = (feature_status or {}).get(fid or "", "design_only")
+        cst = (comp_status or {}).get(cid or "", "design_only") if cid else "design_only"
+        ftag = _status_color_tag(fst)
+        ctag = _status_color_tag(cst)
+        f_tops.append(f"[{ftag}]{ft}[/]")
+        f_mids.append(f"[{ftag}]{fm}[/]")
+        f_bots.append(f"[{ftag}]{fb}[/]")
+        c_tops.append(f"[{ctag}]{ct}[/]")
+        c_mids.append(f"[{ctag}]{cm}[/]")
+        c_bots.append(f"[{ctag}]{cb}[/]")
+        col_w = w + 2
+        mid = col_w // 2
+        pipe_parts.append(" " * (mid - 1) + "|" + " " * (col_w - mid - 1))
+        v_parts.append(" " * (mid - 1) + "v" + " " * (col_w - mid - 1))
+    if not f_tops:
+        return ""
+    lines.append("  " + sep.join(f_tops))
+    lines.append("  " + sep.join(f_mids))
+    lines.append("  " + sep.join(f_bots))
+    lines.append("  " + sep.join(pipe_parts))
+    lines.append("  " + sep.join(v_parts))
+    lines.append("  " + sep.join(c_tops))
+    lines.append("  " + sep.join(c_mids))
+    lines.append("  " + sep.join(c_bots))
+    return "\n".join(lines)
+
+
 class ViewType(Enum):
+    DESIGN = "design"
+    HISTORY = "history"
+    MISSION_CONTROL = "mission_control"
     ARCHITECT = "architect"
     BLUEPRINT = "blueprint"
-    HISTORY = "history"
     INSPECTOR = "inspector"
-    MISSION_CONTROL = "mission_control"
 
 
 class InspectorMode(Enum):
@@ -226,21 +316,18 @@ class ManifestViewApp(App[None]):
     #sidebar ScrollableContainer { padding: 0 1; }
     #main { width: 3fr; padding: 1 2; }
     .sidebar-section { margin-bottom: 1; padding: 0 1; border-bottom: solid #30363d; }
+    #sidebar-tasks { overflow: hidden; }
     .sidebar-title { color: #58a6ff; text-style: bold; }
     .nav-item { padding: 0 1; margin-right: 1; }
     .nav-item.active { background: #1f6feb; color: white; }
-    #task-panel { height: auto; max-height: 40%; border-top: solid #30363d; background: #161b22; padding: 0 1; }
-    .task-panel-hidden { display: none; }
     #inspect-panel { height: auto; max-height: 40%; border-top: solid #30363d; background: #161b22; padding: 0 1; }
     .inspect-panel-hidden { display: none; }
     """
 
     BINDINGS = [
-        Binding("1", "switch_view('Architect')", "Architect", key_display="1"),
-        Binding("2", "switch_view('Blueprint')", "Blueprint", key_display="2"),
-        Binding("3", "switch_view('History')", "History", key_display="3"),
-        Binding("4", "switch_view('Mission')", "Mission", key_display="4"),
-        Binding("t", "toggle_task_panel", "Task panel", key_display="t"),
+        Binding("1", "switch_view('Design')", "Design", key_display="1"),
+        Binding("2", "switch_view('History')", "History", key_display="2"),
+        Binding("3", "switch_view('Mission')", "Mission", key_display="3"),
         Binding("i", "toggle_inspect_panel", "Inspect", key_display="i"),
         Binding("v", "switch_inspector_mode('Visual')", "Visual", key_display="v"),
         Binding("d", "switch_inspector_mode('Data')", "Data", key_display="d"),
@@ -252,9 +339,8 @@ class ManifestViewApp(App[None]):
     def __init__(self, manifest_dir: Optional[Path] = None, **kwargs: Any):
         super().__init__(**kwargs)
         self.manifest_dir = (manifest_dir or (Path.cwd() / ".manifest")).resolve()
-        self.current_view = ViewType.BLUEPRINT
+        self.current_view = ViewType.DESIGN
         self.inspector_mode = InspectorMode.DRIFT
-        self._task_panel_visible = False
         self._inspect_panel_visible = False
         self._last_completed_task_ids: set = set()
         self._state_manager: Optional[StateManager] = None
@@ -309,96 +395,48 @@ class ManifestViewApp(App[None]):
         sprints = [{"id": sid} for sid in sprint_ids]
         return tasks, sprints
 
-    def _load_architect_view(self) -> str:
-        """Intent + architecture features."""
+    def _load_design_view(self) -> str:
+        """Diagram view: Features, Structure, Link (all as diagrams)."""
         lines = []
         try:
-            lines.append("Intent + architecture: features/capabilities and requirements. (Blueprint = structure & contracts.)")
-            lines.append("")
-            intent_file = self.manifest_dir / "intent.json"
-            if intent_file.exists():
-                with open(intent_file, "r", encoding="utf-8") as f:
-                    intent = json.load(f)
-                features = intent.get("features", [])
-                lines.append(f"Intent Features: {len(features)}")
-                for feat in features[:20]:
-                    if isinstance(feat, dict):
-                        fid = feat.get("id", "?")
-                        name = (feat.get("name") or "?")[:50]
-                        lines.append(f"  · [{fid}] {name}")
-                if len(features) > 20:
-                    lines.append(f"  ... and {len(features) - 20} more")
-            else:
-                lines.append("Intent: (no intent.json)")
-
             arch_file = self.manifest_dir / "architecture.json"
             architecture = load_architecture_with_metadata(arch_file)
-            features = architecture.get("features", [])
             comp_names = _blueprint_component_names(self.manifest_dir)
-            if features:
-                lines.append(f"\nArchitecture Features: {len(features)} (→ structure = Blueprint component)")
-                for feat in features[:10]:
-                    if isinstance(feat, dict):
-                        fid = feat.get("id", "?")
-                        name = feat.get("name", "?")[:50]
-                        comp_ids = feat.get("components", []) or []
-                        linked = ", ".join(comp_names.get(c, c) for c in comp_ids[:5]) if comp_ids else "—"
-                        lines.append(f"  · [{fid}] {name}  → [{linked}]")
-                diagram = _render_architecture_diagram(architecture)
-                if diagram:
-                    lines.append("")
-                    lines.append(diagram)
-        except Exception as e:
-            logger.debug("Architect view load failed: %s", e)
-            lines.append("Architect: (load failed)")
-        return "\n".join(lines) if lines else "Architect: (no data)"
-
-    def _load_blueprint_view(self) -> str:
-        """Blueprint: components, contracts, status."""
-        lines = []
-        try:
-            lines.append("Blueprint: structure — components and contracts (who talks to whom). (Architect = intent & features.)")
-            lines.append("")
             top_down = BlueprintLoader.load_blueprint(
                 self.manifest_dir,
                 with_metadata=True,
                 default_source="llm_design",
             )
             bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
-            arch_file = self.manifest_dir / "architecture.json"
-            architecture = load_architecture_with_metadata(arch_file)
             status_info = self._get_blueprint_sync().calculate_implementation_status(
                 top_down, bottom_up, architecture
             )
             comp_status = status_info.get("component_statuses", {})
-            implemented = sum(1 for s in comp_status.values() if s == "implemented")
-            design_only = sum(1 for s in comp_status.values() if s == "design_only")
-            drift = sum(1 for s in comp_status.values() if s == "drift")
-            lines.append(
-                "Summary: "
-                f"{_status_label_markup('implemented', f'{implemented} in code')}, "
-                f"{_status_label_markup('design_only', f'{design_only} design only')}, "
-                f"{_status_label_markup('drift', f'{drift} drift')}."
-            )
-            lines.append("")
-            diagram = _render_blueprint_diagram(top_down, "Design", comp_status)
-            if diagram:
-                lines.append(diagram)
-            else:
-                lines.append("(no components or contracts)")
-            comp_to_feats = _architecture_features_by_component(architecture)
-            id_to_name = {c.get("id"): (c.get("name") or c.get("id") or "?")[:30] for c in top_down.get("components", []) if c.get("id")}
-            if comp_to_feats and id_to_name:
+            feature_status = _feature_status_from_components(architecture, comp_status)
+
+            feat_diag = _render_architecture_diagram(architecture, feature_status)
+            if feat_diag:
+                lines.append("Features")
+                lines.append(feat_diag)
                 lines.append("")
-                lines.append("Linked to Architect (feature per component):")
-                for cid, names in comp_to_feats.items():
-                    comp_name = id_to_name.get(cid, cid)
-                    feats = ", ".join(n[:25] for n in names[:3])
-                    lines.append(f"  {comp_name}  ↔  {feats}")
+
+            struct_diag = _render_blueprint_diagram(top_down, "Structure", comp_status)
+            if struct_diag:
+                lines.append(struct_diag)
+                lines.append("")
+
+            link_diag = _render_link_diagram(architecture, comp_names, feature_status, comp_status)
+            if link_diag:
+                lines.append("Link (feature → component)")
+                lines.append(link_diag)
+            elif lines:
+                lines.append("Link: (no feature–component mapping)")
+            if not lines:
+                lines.append("Design: (no features or structure)")
         except Exception as e:
-            logger.debug("Blueprint view load failed: %s", e)
-            lines.append("Blueprint: (load failed)")
-        return "\n".join(lines) if lines else "Blueprint: (no data)"
+            logger.debug("Design view load failed: %s", e)
+            lines.append("Design: (load failed)")
+        return "\n".join(lines).strip() or "Design: (no data)"
 
     def _load_history_view(self) -> str:
         """Design history + git commits."""
@@ -407,8 +445,7 @@ class ManifestViewApp(App[None]):
             from manifest.core.design_history import get_design_history
             design_entries = get_design_history(self.manifest_dir)
             if design_entries:
-                lines.append("Design history (PRD / architecture / blueprint)")
-                lines.append(f"  Entries: {len(design_entries)}")
+                lines.append(f"Entries: {len(design_entries)}")
                 for entry in design_entries[:15]:
                     doc = entry.get("doc", "?")
                     path = entry.get("path", "?")
@@ -448,11 +485,7 @@ class ManifestViewApp(App[None]):
         """Inspect panel: drift / visual / data."""
         lines = []
         try:
-            lines.append("Inspect: drill-down from Blueprint (v=Visual, d=Data, f=Drift).")
-            lines.append("")
             if self.inspector_mode == InspectorMode.DRIFT:
-                lines.append("Mode: Drift — design vs code conflicts.")
-                lines.append("")
                 top_down = BlueprintLoader.load_blueprint(
                     self.manifest_dir,
                     with_metadata=True,
@@ -470,8 +503,6 @@ class ManifestViewApp(App[None]):
                 if len(conflicts) > 20:
                     lines.append(f"  ... and {len(conflicts) - 20} more")
             elif self.inspector_mode == InspectorMode.VISUAL:
-                lines.append("Mode: Visual — component status counts (implemented / design only / drift).")
-                lines.append("")
                 top_down = BlueprintLoader.load_blueprint(
                     self.manifest_dir,
                     with_metadata=True,
@@ -486,14 +517,30 @@ class ManifestViewApp(App[None]):
                 comp_status = status_info.get("component_statuses", {})
                 implemented = sum(1 for s in comp_status.values() if s == "implemented")
                 design_only = sum(1 for s in comp_status.values() if s == "design_only")
+                partial = sum(1 for s in comp_status.values() if s == "partial")
                 drift = sum(1 for s in comp_status.values() if s == "drift")
                 lines.append("Visual Status:")
-                lines.append(f"  {_status_label_markup('implemented', f'In code: {implemented}')}")
-                lines.append(f"  {_status_label_markup('design_only', f'Design only: {design_only}')}")
+                lines.append(f"  {_status_label_markup('implemented', f'Done: {implemented}')}")
+                lines.append(f"  {_status_label_markup('design_only', f'Design: {design_only}')}")
+                lines.append(f"  {_status_label_markup('partial', f'Partial: {partial}')}")
                 lines.append(f"  {_status_label_markup('drift', f'Drift: {drift}')}")
             else:
-                lines.append("Mode: Data — execution trace and I/O flow from orchestrator/agents.")
-                lines.append("(Use OpenCode/orchestrator to run tasks; data appears when agents run.)")
+                lines.append("(Execution trace when orchestrator/agents run.)")
+            lines.append("")
+            state_mgr = self._get_state_manager()
+            chat_history = state_mgr.get_state().get("chat_history", {})
+            shadow_channels = [c for c in chat_history if isinstance(c, str) and c.startswith("shadow-")]
+            lines.append("Component / shadow output (what/how modules are doing):")
+            if shadow_channels:
+                for ch in shadow_channels[:8]:
+                    msgs = state_mgr.get_chat_history(ch)
+                    lines.append(f"  [{ch}] ({len(msgs)} msgs)")
+                    for m in msgs[-2:]:
+                        role = m.get("role", "?")
+                        content = (m.get("content") or "")[:60].replace("\n", " ")
+                        lines.append(f"    {role}: {content}...")
+            else:
+                lines.append("  (none yet)")
         except Exception as e:
             logger.debug("Inspector view load failed: %s", e)
             lines.append("Inspector: (load failed)")
@@ -506,7 +553,6 @@ class ManifestViewApp(App[None]):
             state_mgr = self._get_state_manager()
             mission_tree = state_mgr.get_mission_tree()
             tasks, sprints = self._get_tasks_and_sprints_from_manifest()
-            lines.append(f"Mission Tree: {len(mission_tree.get('nodes', []))} nodes")
             lines.append(f"Tasks: {len(tasks)}")
             for t in tasks[:30]:
                 tid = t.get("id", "?")
@@ -538,18 +584,6 @@ class ManifestViewApp(App[None]):
                         lines.append(f"    {role}: {content}...")
             else:
                 lines.append("\nWorker squad channels: (none yet)")
-            shadow_channels = [c for c in chat_history if isinstance(c, str) and c.startswith("shadow-")]
-            if shadow_channels:
-                lines.append(f"\nComponent / shadow output: {len(shadow_channels)}")
-                for ch in shadow_channels[:8]:
-                    msgs = state_mgr.get_chat_history(ch)
-                    lines.append(f"  [{ch}] ({len(msgs)} msgs)")
-                    for m in msgs[-2:]:
-                        role = m.get("role", "?")
-                        content = (m.get("content") or "")[:60].replace("\n", " ")
-                        lines.append(f"    {role}: {content}...")
-            else:
-                lines.append("\nComponent / shadow output: (none yet)")
             lines.append("\nResources")
             try:
                 from manifest.core.config import ConfigManager
@@ -574,10 +608,8 @@ class ManifestViewApp(App[None]):
 
     def _get_current_view_content(self) -> str:
         """Content for current view."""
-        if self.current_view == ViewType.ARCHITECT:
-            return self._load_architect_view()
-        elif self.current_view == ViewType.BLUEPRINT:
-            return self._load_blueprint_view()
+        if self.current_view == ViewType.DESIGN:
+            return self._load_design_view()
         elif self.current_view == ViewType.HISTORY:
             return self._load_history_view()
         elif self.current_view == ViewType.MISSION_CONTROL:
@@ -585,17 +617,31 @@ class ManifestViewApp(App[None]):
         return "Unknown view"
 
     def _get_sidebar_tasks(self) -> str:
-        """Sidebar task list."""
+        """Sidebar: numbered tasks, one line each, progress bar per task and overall."""
         try:
-            tasks, _ = self._get_tasks_and_sprints_from_manifest()
-            lines = [f"Tasks ({len(tasks)})"]
-            for t in tasks[:8]:
-                name = (t.get("name") or t.get("id", "?"))[:22]
-                status = t.get("status", "?")
-                lines.append(f"  {name} [{status}]")
+            tasks, sprints = self._get_tasks_and_sprints_from_manifest()
+            if not tasks:
+                return "Tasks (0)"
+            name_max = 14
+            overall_pct = 0.0
+            total_pct = 0.0
+            for t in tasks:
+                prog = t.get("progress") or {}
+                total_pct += prog.get("percentage", 0) if isinstance(prog, dict) else 0
+            overall_pct = total_pct / len(tasks) if tasks else 0
+            head = f"Sprint {_progress_bar(overall_pct, 8)} {int(overall_pct)}%"
+            task_lines = []
+            for i, t in enumerate(tasks[:8], 1):
+                raw_name = (t.get("name") or t.get("id") or "?").replace("\n", " ").strip()
+                name = raw_name[:name_max].ljust(name_max)[:name_max]
+                prog = t.get("progress") or {}
+                pct = prog.get("percentage", 0) if isinstance(prog, dict) else 0
+                bar = _progress_bar(pct, 6)
+                task_lines.append(f" {i}. {name} {bar} {pct}%")
+            lines = [head] + task_lines
             if len(tasks) > 8:
-                lines.append(f"  ... +{len(tasks) - 8}")
-            return "\n".join(lines) if lines else "Tasks (0)"
+                lines.append(f" ... +{len(tasks) - 8}")
+            return "\n".join(lines)
         except Exception as e:
             logger.debug("Sidebar tasks failed: %s", e)
             return "Tasks (—)"
@@ -615,11 +661,13 @@ class ManifestViewApp(App[None]):
             comp_status = status_info.get("component_statuses", {})
             imp = sum(1 for s in comp_status.values() if s == "implemented")
             design_only = sum(1 for s in comp_status.values() if s == "design_only")
+            partial = sum(1 for s in comp_status.values() if s == "partial")
             drift = sum(1 for s in comp_status.values() if s == "drift")
             return (
                 "Status\n"
-                f"  {_status_label_markup('implemented', f'In code: {imp}')}\n"
-                f"  {_status_label_markup('design_only', f'Design only: {design_only}')}\n"
+                f"  {_status_label_markup('implemented', f'Done: {imp}')}\n"
+                f"  {_status_label_markup('design_only', f'Design: {design_only}')}\n"
+                f"  {_status_label_markup('partial', f'Partial: {partial}')}\n"
                 f"  {_status_label_markup('drift', f'Drift: {drift}')}"
             )
         except Exception as e:
@@ -652,9 +700,6 @@ class ManifestViewApp(App[None]):
             with Container(id="main"):
                 with VerticalScroll(id="main-scroll"):
                     yield Static("", id="main-content")
-        with Container(id="task-panel", classes="task-panel-hidden"):
-            with VerticalScroll(id="task-panel-scroll"):
-                yield Static("", id="task-panel-text")
         with Container(id="inspect-panel", classes="inspect-panel-hidden"):
             with VerticalScroll(id="inspect-panel-scroll"):
                 yield Static("", id="inspect-panel-text")
@@ -743,16 +788,13 @@ class ManifestViewApp(App[None]):
         self._refresh_sidebar()
         self._refresh_main_content()
         self._refresh_header_metrics()
-        if self._task_panel_visible:
-            self._refresh_task_panel()
         if self._inspect_panel_visible:
             self._refresh_inspect_panel()
 
     def action_switch_view(self, view_name: str) -> None:
         """Switch view (1–4)."""
         view_map = {
-            "Architect": ViewType.ARCHITECT,
-            "Blueprint": ViewType.BLUEPRINT,
+            "Design": ViewType.DESIGN,
             "History": ViewType.HISTORY,
             "Mission": ViewType.MISSION_CONTROL,
         }
@@ -790,28 +832,6 @@ class ManifestViewApp(App[None]):
                 panel.add_class("inspect-panel-hidden")
         except Exception as e:
             logger.debug("Toggle inspect panel failed: %s", e)
-
-    def action_toggle_task_panel(self) -> None:
-        """Toggle Task panel."""
-        self._task_panel_visible = not self._task_panel_visible
-        try:
-            panel = self.query_one("#task-panel", Container)
-            if self._task_panel_visible:
-                panel.remove_class("task-panel-hidden")
-                self._refresh_task_panel()
-            else:
-                panel.add_class("task-panel-hidden")
-        except Exception as e:
-            logger.debug("Toggle task panel failed: %s", e)
-
-    def _refresh_task_panel(self) -> None:
-        """Refresh Task panel."""
-        try:
-            content = self._load_mission_control_view()
-            w = self.query_one("#task-panel-text", Static)
-            w.update(content)
-        except Exception as e:
-            logger.debug("Task panel refresh failed: %s", e)
 
     def _refresh_inspect_panel(self) -> None:
         """Refresh Inspect panel."""
