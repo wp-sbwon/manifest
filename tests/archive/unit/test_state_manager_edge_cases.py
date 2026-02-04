@@ -78,7 +78,7 @@ def test_state_handles_unicode_in_task_names(state_manager):
     # Step 1: Create task with unicode characters
     task_id = state_manager.create_task(
         name="测试任务 🚀",
-        description="Test with unicode: 日本語 한국어",
+        description="Test with unicode: Japanese Korean sample",
         status="pending"
     )
 

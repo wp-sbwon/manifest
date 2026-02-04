@@ -3,9 +3,9 @@
 Setup script to register Manifest agents with OpenCode.
 
 Writes opencode.json:
-- default_agent = manifest-orchestrator (only option in agent switcher).
+- default_agent = orchestrator (orchestrator in agent switcher).
 - Built-in agents build and plan are disabled.
-- manifest-full-test is a subagent (callable by orchestrator only; not in switcher).
+- full-test is a subagent (callable by orchestrator only; not in switcher).
 """
 import json
 import sys
@@ -29,6 +29,14 @@ You have access to:
 
 When a user provides a mission description, break it down into tasks and coordinate execution. Use the available tools and agents to accomplish the mission efficiently."""
 
+ARCHITECT_PROMPT = """You are the Manifest Architect agent. Your role is to:
+
+1. Ideate with the user: discuss product goals, requirements, architecture, and intent
+2. Write top-down design docs only: PRD (.manifest/prd.json), architecture (.manifest/architecture.json), and intent (.manifest/intent.json)
+3. You cannot edit project code, run terminal commands, create tasks, or spawn worker agents
+
+You have access to: read-only tools and the architect tool (write_prd, write_architecture, write_intent, ideate). Use the architect tool to persist top-down docs. Do not use task_management, worker_squad_spawn, edit, write, or bash."""
+
 FULL_TEST_PROMPT = """You are the Manifest full-test (E2E) agent. Your role is to:
 
 1. Run project- and sprint-wide end-to-end and integration tests
@@ -47,18 +55,22 @@ def create_opencode_agent_config():
     agents = {
         "build": {"disable": True},
         "plan": {"disable": True},
-        "manifest-orchestrator": {
+        "orchestrator": {
             "description": "Manifest orchestrator agent for mission coordination, task management, and workflow orchestration",
             "mode": "primary",
-            "model": "anthropic/claude-3-5-sonnet-20241022",
             "prompt": ORCHESTRATOR_PROMPT,
             "tools": {"write": True, "edit": True, "bash": True},
         },
-        "manifest-full-test": {
+        "architect": {
+            "description": "Manifest Architect agent for ideation and top-down docs only (PRD, architecture, intent). Cannot edit code or execute.",
+            "mode": "primary",
+            "prompt": ARCHITECT_PROMPT,
+            "tools": {"write": False, "edit": False, "bash": False},
+        },
+        "full-test": {
             "description": "Manifest E2E / full-test agent. Callable by orchestrator only (subagent).",
             "mode": "subagent",
             "hidden": True,
-            "model": "anthropic/claude-3-5-sonnet-20241022",
             "prompt": FULL_TEST_PROMPT,
             "tools": {"write": True, "edit": True, "bash": True},
         },
@@ -74,7 +86,7 @@ def create_opencode_agent_config():
 
     config = {
         "$schema": "https://opencode.ai/config.json",
-        "default_agent": "manifest-orchestrator",
+        "default_agent": "orchestrator",
         "agent": {**(existing.get("agent") or {}), **agents},
     }
     # Preserve other top-level keys from existing config
@@ -86,8 +98,8 @@ def create_opencode_agent_config():
         json.dump(config, f, indent=2, ensure_ascii=False)
 
     print(f"✅ Updated OpenCode config: {opencode_json}")
-    print(f"✅ Only option in switcher: manifest-orchestrator")
-    print(f"✅ manifest-full-test: subagent (callable by orchestrator only)")
+    print(f"✅ Agents in switcher: orchestrator, architect")
+    print(f"✅ full-test: subagent (callable by orchestrator only)")
     return True
 
 

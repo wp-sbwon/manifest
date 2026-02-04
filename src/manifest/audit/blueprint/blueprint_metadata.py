@@ -25,7 +25,8 @@ def ensure_blueprint_metadata(blueprint: Dict[str, Any], source: str,
         blueprint["version"] = "1.0"
 
     blueprint["source"] = source
-    blueprint["ground_truth"] = ground_truth
+    blueprint["from_actual_code"] = ground_truth
+    blueprint["ground_truth"] = ground_truth  # backward compatibility
 
     if "last_updated" not in blueprint:
         blueprint["last_updated"] = datetime.utcnow().isoformat()
@@ -99,6 +100,10 @@ def save_blueprint_with_metadata(blueprint: Dict[str, Any], blueprint_file: Path
     """
     Save blueprint file with metadata.
 
+    When saving design blueprint (blueprint.json), validates and optionally
+    aligns component identity (id/name) against blueprint_code.json so
+    top-down and bottom-up docs are comparable for deviation calculation.
+
     Args:
         blueprint: Blueprint dictionary
         blueprint_file: Path to save blueprint
@@ -112,6 +117,18 @@ def save_blueprint_with_metadata(blueprint: Dict[str, Any], blueprint_file: Path
     try:
         blueprint = ensure_blueprint_metadata(blueprint, source, ground_truth, extraction_method)
         blueprint["last_updated"] = datetime.utcnow().isoformat()
+
+        # Align design blueprint identity with code blueprint when saving design
+        if blueprint_file.name == "blueprint.json" and source in (
+            "llm_design", "llm_architecture", "spec_first_management", "automatic_update"
+        ):
+            from manifest.audit.blueprint.design_identity import validate_and_align_design_identity
+            manifest_dir = blueprint_file.parent
+            blueprint, identity_warnings = validate_and_align_design_identity(
+                manifest_dir, blueprint, auto_align_name=True
+            )
+            for w in identity_warnings:
+                logger.debug("Design identity: %s", w)
 
         blueprint_file.parent.mkdir(parents=True, exist_ok=True)
         with open(blueprint_file, "w", encoding="utf-8") as f:

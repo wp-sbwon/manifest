@@ -11,7 +11,7 @@ Single source of truth for **target architecture** and **feature list** from the
 | Component | Role |
 |-----------|------|
 | **Entry** | `manifest` or `python -m manifest` → Launcher |
-| **Launcher** | (1) Start **View** process (separate window, visualization only). (2) Run **OpenCode**: `opencode . --agent manifest-orchestrator -c`. |
+| **Launcher** | (1) Start **View** process (separate window, visualization only). (2) Run **OpenCode**: `opencode . --agent orchestrator -c`. |
 | **Chat / commands / tools** | **All in OpenCode terminal.** Manifest does not duplicate chat UI. |
 | **View** | Visualization + view switching only. **Does not** run tasks or handle commands. Syncs by watching `.manifest/`. |
 
@@ -28,7 +28,7 @@ Single source of truth for **target architecture** and **feature list** from the
 - Container (Worker Squad container execution), Skills, Failure recovery
 - Task Management Tool, Blueprint Sync/Drift (mechanical comparison), Design History
 - View (separate process, `.manifest` watch, real-time display)
-- OpenCode agents: manifest-orchestrator (default), manifest-planner/coder/test/debug/approver, manifest-full-test (same level as Orchestrator)
+- OpenCode agents: orchestrator (default), architect, full-test (same level as Orchestrator)
 
 ### 1.4 What to remove or not use (from FINAL_PLAN §7)
 
@@ -121,7 +121,7 @@ Use this to drive work; tick when done.
 
 4. **Approval and full-test**
    - [ ] Approval: implement when config on, or document as future.
-   - [ ] manifest-full-test agent: register as OpenCode agent (same level as orchestrator) if required.
+   - [ ] full-test agent: register as OpenCode agent (same level as orchestrator) if required.
 
 5. **Module output View**
    - [ ] View shows container/channel output (feature #12), or document as follow-up.

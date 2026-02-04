@@ -482,7 +482,7 @@ def test_calculate_implementation_status_implemented(synchronizer):
 
     status = synchronizer.calculate_implementation_status(top_down, bottom_up)
 
-    assert status["component_statuses"]["comp-1"] == "implemented"
+    assert status["component_statuses"]["comp-1"] == "healthy"
 
 
 def test_calculate_implementation_status_drift(synchronizer):
@@ -503,8 +503,8 @@ def test_calculate_implementation_status_drift(synchronizer):
 
     status = synchronizer.calculate_implementation_status(top_down, bottom_up)
 
-    assert status["component_statuses"]["comp-1"] == "drift"
-    assert "comp-1" in status["component_drifts"]
+    assert status["component_statuses"]["comp-1"] == "deviation"
+    assert "comp-1" in status["component_deviations"]
 
 
 def test_calculate_implementation_status_extra(synchronizer):

@@ -63,11 +63,13 @@ def test_app_smoke():
         # Test view switching
         print("\n4. Testing view switching...")
         view_map = {
+            ViewType.DIAGRAM: "Diagram",
+            ViewType.FILES: "Files",
+            ViewType.TIMELINE: "Timeline",
+            ViewType.HISTORY: "History",
+            ViewType.MISSION_CONTROL: "Mission",
             ViewType.ARCHITECT: "Architect",
             ViewType.BLUEPRINT: "Blueprint",
-            ViewType.HISTORY: "History",
-            ViewType.INSPECTOR: "Inspector",
-            ViewType.MISSION_CONTROL: "Mission",
         }
         for view_type, view_name in view_map.items():
             app.action_switch_view(view_name)

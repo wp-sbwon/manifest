@@ -115,13 +115,9 @@ class SettingsManager:
         )
 
     def get_default_models(self) -> Dict[str, str]:
-        """Get default models per provider."""
+        """Get default models per provider. Empty means use OpenCode/provider default."""
         agent_config = self.config_manager._load_agent_config()
-        return agent_config.get("default_models", {
-            "anthropic": "claude-3-5-sonnet-20241022",
-            "openai": "gpt-4-turbo-preview",
-            "google": "gemini-pro"
-        })
+        return agent_config.get("default_models", {}) or {}
 
     def set_default_model(self, provider: str, model: str) -> bool:
         """Set default model for a provider."""

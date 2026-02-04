@@ -26,7 +26,7 @@ Features and requirements are defined from **user flow**: what the user can do a
 
 ## 2. Ideate with orchestrator → project-wide PRD and top-down docs
 
-**User can:** Ideate with the orchestrator to form a **project-wide PRD**, which is broken down (by LLM agent) into **architecture, blueprint, features, and requirements** — the essential information needed for projects. This is **top-down**. All outputs are **formatted/structured docs (JSON, not MD)**. When the user adds/edits, he does so by talking to the orchestrator; that **renews the top-down docs**. Bottom-up changes (from the worker squad) can **suggest** changes to architecture etc.; the user **confirms (승인)** them, which **triggers top-down renewal** again. All docs are **traced like git history** and visible.
+**User can:** Ideate with the orchestrator to form a **project-wide PRD**, which is broken down (by LLM agent) into **architecture, blueprint, features, and requirements** — the essential information needed for projects. This is **top-down**. All outputs are **formatted/structured docs (JSON, not MD)**. When the user adds/edits, he does so by talking to the orchestrator; that **renews the top-down docs**. Bottom-up changes (from the worker squad) can **suggest** changes to architecture etc.; the user **confirms (approves)** them, which **triggers top-down renewal** again. All docs are **traced like git history** and visible.
 
 **Requirements:**
 - Orchestrator has an **ideation** mode: conversation → PRD (JSON).
@@ -115,7 +115,7 @@ Features and requirements are defined from **user flow**: what the user can do a
 
 ## 10. Architecture and structure visible (diagram + tree + progress)
 
-**User can:** See **architecture and all relevant information** (blueprint, features, components, etc.) **intuitively** — in **diagram** and **tree** formats. **Structure and progress** are visible: e.g. structured diagram with data flows, and **completion state** (not built, 70% built, etc.). Top-down docs provide the **뼈대 (skeleton)**; bottom-up shows **current status**. As with top-down, **all doc history** is well managed and **visible in View**.
+**User can:** See **architecture and all relevant information** (blueprint, features, components, etc.) **intuitively** — in **diagram** and **tree** formats. **Structure and progress** are visible: e.g. structured diagram with data flows, and **completion state** (not built, 70% built, etc.). Top-down docs provide the **skeleton**; bottom-up shows **current status**. As with top-down, **all doc history** is well managed and **visible in View**.
 
 **Requirements:**
 - View provides **diagram** and **tree** views of: architecture, blueprint, features, components, data flow.
@@ -159,7 +159,7 @@ Features and requirements are defined from **user flow**: what the user can do a
 **User can:** Have the **worker squad** recover from failures (retry, skip, or escalate) instead of stopping the whole run.
 
 **Requirements:**
-- **Worker squad workflow** supports **failure recovery**: on stage failure (timeout, API error, validation error, etc.), the system can **retry** (same or simplified prompt), **skip** the stage and continue, or **escalate** (e.g. notify user or orchestrator). FINAL_PLAN: "Failure recovery 필수."
+- **Worker squad workflow** supports **failure recovery**: on stage failure (timeout, API error, validation error, etc.), the system can **retry** (same or simplified prompt), **skip** the stage and continue, or **escalate** (e.g. notify user or orchestrator). FINAL_PLAN: "Failure recovery required."
 - **Failure analysis** (e.g. FailureAnalyzer) determines cause and suggests strategy (retry, skip, manual intervention). Legacy: failure_recovery.py, WorkerSquadExecutor recovery paths.
 - **Event bus** (e.g. STAGE_FAILED, AGENT_COMPLETED) drives stage transitions and recovery; workflow definition (WorkflowDefinition) can define retry/conditions. Legacy: WorkflowEventBus, WorkflowDefinition.
 
@@ -208,7 +208,7 @@ Legacy docs (FINAL_PLAN, CORE_FEATURES_STATUS, MANIFEST_REQUIREMENTS, MODULES, a
 | # | Feature | One-line |
 |---|---------|----------|
 | 1 | Use service like OpenCode | Chat/UI = OpenCode; main chat = orchestrator only (no coding there). |
-| 2 | Ideate → PRD → top-down docs | Orchestrator ideation → PRD/architecture/blueprint/features/requirements (JSON). User/edit → renew. Bottom-up suggestions → user 승인 → top-down renewal. All docs traced (git-like history). |
+| 2 | Ideate → PRD → top-down docs | Orchestrator ideation → PRD/architecture/blueprint/features/requirements (JSON). User/edit → renew. Bottom-up suggestions → user approval → top-down renewal. All docs traced (git-like history). |
 | 3 | Sprints and tasks | Orchestrator creates sprints/tasks; user sees them and can add/cancel/edit via orchestrator. |
 | 4 | Task breakdown for Worker Squad | Granularity for TDD; workflow test→code→test→debug→review→approval; per-agent tool scope; orchestrator manages context; orchestrator not blocked. |
 | 5 | Worker squad in containers | Each worker = separate container; each agent = OpenCode process. |
@@ -216,7 +216,7 @@ Legacy docs (FINAL_PLAN, CORE_FEATURES_STATUS, MANIFEST_REQUIREMENTS, MODULES, a
 | 7 | E2E test agent | Same level as orchestrator; whole-scope E2E. |
 | 8 | Task progress in View | Always visible in View. |
 | 9 | Bottom-up and drift | Code → JSON (blueprint/structure); mechanical + LLM where needed; same schema as top-down; mechanical drift; notify user. Down to methods/classes/deps. |
-| 10 | Architecture/structure visible | Diagram + tree; structure + progress (뼈대 + current status); doc history in View. |
+| 10 | Architecture/structure visible | Diagram + tree; structure + progress (skeleton + current status); doc history in View. |
 | 11 | Shadow process for component output | Visual: what each module/component outputs. |
 | 12 | See and manage resources | Tokens etc. visible and manageable. |
 | 13 | Project rules and skills (.rules) | Task granularity, code style, PRD template; orchestrator and workers follow; tiered context respects .rules. |

@@ -2,8 +2,8 @@
 View File Watcher: watch .manifest/ files for real-time View sync.
 
 Polls key files in .manifest/ and invokes a callback when any change is
-detected. Used by ManifestViewApp to refresh Task/Blueprint/Drift views
-when tasks.json, blueprint_code.json, state.json, or conflicts change.
+detected. Used by ManifestViewApp to refresh Task and Design-vs-Code views
+when tasks.json, blueprint_code.json (Actual Code), state.json, or conflicts change.
 """
 from pathlib import Path
 from typing import Callable, Dict, List, Optional

@@ -1,9 +1,8 @@
 """
-Bottom-up higher-level docs: generate intent and architecture from code with LLM.
+Build intent and architecture from code with LLM.
 
-Mechanical docs (blueprint_code.json) are produced by CodeExtractor. This module
-produces intent_code.json and architecture_code.json in the same schema as top-down
-docs, using an LLM to infer intent and architecture from the codebase structure.
+CodeExtractor makes blueprint_code.json. This makes intent_code.json and
+architecture_code.json from code (same shape as top-down docs).
 """
 import json
 from pathlib import Path
@@ -19,41 +18,40 @@ INTENT_SCHEMA = {
     "features": [{"id": "string", "name": "string", "description": "string", "components": []}],
 }
 
+# Manifest View expects goals as list of dicts with id?, name, description, status.
 ARCHITECTURE_SCHEMA = {
     "version": "1.0",
     "features": [{"id": "string", "name": "string", "components": [], "requirements": []}],
     "requirements": [{"id": "string", "description": "string", "components": []}],
-    "goals": ["string"],
+    "goals": [{"id": "string", "name": "string", "description": "string", "status": "string"}],
 }
 
-PROMPT_TEMPLATE = """You are inferring project intent and architecture from the actual codebase (bottom-up).
+PROMPT_TEMPLATE = """Infer intent and architecture from the code below. Output two JSON blobs (same shape as top-down docs).
 
-Given the following code structure (blueprint extracted from code), produce two JSON objects in the same format as the project's top-down docs.
-
-## Code structure (blueprint_code)
+## Code (blueprint_code)
 {blueprint_summary}
 
-## Optional code context (key files)
+## Code context (key files)
 {code_context}
 
-## Output format
-Respond with exactly two JSON objects, one after the other, no other text:
+## Output
+Two JSON objects, one after the other, no other text:
 
-1. **intent** (same schema as intent.json): version, sprint, features (array with id, name, description, components).
-2. **architecture** (same schema as architecture.json): version, features, requirements, goals.
+1. **intent**: version, sprint, features (id, name, description, components).
+2. **architecture**: version, features, requirements, goals. goals = list of {{id, name, description, status}}. status = Planned | In Progress | Done | Deviation.
 
-Example structure for intent:
+Intent example:
 {{"version": "1.0", "sprint": "", "features": [{{"id": "f1", "name": "...", "description": "...", "components": []}}]}}
 
-Example structure for architecture:
-{{"version": "1.0", "features": [{{"id": "f1", "name": "...", "components": [], "requirements": []}}], "requirements": [], "goals": []}}
+Architecture example (goals are objects):
+{{"version": "1.0", "features": [...], "requirements": [], "goals": [{{"id": "g1", "name": "Goal name", "description": "What it means.", "status": "Planned"}}]}}
 
-Output ONLY valid JSON for intent first, then a line "---", then valid JSON for architecture.
+Output: intent JSON, then "---", then architecture JSON.
 """
 
 
 def _truncate_blueprint(blueprint: Dict[str, Any], max_components: int = 80) -> str:
-    """Summarize blueprint for prompt (avoid token overflow)."""
+    """Short summary of blueprint for prompt."""
     components = blueprint.get("components", [])[:max_components]
     lines = [f"- {c.get('name', c.get('id', '?'))} ({c.get('type', '?')}) @ {c.get('file', '')}" for c in components]
     return "\n".join(lines) if lines else "(no components)"

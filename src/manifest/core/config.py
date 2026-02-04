@@ -251,40 +251,18 @@ class ConfigManager:
             Dictionary with default agent model configurations and provider
             default models.
         """
+        # No hardcoded model IDs: use OpenCode's default unless user configures one.
+        # Available models are defined by OpenCode/providers, not maintained by us.
         return {
             "version": "1.0",
             "agent_models": {
-                "orchestrator": {
-                    "provider": "anthropic",
-                    "model": "claude-3-5-sonnet-20241022",
-                    "use_default_key": True
-                },
-                "planner": {
-                    "provider": "anthropic",
-                    "model": "claude-3-5-sonnet-20241022",
-                    "use_default_key": True
-                },
-                "coder": {
-                    "provider": "anthropic",
-                    "model": "claude-3-5-sonnet-20241022",
-                    "use_default_key": True
-                },
-                "test": {
-                    "provider": "openai",
-                    "model": "gpt-4-turbo-preview",
-                    "use_default_key": True
-                },
-                "review": {
-                    "provider": "anthropic",
-                    "model": "claude-3-opus-20240229",
-                    "use_default_key": True
-                }
+                "orchestrator": {"provider": "anthropic", "use_default_key": True},
+                "planner": {"provider": "anthropic", "use_default_key": True},
+                "coder": {"provider": "anthropic", "use_default_key": True},
+                "test": {"provider": "openai", "use_default_key": True},
+                "review": {"provider": "anthropic", "use_default_key": True}
             },
-            "default_models": {
-                "anthropic": "claude-3-5-sonnet-20241022",
-                "openai": "gpt-4-turbo-preview",
-                "google": "gemini-pro"
-            }
+            "default_models": {}
         }
 
     def get_agent_model_config(self, agent_type: str) -> Dict[str, Any]:
@@ -306,16 +284,15 @@ class ConfigManager:
         agent_config = self._load_agent_config()
         agent_models = agent_config.get("agent_models", {})
 
-        # Get agent-specific config or use defaults
+        # Get agent-specific config or use defaults (no hardcoded model: use OpenCode default)
         if agent_type in agent_models:
             config = agent_models[agent_type].copy()
         else:
-            # No specific config for this agent, use provider defaults
-            default_models = agent_config.get("default_models", {})
-            provider = "anthropic"  # Default provider
+            default_models = agent_config.get("default_models", {}) or {}
+            provider = "anthropic"
             config = {
                 "provider": provider,
-                "model": default_models.get(provider, "claude-3-5-sonnet-20241022"),
+                "model": default_models.get(provider),
                 "use_default_key": True
             }
 
@@ -341,9 +318,10 @@ class ConfigManager:
                     # If decryption fails, key is invalid
                     api_key = None
 
+        # model may be None: caller should use OpenCode default or opencode.model setting
         return {
-            "provider": config["provider"],
-            "model": config["model"],
+            "provider": config.get("provider", "anthropic"),
+            "model": config.get("model"),
             "api_key": api_key
         }
 
@@ -416,15 +394,14 @@ class ConfigManager:
         if agent_type in agent_models:
             config = agent_models[agent_type]
             return {
-                "provider": config["provider"],
-                "model": config["model"]
+                "provider": config.get("provider", "anthropic"),
+                "model": config.get("model")
             }
 
-        # Return default for anthropic
-        default_models = agent_config.get("default_models", {})
+        default_models = agent_config.get("default_models", {}) or {}
         return {
             "provider": "anthropic",
-            "model": default_models.get("anthropic", "claude-3-5-sonnet-20241022")
+            "model": default_models.get("anthropic")
         }
 
     def get_agent_permissions(self, agent_type: str) -> Dict[str, Any]:

@@ -6,18 +6,22 @@ deletion, and querying. Tasks represent work items that agents execute as
 part of sprints. The TaskManager was separated from StateManager to improve
 code organization and maintainability.
 
-Tasks go through various stages (planning, implementation, testing, review)
-and have statuses (pending, in_progress, done, blocked, etc.). The manager
-also handles Worker Squad stage results and Git diff tracking for tasks.
+Tasks use canonical statuses (pending, in_progress, paused, blocked, completed,
+cancelled) and stages (planning, coding, testing, review, done). See
+manifest.core.task_constants for the single source of truth.
 """
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 from pathlib import Path
 from manifest.core.state_manager import StateManager
 from manifest.core.types import TaskDict
+from manifest.core.task_constants import TASK_STATUSES, TASK_STAGES, is_valid_status, is_valid_stage
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Stage order for rollback (first is earliest)
+_STAGE_ORDER = ("planning", "coding", "testing", "review", "done")
 
 
 class TaskManager:
@@ -57,17 +61,18 @@ class TaskManager:
         Args:
             name: Short name or title for the task.
             description: Detailed description of what the task involves.
-            stage: Initial stage of the task. Valid values: "planning",
-                "implementation", "testing", "review", "pending".
-            status: Initial status of the task. Valid values: "pending",
-                "in_progress", "done", "blocked", "approved", "cancelled".
+            stage: Initial stage. Valid: planning, coding, testing, review, done.
+            status: Initial status. Valid: pending, in_progress, paused, blocked, completed, cancelled.
             sprint_id: Optional ID of the sprint this task belongs to.
-                Tasks can exist outside of sprints if None.
             dependencies: Optional list of task IDs that this task depends on.
 
         Returns:
             String ID of the newly created task (e.g., "task-1").
         """
+        if not is_valid_status(status):
+            status = "pending"
+        if not is_valid_stage(stage):
+            stage = "planning"
         tasks = self.state_manager.get_task_checklist()
         task_id = f"task-{len(tasks) + 1}"
 
@@ -99,21 +104,19 @@ class TaskManager:
     ) -> bool:
         """Update one or more properties of an existing task.
 
-        Only the fields provided (non-None) will be updated. The task's
-        updated_at timestamp is automatically refreshed.
+        Only the fields provided (non-None) will be updated. Invalid status
+        or stage values are ignored. The task's updated_at is refreshed.
 
         Args:
             task_id: ID of the task to update.
-            name: New name for the task (optional).
-            description: New description for the task (optional).
-            status: New status for the task (optional).
-            stage: New stage for the task (optional).
-            sprint_id: Sprint to assign the task to (optional). Use empty string
-                or explicit None to unlink from a sprint.
+            name: New name (optional).
+            description: New description (optional).
+            status: New status. Valid: pending, in_progress, paused, blocked, completed, cancelled.
+            stage: New stage. Valid: planning, coding, testing, review, done.
+            sprint_id: Sprint to assign (optional). Use empty string or None to unlink.
 
         Returns:
-            True if the task was found and updated, False if task doesn't
-            exist.
+            True if the task was found and updated, False otherwise.
         """
         tasks = self.state_manager.get_task_checklist()
         for task in tasks:
@@ -122,9 +125,9 @@ class TaskManager:
                     task["name"] = name
                 if description is not None:
                     task["description"] = description
-                if status is not None:
+                if status is not None and is_valid_status(status):
                     task["status"] = status
-                if stage is not None:
+                if stage is not None and is_valid_stage(stage):
                     task["stage"] = stage
                 if sprint_id is not None:
                     task["sprint_id"] = sprint_id
@@ -171,23 +174,40 @@ class TaskManager:
         tasks = self.state_manager.get_task_checklist()
         for task in tasks:
             if task.get("id") == task_id:
-                # Rollback stage
                 current_stage = task.get("stage", "planning")
-                stage_order = ["pending", "planning", "implementation", "testing", "review"]
                 try:
-                    current_index = stage_order.index(current_stage)
+                    current_index = _STAGE_ORDER.index(current_stage)
                     if current_index > 0:
-                        task["stage"] = stage_order[current_index - 1]
+                        task["stage"] = _STAGE_ORDER[current_index - 1]
                         task["status"] = "pending"
                         task["updated_at"] = datetime.now().isoformat()
-
-                        # Note: Git revert would be handled by AgentCoordinator
-                        # This just updates the state
                         self.state_manager.set_task_checklist(tasks)
                         return True
                 except ValueError:
                     pass
         return False
+
+    def pause_task(self, task_id: str) -> bool:
+        """Set task status to paused (temporarily halted; can be resumed).
+
+        Args:
+            task_id: ID of the task to pause.
+
+        Returns:
+            True if the task was found and updated, False otherwise.
+        """
+        return self.update_task(task_id, status="paused")
+
+    def resume_task(self, task_id: str) -> bool:
+        """Set task status to in_progress (resume after pause).
+
+        Args:
+            task_id: ID of the task to resume.
+
+        Returns:
+            True if the task was found and updated, False otherwise.
+        """
+        return self.update_task(task_id, status="in_progress")
 
     def complete_task(self, task_id: str) -> bool:
         """Mark a task as completely done after user approval.
@@ -206,7 +226,7 @@ class TaskManager:
         for task in tasks:
             if task.get("id") == task_id:
                 task["status"] = "completed"
-                task["stage"] = "completed"
+                task["stage"] = "done"
                 task["updated_at"] = datetime.now().isoformat()
                 task["completed_at"] = datetime.now().isoformat()
 
@@ -231,10 +251,8 @@ class TaskManager:
         are provided, returns all tasks.
 
         Args:
-            status: Filter by task status (e.g., "pending", "in_progress",
-                "done", "blocked", "approved", "cancelled").
-            stage: Filter by task stage (e.g., "planning", "implementation",
-                "testing", "review", "pending").
+            status: Filter by task status: pending, in_progress, paused, blocked, completed, cancelled.
+            stage: Filter by task stage: planning, coding, testing, review, done.
             sprint_id: Filter by sprint ID. Only tasks belonging to this
                 sprint will be returned.
             agent_type: Filter by agent type assigned to the task (e.g.,
@@ -310,7 +328,7 @@ class TaskManager:
         blocking_tasks = []
         for dep_id in dependencies:
             dep_task = self.get_task(dep_id)
-            if not dep_task or dep_task.get("status") != "done":
+            if not dep_task or dep_task.get("status") != "completed":
                 blocking_tasks.append(dep_id)
 
         return len(blocking_tasks) > 0, blocking_tasks

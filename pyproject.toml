@@ -34,7 +34,7 @@ python_functions = ["test_*"]
 name = "manifest"
 version = "0.1.0"
 description = "AI-Native Orchestration IDE"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 [project.scripts]
 manifest = "manifest.__main__:main"
 dependencies = [
@@ -45,6 +45,8 @@ dependencies = [
     "GitPython>=3.1.40",
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
     "httpx>=0.24.0",
     "docker>=6.1.0",
     "fastapi>=0.104.0",

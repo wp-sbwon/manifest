@@ -154,7 +154,7 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                     },
                     "name": {"type": "string", "description": "Task name (for create_task)"},
                     "task_id": {"type": "string", "description": "Task ID (for update/get/assign)"},
-                    "status": {"type": "string", "description": "pending|in_progress|blocked|completed|cancelled"},
+                    "status": {"type": "string", "description": "pending|in_progress|paused|blocked|completed|cancelled"},
                     "stage": {"type": "string", "description": "planning|coding|testing|review|done"},
                     "agent_name": {"type": "string", "description": "Agent to assign (e.g. manifest-coder)"},
                     "percentage": {"type": "number", "description": "Progress 0-100"},
@@ -219,13 +219,13 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
         },
         {
             "name": "blueprint_sync",
-            "description": "Compare top-down vs bottom-up blueprints, detect drift, run sync workflow, or compare all docs (blueprint, intent, architecture) with implementation progress vs drift.",
+            "description": "Compare Design Plan vs Actual Code (top-down vs bottom-up), detect deviation, run sync workflow, or compare all docs with implementation status (Healthy/Planned/Partial/Deviation).",
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "One of: compare_blueprints, detect_drift, sync_blueprint, compare_all_docs"
+                        "description": "One of: compare_blueprints, detect_drift, sync_blueprint, compare_all_docs (detect_drift returns deviation)"
                     },
                     "mode": {
                         "type": "string",
@@ -237,10 +237,28 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
         },
         {
             "name": "drift_check",
-            "description": "Detect drift between design and code (component status: implemented/design_only/drift/extra).",
+            "description": "Detect deviation between Design Plan and Actual Code (component status: Healthy/Planned/Partial/Deviation).",
             "input_schema": {
                 "type": "object",
                 "properties": {}
+            }
+        },
+        {
+            "name": "architect",
+            "description": "Write PRD, architecture, or intent to .manifest only. Architecture must have: mission, global_rules, architecture_style, features, goals (list of {id, name, description, status}), metrics (code_quality, test_coverage, binary_size).",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "description": "One of: write_prd, write_architecture, write_intent, ideate"
+                    },
+                    "content": {
+                        "type": "object",
+                        "description": "For write_architecture: mission, global_rules, architecture_style, features, goals ({id, name, description, status}), metrics. For write_prd/write_intent: doc. Omit for ideate."
+                    }
+                },
+                "required": ["action"]
             }
         }
     ]
