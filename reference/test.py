@@ -38,7 +38,7 @@ class ManifestApp(App):
 
     #main-workspace {
         height: 65%;
-        layout: horizontal; /* 좌우 분할 구조 */
+        layout: horizontal; /* left-right split */
     }
 
     #bottom-panel {
@@ -138,9 +138,9 @@ class ManifestApp(App):
     """
 
     BINDINGS = [
-        ("q", "quit", "종료"),
-        ("ctrl+b", "toggle_sidebar", "사이드바 토글"),
-        ("i", "toggle_inspector", "인스펙터 토글"),
+        ("q", "quit", "Quit"),
+        ("ctrl+b", "toggle_sidebar", "Sidebar toggle"),
+        ("i", "toggle_inspector", "Inspector toggle"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -157,7 +157,7 @@ class ManifestApp(App):
                 # 2-A. Design Side (Architect / Blueprint)
                 with Vertical(id="design-side"):
                     with TabbedContent(id="design-tabs"):
-                        with TabPane("Architect (의도)", id="tab-architect"):
+                        with TabPane("Architect (Intent)", id="tab-architect"):
                             with VerticalScroll():
                                 yield Label("📊 Sprint Progress: 50%", classes="side-title")
                                 with Vertical(classes="feature-card"):
@@ -165,7 +165,7 @@ class ManifestApp(App):
                                     yield Label("✔ REQ-01: Login UI", classes="req-item req-done")
                                     yield Label("⚡ REQ-02: OAuth Widget", classes="req-item")
 
-                        with TabPane("Blueprint (구조)", id="tab-blueprint"):
+                        with TabPane("Blueprint (Structure)", id="tab-blueprint"):
                             with Grid(classes="blueprint-grid"):
                                 with Vertical(classes="zone-box"):
                                     yield Label("📱 CLIENT", classes="zone-title")
@@ -179,7 +179,7 @@ class ManifestApp(App):
 
                 # 2-B. Inspector Side (Verification)
                 with Vertical(id="inspector-side"):
-                    yield Label("INSPECTOR (검증)", classes="side-title")
+                    yield Label("INSPECTOR (Verification)", classes="side-title")
 
                     # Context-sensitive Content
                     with Container(id="inspector-content"):
@@ -206,7 +206,7 @@ class ManifestApp(App):
                     with TabPane("Squad: Auth", id="tab-auth"):
                         yield RichLog(id="log-auth", markup=True)
 
-                yield Input(placeholder="명령을 입력하세요...", id="global-input")
+                yield Input(placeholder="Enter command...", id="global-input")
 
         yield Footer()
 
@@ -216,12 +216,12 @@ class ManifestApp(App):
         t101 = tree.root.add("[bold green]🚀 TASK-101: Social Login[/]", expand=True)
         t101.data = "tab-auth"
 
-        self.query_one("#log-main").write("[bold green]Manifest AI[/] initialized.\n[Tab]으로 설계/구조를 전환하고 [I]로 인스펙터를 토글하세요.")
+        self.query_one("#log-main").write("[bold green]Manifest AI[/] initialized.\nUse [Tab] to switch Design/Structure and [I] to toggle Inspector.")
         self.query_one("#global-input").focus()
 
     @on(TabbedContent.TabActivated, "#design-tabs")
     def on_tab_switched(self, event: TabbedContent.TabActivated) -> None:
-        """설계 탭 전환에 따라 인스펙터의 내용을 자동으로 동기화합니다."""
+        """Sync inspector content when design tab changes."""
         visual_pane = self.query_one("#insp-visual")
         data_pane = self.query_one("#insp-data")
 
@@ -233,7 +233,7 @@ class ManifestApp(App):
             data_pane.styles.display = "block"
 
     def action_toggle_inspector(self) -> None:
-        """인스펙터 영역을 숨기거나 보여줍니다."""
+        """Toggle inspector panel visibility."""
         side = self.query_one("#inspector-side")
         side.styles.display = "none" if side.styles.display == "block" else "block"
 
@@ -246,13 +246,13 @@ class ManifestApp(App):
         log = self.query_one("#log-main", RichLog)
         log.write(f"[bold blue]User:[/]{user_input}")
 
-        # AI 응답 시뮬레이션
+        # Simulate AI response
         await self.process_ai(user_input, log)
 
     @work(exclusive=False)
     async def process_ai(self, user_input, log):
         await asyncio.sleep(0.5)
-        log.write(f"[bold green]Manifest AI:[/] {user_input} 작업을 분석 중입니다. 인스펙터에서 실시간 상태를 확인하세요.")
+        log.write(f"[bold green]Manifest AI:[/] Analyzing {user_input}. Check Inspector for live status.")
 
 if __name__ == "__main__":
     app = ManifestApp()

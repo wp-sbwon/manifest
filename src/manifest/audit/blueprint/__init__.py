@@ -6,11 +6,13 @@ This package contains modules for managing blueprints:
 - BlueprintMetadata: Metadata management for blueprints
 - BlueprintComparator: Compares top-down and bottom-up blueprints
 - BlueprintSynchronizer: Handles blueprint conflict resolution
+- design_identity: Validates/aligns design component id and name with code blueprint
 """
 from .blueprint_loader import BlueprintLoader
 from .blueprint_metadata import load_blueprint_with_metadata, save_blueprint_with_metadata
 from .blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
 from .blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
+from .design_identity import validate_and_align_design_identity
 
 __all__ = [
     "BlueprintLoader",
@@ -21,4 +23,5 @@ __all__ = [
     "ConflictType",
     "BlueprintSynchronizer",
     "ConflictReport",
+    "validate_and_align_design_identity",
 ]

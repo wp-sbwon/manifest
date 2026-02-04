@@ -1,9 +1,8 @@
 """
-OpenCode Blueprint Sync and Drift Check tools.
+OpenCode Blueprint Sync and Deviation Check tools.
 
-Orchestrator uses these to compare top-down vs bottom-up blueprints,
-detect drift (component status: implemented/design_only/drift/extra), and
-run sync workflow.
+Compare Design Plan vs Actual Code (top-down vs bottom-up), detect deviation
+(component status: healthy/planned/deviation/extra), and run sync workflow.
 """
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -44,8 +43,8 @@ class BlueprintSyncTool:
             logger.error("compare_blueprints failed: %s", e, exc_info=True)
             return {"ok": False, "error": str(e), "conflicts": [], "count": 0}
 
-    def detect_drift(self) -> Dict[str, Any]:
-        """Detect drift; return component statuses (implemented/design_only/drift/extra)."""
+    def detect_deviation(self) -> Dict[str, Any]:
+        """Detect deviation (Design Plan vs Actual Code); return component statuses (healthy/planned/deviation/extra)."""
         try:
             top_down = BlueprintLoader.load_blueprint(
                 self.manifest_dir,
@@ -61,11 +60,15 @@ class BlueprintSyncTool:
             return {
                 "ok": True,
                 "component_statuses": status_info.get("component_statuses", {}),
-                "feature_completion": status_info.get("feature_completion", {}),
+                "feature_completions": status_info.get("feature_completions", {}),
             }
         except Exception as e:
-            logger.error("detect_drift failed: %s", e, exc_info=True)
+            logger.error("detect_deviation failed: %s", e, exc_info=True)
             return {"ok": False, "error": str(e), "component_statuses": {}}
+
+    def detect_drift(self) -> Dict[str, Any]:
+        """Alias for detect_deviation (backward compatibility)."""
+        return self.detect_deviation()
 
     def sync_blueprint(self, mode: str = "workflow") -> Dict[str, Any]:
         """Synchronize blueprints (strict | workflow | merge)."""
@@ -85,7 +88,7 @@ class BlueprintSyncTool:
 
     def compare_all_docs(self) -> Dict[str, Any]:
         """Compare all doc types (blueprint, intent, architecture) between top-down and bottom-up.
-        Returns implementation progress (missing in bottom-up) separately from drift (conflicts)."""
+        Returns implementation progress (missing in bottom-up) separately from deviation (conflicts)."""
         try:
             result = self._synchronizer.compare_all_docs(self.manifest_dir)
             return {"ok": True, "result": result}
@@ -94,13 +97,17 @@ class BlueprintSyncTool:
             return {"ok": False, "error": str(e), "result": None}
 
 
-class DriftCheckTool:
-    """Thin wrapper for drift detection (orchestrator drift_check tool)."""
+class DeviationCheckTool:
+    """Thin wrapper for deviation detection (Design Plan vs Actual Code)."""
 
     def __init__(self, manifest_dir: Optional[Path] = None):
         self.manifest_dir = (manifest_dir or Path(".manifest")).resolve()
         self._sync_tool = BlueprintSyncTool(manifest_dir=self.manifest_dir)
 
     def check(self) -> Dict[str, Any]:
-        """Return drift status (component_statuses)."""
-        return self._sync_tool.detect_drift()
+        """Return deviation status (component_statuses: healthy/planned/deviation/extra)."""
+        return self._sync_tool.detect_deviation()
+
+
+# Backward compatibility
+DriftCheckTool = DeviationCheckTool

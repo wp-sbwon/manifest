@@ -1,39 +1,40 @@
 """
-Architecture Metadata Utilities - Ensures architecture.json has proper schema.
+Fix and load architecture.json so it has the right shape.
+
+View needs: goals (list of {id, name, description, status}), metrics (code_quality, test_coverage, binary_size).
 """
 import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
+VIEW_GOALS_ITEM = {"id": "string", "name": "string", "description": "string", "status": "string"}
+VIEW_METRICS_KEYS = ("code_quality", "test_coverage", "binary_size")
+
 
 def ensure_architecture_metadata(architecture: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Ensure architecture.json has required metadata and schema extensions.
-
-    Strict schema: features and requirements must be lists of dicts (no strings).
-    Each feature dict: id, name, components, completion_percentage, status, requirements.
-    Each requirement dict: id, name, components, state.
-
-    Args:
-        architecture: Architecture dictionary
-
-    Returns:
-        Architecture with metadata ensured
-    """
+    """Fix architecture so it has version, features, goals, metrics. Goals become list of {id, name, description, status}."""
     if "version" not in architecture:
         architecture["version"] = "1.0"
 
     if "source" not in architecture:
         architecture["source"] = "llm_architecture"
 
+    if "from_actual_code" not in architecture:
+        architecture["from_actual_code"] = architecture.get("ground_truth", False)
     if "ground_truth" not in architecture:
-        architecture["ground_truth"] = False
+        architecture["ground_truth"] = architecture.get("from_actual_code", False)
 
     if "last_updated" not in architecture:
         architecture["last_updated"] = datetime.utcnow().isoformat()
 
-    # Ensure features have required fields (strict: list of dicts with id, name, components, etc.)
+    if "mission" not in architecture:
+        architecture["mission"] = ""
+    if "global_rules" not in architecture:
+        architecture["global_rules"] = []
+    if "architecture_style" not in architecture:
+        architecture["architecture_style"] = ""
+
     if "features" not in architecture:
         architecture["features"] = []
 
@@ -56,7 +57,6 @@ def ensure_architecture_metadata(architecture: Dict[str, Any]) -> Dict[str, Any]
                 if "state" not in req:
                     req["state"] = "pending"
 
-    # Ensure requirements list exists (top-level); strict: list of dicts
     if "requirements" not in architecture:
         architecture["requirements"] = []
 
@@ -67,23 +67,31 @@ def ensure_architecture_metadata(architecture: Dict[str, Any]) -> Dict[str, Any]
             if "state" not in req:
                 req["state"] = "pending"
 
-    # Ensure goals list exists
     if "goals" not in architecture:
         architecture["goals"] = []
+    fixed_goals: List[Dict[str, Any]] = []
+    for i, g in enumerate(architecture["goals"]):
+        if isinstance(g, dict):
+            fixed_goals.append({
+                "id": g.get("id") or f"goal_{i+1}",
+                "name": (g.get("name") or g.get("id") or f"Goal {i+1}").strip() or f"Goal {i+1}",
+                "description": (g.get("description") or "").strip(),
+                "status": (g.get("status") or "Planned").strip() or "Planned",
+            })
+        else:
+            fixed_goals.append({"id": f"goal_{i+1}", "name": str(g)[:80], "description": "", "status": "Planned"})
+    architecture["goals"] = fixed_goals
+
+    if "metrics" not in architecture:
+        architecture["metrics"] = {}
+    if not isinstance(architecture["metrics"], dict):
+        architecture["metrics"] = {}
 
     return architecture
 
 
 def load_architecture_with_metadata(architecture_file: Path) -> Dict[str, Any]:
-    """
-    Load architecture.json file and ensure it has metadata and schema extensions.
-
-    Args:
-        architecture_file: Path to architecture.json file
-
-    Returns:
-        Architecture dictionary with metadata
-    """
+    """Load architecture.json and fix shape (goals, metrics)."""
     if not architecture_file.exists():
         return {
             "version": "1.0",
@@ -93,19 +101,18 @@ def load_architecture_with_metadata(architecture_file: Path) -> Dict[str, Any]:
             "extraction_method": "llm_inference",
             "features": [],
             "requirements": [],
-            "goals": []
+            "goals": [],
+            "metrics": {},
         }
 
     try:
         with open(architecture_file, "r", encoding="utf-8") as f:
             architecture = json.load(f)
 
-        # Ensure metadata and schema
         architecture = ensure_architecture_metadata(architecture)
 
         return architecture
     except Exception:
-        # Return default architecture with metadata
         return {
             "version": "1.0",
             "source": "llm_architecture",
@@ -114,21 +121,13 @@ def load_architecture_with_metadata(architecture_file: Path) -> Dict[str, Any]:
             "extraction_method": "llm_inference",
             "features": [],
             "requirements": [],
-            "goals": []
+            "goals": [],
+            "metrics": {},
         }
 
 
 def save_architecture_with_metadata(architecture: Dict[str, Any], architecture_file: Path) -> bool:
-    """
-    Save architecture.json file with metadata.
-
-    Args:
-        architecture: Architecture dictionary
-        architecture_file: Path to save architecture
-
-    Returns:
-        True if successful, False otherwise
-    """
+    """Save architecture.json (fix shape first)."""
     try:
         architecture = ensure_architecture_metadata(architecture)
         architecture["last_updated"] = datetime.utcnow().isoformat()

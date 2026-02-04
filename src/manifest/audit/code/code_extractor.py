@@ -24,19 +24,7 @@ class Component:
     structural information like location, methods, attributes, and
     optional metadata about algorithms, design patterns, and complexity.
 
-    Attributes:
-        id: Unique identifier for the component.
-        name: Name of the component (class/function/variable name).
-        type: Type of component ("class", "function", "variable").
-        file: Path to the file containing this component.
-        line: Line number where the component is defined.
-        methods: List of method names (for classes).
-        attributes: List of attribute names (for classes).
-        module_path: Python module path (e.g., "manifest.core.config").
-        algorithm: Optional algorithm name if component implements one.
-        design_pattern: Optional design pattern name if component uses one.
-        complexity: Optional complexity notation (e.g., "O(n log n)").
-        notes: Optional additional notes about the component.
+    Manifest View / Actual Code fields: detected_interface, dependencies, side_effects.
     """
     id: str
     name: str
@@ -46,11 +34,14 @@ class Component:
     methods: List[str] = field(default_factory=list)
     attributes: List[str] = field(default_factory=list)
     module_path: str = ""
-    # Note: methodology removed - it's a development methodology, not product logic
-    algorithm: Optional[str] = None  # e.g., "Dijkstra", "BFS" (product logic only)
-    design_pattern: Optional[str] = None  # e.g., "Strategy", "Factory" (product logic only)
-    complexity: Optional[str] = None  # e.g., "O(n log n)" (product logic only)
+    algorithm: Optional[str] = None
+    design_pattern: Optional[str] = None
+    complexity: Optional[str] = None
     notes: Optional[str] = None
+    # Actual Code (Manifest View): signature/surface, imports used, I/O detected
+    detected_interface: Optional[str] = None  # e.g. "run(args)" or "MyClass(method_a, method_b)"
+    dependencies: List[str] = field(default_factory=list)  # modules actually imported
+    side_effects: List[str] = field(default_factory=list)  # e.g. "file_write", "logging"
 
 
 @dataclass
@@ -683,9 +674,23 @@ class CodeExtractor:
             "data": []
         }
 
-        # Convert components to blueprint format
+        # Build dependencies per component from contracts (external-* to_id)
+        comp_deps: Dict[str, List[str]] = {c.id: [] for c in self.components.values()}
+        for contract in self.contracts:
+            if contract.to_id.startswith("external-"):
+                mod = contract.to_id.replace("external-", "", 1).strip()
+                if mod and mod not in comp_deps.get(contract.from_id, []):
+                    comp_deps.setdefault(contract.from_id, []).append(mod)
+
+        # Convert components to blueprint format (Actual Code: detected_interface, dependencies, side_effects)
         blueprint_components = []
         for comp in self.components.values():
+            if comp.detected_interface:
+                det_iface = comp.detected_interface
+            elif comp.type == "class":
+                det_iface = f"{comp.name}({', '.join(comp.methods or [])})"
+            else:
+                det_iface = f"{comp.name}()"
             comp_dict = {
                 "id": comp.id,
                 "name": comp.name,
@@ -694,14 +699,10 @@ class CodeExtractor:
                 "line": comp.line,
                 "module_path": comp.module_path
             }
-
             if comp.methods:
                 comp_dict["methods"] = comp.methods
             if comp.attributes:
                 comp_dict["attributes"] = comp.attributes
-
-            # Add metadata fields if present (only product logic, not methodology)
-            # Note: methodology is excluded as it's a development methodology, not product logic
             if comp.algorithm:
                 comp_dict["algorithm"] = comp.algorithm
             if comp.design_pattern:
@@ -710,6 +711,9 @@ class CodeExtractor:
                 comp_dict["complexity"] = comp.complexity
             if comp.notes:
                 comp_dict["notes"] = comp.notes
+            comp_dict["detected_interface"] = det_iface
+            comp_dict["dependencies"] = comp.dependencies or comp_deps.get(comp.id, [])
+            comp_dict["side_effects"] = getattr(comp, "side_effects", []) or []
 
             blueprint_components.append(comp_dict)
 
@@ -739,7 +743,8 @@ class CodeExtractor:
         return {
             "version": "1.0",
             "source": "code_extraction",
-            "ground_truth": True,
+            "from_actual_code": True,
+            "ground_truth": True,  # backward compatibility
             "last_updated": datetime.utcnow().isoformat(),
             "extraction_method": "ast_parsing",
             "zones": zones,

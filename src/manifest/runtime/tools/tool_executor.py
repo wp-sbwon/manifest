@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 STATE_CHANGING_TOOLS = frozenset({
     "bash", "edit", "write",
     "task_management", "sprint_management", "worker_squad_spawn", "blueprint_sync",
+    "architect",
 })
 
 # Container API port for run_squad fallback when worker_squad_runner is not set.
@@ -193,6 +194,8 @@ class ToolExecutor:
                     result = self._execute_worker_squad_spawn(tool_input)
             elif tool_name == "blueprint_sync":
                 result = self._execute_blueprint_sync(tool_input)
+            elif tool_name == "architect":
+                result = self._execute_architect(tool_input)
             elif tool_name == "drift_check":
                 result = self._execute_drift_check(tool_input)
             else:
@@ -916,7 +919,7 @@ class ToolExecutor:
             return self._tool_result(tool_input, "worker_squad_spawn", error=str(e))
 
     def _execute_blueprint_sync(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute blueprint_sync tool (compare_blueprints, detect_drift, sync_blueprint, compare_all_docs)."""
+        """Execute blueprint_sync tool (compare_blueprints, detect_deviation, sync_blueprint, compare_all_docs)."""
         from manifest.runtime.opencode.tools.blueprint_sync import BlueprintSyncTool
         tool = BlueprintSyncTool(self.manifest_dir)
         action = (tool_input.get("action") or "").strip()
@@ -925,8 +928,8 @@ class ToolExecutor:
         try:
             if action == "compare_blueprints":
                 out = tool.compare_blueprints()
-            elif action == "detect_drift":
-                out = tool.detect_drift()
+            elif action in ("detect_drift", "detect_deviation"):
+                out = tool.detect_deviation()
             elif action == "sync_blueprint":
                 mode = (tool_input.get("mode") or "workflow").strip()
                 out = tool.sync_blueprint(mode=mode)
@@ -939,10 +942,27 @@ class ToolExecutor:
             logger.error(f"blueprint_sync error: {e}", exc_info=True)
             return self._tool_result(tool_input, "blueprint_sync", error=str(e))
 
+    def _execute_architect(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute architect tool (write PRD, architecture, or intent only)."""
+        from manifest.runtime.opencode.tools.architect_tool import ArchitectTool
+        tool = ArchitectTool(self.manifest_dir)
+        action = (tool_input.get("action") or "").strip()
+        if not action:
+            return self._tool_result(tool_input, "architect", error="Missing action")
+        content = tool_input.get("content")
+        try:
+            out = tool.run(action=action, content=content)
+            if out.get("ok"):
+                return self._tool_result(tool_input, "architect", result=out)
+            return self._tool_result(tool_input, "architect", error=out.get("error", "Unknown error"))
+        except Exception as e:
+            logger.error(f"architect error: {e}", exc_info=True)
+            return self._tool_result(tool_input, "architect", error=str(e))
+
     def _execute_drift_check(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute drift_check tool (returns component statuses)."""
-        from manifest.runtime.opencode.tools.blueprint_sync import DriftCheckTool
-        tool = DriftCheckTool(self.manifest_dir)
+        """Execute drift_check tool (returns component statuses: healthy/planned/deviation/extra)."""
+        from manifest.runtime.opencode.tools.blueprint_sync import DeviationCheckTool
+        tool = DeviationCheckTool(self.manifest_dir)
         try:
             out = tool.check()
             return self._tool_result(tool_input, "drift_check", result=out)

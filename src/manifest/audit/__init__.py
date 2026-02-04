@@ -1,18 +1,20 @@
 """
-Audit modules - Architecture drift detection.
+Audit modules - Design Plan vs Actual Code.
 
-This package provides modules for auditing code structure and detecting drift:
-- Blueprint management and synchronization
-- Code analysis and extraction
-- Metadata management
-- File and structure monitoring
+- Blueprint (design plan) management and synchronization
+- Code analysis and extraction (Actual Code)
+- Deviation detection
 """
-from .code.drift_auditor import DriftAuditor
+from .code.deviation_auditor import DeviationAuditor
 from .code.code_extractor import CodeExtractor, Component, Contract
 from .blueprint.blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
 from .blueprint.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
 
+# Backward compatibility
+DriftAuditor = DeviationAuditor
+
 __all__ = [
+    "DeviationAuditor",
     "DriftAuditor",
     "CodeExtractor",
     "Component",
@@ -21,5 +23,5 @@ __all__ = [
     "BlueprintConflict",
     "ConflictType",
     "BlueprintSynchronizer",
-    "ConflictReport"
+    "ConflictReport",
 ]

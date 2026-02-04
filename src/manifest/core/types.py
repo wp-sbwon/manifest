@@ -22,8 +22,7 @@ class TaskDict(TypedDict, total=False):
     Attributes:
         id: Unique identifier for the task (e.g., "task-1").
         description: Human-readable description of what the task involves.
-        status: Current status of the task. Valid values: "pending", "wip",
-            "done", "blocked", "cancelled", "completed".
+        status: Current status. Valid: pending, in_progress, paused, blocked, completed, cancelled.
         sprint_id: Optional ID of the sprint this task belongs to.
         dependencies: List of task IDs that this task depends on.
         agent: Optional dictionary containing agent assignment information.
@@ -33,7 +32,7 @@ class TaskDict(TypedDict, total=False):
     """
     id: str
     description: str
-    status: str  # "pending", "wip", "done", "blocked", "cancelled", "completed"
+    status: str  # pending | in_progress | paused | blocked | completed | cancelled
     sprint_id: Optional[str]
     dependencies: List[str]
     agent: Optional[Dict[str, Any]]
@@ -157,8 +156,8 @@ class BlueprintComponentDict(TypedDict, total=False):
     metadata: Optional[Dict[str, Any]]
 
 
-class DriftConflictDict(TypedDict, total=False):
-    """Drift conflict dictionary."""
+class DeviationConflictDict(TypedDict, total=False):
+    """Deviation (design plan vs actual code) conflict dictionary."""
     component_id: str
     component_name: str
     conflict_type: str
@@ -166,3 +165,6 @@ class DriftConflictDict(TypedDict, total=False):
     message: str
     file_path: Optional[str]
     line_number: Optional[int]
+
+
+DriftConflictDict = DeviationConflictDict  # backward compatibility

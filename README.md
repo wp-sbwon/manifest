@@ -37,7 +37,7 @@ This document provides an overview of the development environment setup for the 
 
 ## Prerequisites
 
-- Python 3.9 or higher
+- Python 3.10 or higher
 - **OpenCode** and **Podman** are required but **you do not install or run them yourself**: the setup script and the launcher install and start them when missing.
 
 ## Quick Start

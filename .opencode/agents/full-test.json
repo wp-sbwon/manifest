@@ -1,5 +1,5 @@
 {
-  "name": "manifest-full-test",
+  "name": "full-test",
   "description": "Manifest E2E / full-test agent. Callable by orchestrator only (subagent).",
   "type": "subagent",
   "hidden": true,
@@ -9,10 +9,6 @@
     "file_write",
     "terminal"
   ],
-  "model": {
-    "provider": "anthropic",
-    "model": "claude-3-5-sonnet-20241022"
-  },
   "capabilities": [
     "e2e_testing",
     "integration_testing"

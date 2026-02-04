@@ -26,6 +26,8 @@ manifest/
 
 **Tests:** One smoke test (`tests/test_startup.py`) ensures the app starts. Full test suite is archived under `tests/archive/`. GitHub Actions are disabled; add testing later.
 
+**OpenCode config:** Project root `opencode.json` defines agents (orchestrator, architect, full-test), default agent, and an input placeholder (`tui.placeholder`) for OpenCode’s chat: "Mission or task for Manifest. /help, /models, /worker-model". If your OpenCode version does not support `tui.placeholder`, the default may still appear; support is version-dependent.
+
 ## Source (`src/manifest/`)
 
 | Path | Role |

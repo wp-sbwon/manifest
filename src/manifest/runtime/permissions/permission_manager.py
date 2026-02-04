@@ -98,6 +98,22 @@ DEFAULT_PERMISSIONS = {
         "bash": "allow",
         "websearch": "ask",
         "webfetch": "ask"
+    },
+    "architect": {
+        "read": "allow",
+        "write": "deny",
+        "edit": "deny",
+        "bash": "deny",
+        "websearch": "ask",
+        "webfetch": "ask"
+    },
+    "reflector": {
+        "read": "allow",
+        "write": "allow",
+        "edit": "deny",
+        "bash": "deny",
+        "websearch": "allow",
+        "webfetch": "allow"
     }
 }
 

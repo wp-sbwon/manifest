@@ -165,7 +165,7 @@ class AgentCoordinator:
             }
             # Update state
             self.state_manager.set_last_action(f"Started orchestrator: {mission_description}")
-            await self.state_manager.save_state()
+            await self._persist_state()
 
         return success
 
@@ -284,7 +284,7 @@ class AgentCoordinator:
                     container_id=container_id,
                     last_action_msg=f"Started {agent_type} agent in container for task {task_id}",
                 )
-                await self.state_manager.save_state()
+                await self._persist_state()
                 return True
             else:
                 # Fall back to in-process execution if container fails
@@ -311,7 +311,7 @@ class AgentCoordinator:
                 execution_mode="direct",
                 last_action_msg=f"Started {agent_type} agent for task {task_id}",
             )
-            await self.state_manager.save_state()
+            await self._persist_state()
 
         return success
 
@@ -489,6 +489,10 @@ class AgentCoordinator:
                 data={"error": f"Agent status: {status}"}
             ))
 
+        # Remove from active_agents so observed status (active_task_ids) is correct
+        self.active_agents.pop(task_id, None)
+        await self._persist_state()
+
         return {
             "success": success,
             "output": output,
@@ -500,6 +504,18 @@ class AgentCoordinator:
     def _get_next_stage(self, current_stage: Optional[str]) -> Optional[str]:
         """Get the next stage in the workflow sequence. Uses canonical order from workflow_definition."""
         return get_next_stage_in_order(current_stage)
+
+    async def _persist_state(self) -> None:
+        """Sync active_task_ids from active_agents (for observed status in View) and save state."""
+        task_ids = [tid for tid in self.active_agents if tid != "orchestrator"]
+        self.state_manager.set_active_task_ids(task_ids)
+        await self.state_manager.save_state()
+
+    def _persist_state_sync(self) -> None:
+        """Sync active_task_ids and save state synchronously (e.g. from sync stop_agent path)."""
+        task_ids = [tid for tid in self.active_agents if tid != "orchestrator"]
+        self.state_manager.set_active_task_ids(task_ids)
+        self.state_manager.save_state_sync()
 
     def _register_worker_agent(
         self,
@@ -648,16 +664,15 @@ class AgentCoordinator:
             success = await self.agent_bridge.stop_agent(task_id)
 
         if success:
+            # Remove from active agents first so _persist_state writes correct active_task_ids
+            del self.active_agents[task_id]
             # Update task status
             tasks = self.state_manager.get_task_checklist()
             task = next((t for t in tasks if t.get("id") == task_id), None)
             if task and "agent" in task:
                 task["agent"]["status"] = "stopped"
                 self.state_manager.set_task_checklist(tasks)
-                await self.state_manager.save_state()
-
-            # Remove from active agents
-            del self.active_agents[task_id]
+            await self._persist_state()
 
         return success
 
@@ -738,7 +753,7 @@ class AgentCoordinator:
                     "resend_request": resend_request
                 }
                 self.state_manager.set_task_checklist(tasks)
-                await self.state_manager.save_state()
+                await self._persist_state()
                 break
 
         # Send to planner via agent bridge
@@ -755,7 +770,7 @@ class AgentCoordinator:
                         task["conflict"]["planner_task_id"] = planner_result.get("planner_task_id")
                         task["conflict"]["planner_channel"] = planner_result.get("channel")
                         self.state_manager.set_task_checklist(tasks)
-                        await self.state_manager.save_state()
+                        await self._persist_state()
                         break
             else:
                 logger.error(
@@ -854,7 +869,7 @@ class AgentCoordinator:
         if task:
             task["e2e_test"] = e2e_result
             self.state_manager.set_task_checklist(tasks)
-            await self.state_manager.save_state()
+            await self._persist_state()
 
         # If E2E tests failed, still proceed to Project Review but note the failure
         if not e2e_success:

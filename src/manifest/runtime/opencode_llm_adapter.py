@@ -215,13 +215,13 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
 
     async def _create_session(
         self,
-        model: str,
+        model: Optional[str],
         provider: str
     ) -> Optional[str]:
         """Create a new OpenCode session with retry logic.
 
         Args:
-            model: Model name (e.g., "claude-3-5-sonnet-20241022").
+            model: Model name (e.g. anthropic/claude-sonnet-4-5) or None to use OpenCode default.
             provider: Provider name (e.g., "anthropic").
 
         Returns:
@@ -230,9 +230,11 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
         if not await self._ensure_server_running():
             return None
 
-        # Convert provider/model to OpenCode format
-        # OpenCode uses format like "anthropic/claude-3-5-sonnet"
-        opencode_model = f"{provider}/{model}" if "/" not in model else model
+        # OpenCode uses format provider/model (e.g. anthropic/claude-sonnet-4-5). If model is None/empty, omit so OpenCode uses its default.
+        payload: Dict[str, Any] = {"config": {}}
+        if model and model.strip():
+            opencode_model = model if "/" in model else f"{provider}/{model}"
+            payload["model"] = opencode_model
 
         # Retry session creation
         for attempt in range(self.max_retries):
@@ -240,10 +242,7 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
                 async with httpx.AsyncClient(timeout=self.connection_timeout) as client:
                     response = await client.post(
                         f"{self.base_url}/session/create",
-                        json={
-                            "model": opencode_model,
-                            "config": {}
-                        }
+                        json=payload
                     )
                     if response.status_code == 200:
                         data = response.json()
@@ -277,7 +276,7 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
 
         return None
 
-    BOTTOM_UP_DOCS_AGENT_ID = "bottom_up_docs"
+    REFLECTOR_AGENT_ID = "reflector"
 
     async def call_llm_once(
         self,
@@ -286,8 +285,8 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
     ) -> str:
         """Send a single prompt to OpenCode and return the full response text.
 
-        Used by bottom-up doc generation (intent_code.json, architecture_code.json).
-        Creates or reuses a dedicated session for bottom-up docs.
+        Used by Reflector (bottom-up doc generation: intent_code.json, architecture_code.json).
+        Creates or reuses a dedicated session for reflector docs.
 
         Args:
             prompt: Full prompt text to send.
@@ -296,21 +295,22 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
         Returns:
             Concatenated text content from all chunks. Empty string on error.
         """
+        # Use opencode.model if set; otherwise None so OpenCode uses its default (no hardcoded model).
         model_config = {
             "provider": self.config_manager.get_setting("opencode.model_provider", "anthropic"),
-            "model": self.config_manager.get_setting("opencode.model", "claude-3-5-sonnet-20241022"),
+            "model": self.config_manager.get_setting("opencode.model"),
         }
-        session_id = self.active_sessions.get(self.BOTTOM_UP_DOCS_AGENT_ID, {}).get("session_id")
+        session_id = self.active_sessions.get(self.REFLECTOR_AGENT_ID, {}).get("session_id")
         if not session_id:
             session_id = await self._create_session(
-                model_config.get("model", "claude-3-5-sonnet-20241022"),
+                model_config.get("model"),
                 model_config.get("provider", "anthropic"),
             )
             if not session_id:
                 return ""
-            self.active_sessions[self.BOTTOM_UP_DOCS_AGENT_ID] = {
+            self.active_sessions[self.REFLECTOR_AGENT_ID] = {
                 "session_id": session_id,
-                "agent_type": "bottom_up_docs",
+                "agent_type": "reflector",
                 "status": "running",
             }
         parts: List[str] = []
@@ -320,8 +320,8 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
             if chunk.get("type") == "error":
                 logger.warning("call_llm_once error chunk: %s", chunk.get("content"))
                 break
-        if self.BOTTOM_UP_DOCS_AGENT_ID in self.active_sessions:
-            self.active_sessions[self.BOTTOM_UP_DOCS_AGENT_ID]["status"] = "completed"
+        if self.REFLECTOR_AGENT_ID in self.active_sessions:
+            self.active_sessions[self.REFLECTOR_AGENT_ID]["status"] = "completed"
         return "".join(parts)
 
     async def _send_prompt(
@@ -495,7 +495,10 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
             Chunks in Manifest format.
         """
         provider = model_config.get("provider", "anthropic")
-        model = model_config.get("model", "claude-3-5-sonnet-20241022")
+        # Use agent model, then opencode.model setting; None means OpenCode default (no hardcoded fallback).
+        model = model_config.get("model")
+        if model is None:
+            model = self.config_manager.get_setting("opencode.model")
 
         # Create or reuse session for this agent
         session_id = self.active_sessions.get(agent_id, {}).get("session_id")

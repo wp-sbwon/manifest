@@ -82,6 +82,8 @@ class StateManager:
             "version": "1.0",
             "mission_tree": {},
             "task_checklist": [],
+            "active_task_ids": [],
+            "health_metrics": None,
             "chat_history": {},
             "last_action": "",
             "timestamp": datetime.now().isoformat()
@@ -176,6 +178,24 @@ class StateManager:
             checklist: List of task dictionaries to store.
         """
         self._state["task_checklist"] = checklist
+        self._state["timestamp"] = datetime.now().isoformat()
+
+    def get_active_task_ids(self) -> list:
+        """Task IDs that currently have an active agent (for observed status)."""
+        return list(self._state.get("active_task_ids", []) or [])
+
+    def set_active_task_ids(self, task_ids: list) -> None:
+        """Set which task IDs currently have an active agent (persisted for View)."""
+        self._state["active_task_ids"] = list(task_ids) if task_ids is not None else []
+        self._state["timestamp"] = datetime.now().isoformat()
+
+    def get_health_metrics(self) -> Optional[Dict[str, Any]]:
+        """Project health from bottom-up (code_quality, test_coverage, binary_size). Updated when bottom-up runs."""
+        return self._state.get("health_metrics")
+
+    def set_health_metrics(self, metrics: Optional[Dict[str, Any]]) -> None:
+        """Set project health metrics (from bottom-up). Call save_state_sync() to persist."""
+        self._state["health_metrics"] = metrics
         self._state["timestamp"] = datetime.now().isoformat()
 
     def add_chat_message(self, channel: str, role: str, content: str) -> None:

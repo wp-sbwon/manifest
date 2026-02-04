@@ -68,12 +68,22 @@ async def _run_bottom_up_with_opencode(manifest_dir: Path, project_root: Path) -
     return True
 
 
+def _write_project_metrics(manifest_dir: Path, project_root: Path) -> None:
+    """Write project health (lint, coverage, size) to state.json. Part of bottom-up."""
+    try:
+        from manifest.audit.code.health_from_code import write_health_to_state
+        write_health_to_state(manifest_dir)
+    except Exception as e:
+        print(f"Warning: failed to write project metrics: {e}", file=sys.stderr)
+
+
 async def main(project_root: Path, manifest_dir: Path, skip_llm: bool = False) -> int:
     """Refresh blueprint_code and optionally generate intent_code/architecture_code. Returns exit code."""
     manifest_dir.mkdir(parents=True, exist_ok=True)
     updated = _refresh_blueprint_code(project_root, manifest_dir)
     if updated:
         print("Updated blueprint_code.json from code.", file=sys.stderr)
+    _write_project_metrics(manifest_dir, project_root)
     if skip_llm:
         return 0
     ok = await _run_bottom_up_with_opencode(manifest_dir, project_root)

@@ -1,0 +1,10 @@
+{
+  "agent": {
+    "execution_backend": "opencode"
+  },
+  "opencode": {
+    "server_host": "localhost",
+    "server_port": 4096,
+    "auto_start": true
+  }
+}

@@ -1,12 +1,14 @@
 """
 Blueprint Comparator - Compares top-down (design) and bottom-up (code) blueprints.
 Detects conflicts and mismatches between intended design and actual implementation.
+
+Terminology (aligned with Manifest View): design = Design Plan; code = Actual Code; conflicts = Deviation.
 """
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 
-from manifest.audit.code.drift_auditor import Severity
+from manifest.audit.code.deviation_auditor import Severity
 
 
 class ConflictType(Enum):
@@ -111,21 +113,21 @@ class BlueprintComparator:
                     file_path=td_comp.get("file")
                 ))
             else:
-                # Component exists, check Ground Truth fields (strict comparison)
+                # Component exists, check Actual Code (code-extracted) fields (strict comparison)
                 bu_comp = bottom_up_by_name[name]
 
-                # Ground Truth fields: methods, attributes (strict comparison)
+                # Actual Code fields: methods, attributes (strict comparison)
                 method_conflicts = self._compare_methods(td_comp, bu_comp)
                 conflicts.extend(method_conflicts)
 
                 attr_conflicts = self._compare_attributes(td_comp, bu_comp)
                 conflicts.extend(attr_conflicts)
 
-                # Ground Truth fields: structural info (id, name, type, file, line)
+                # Actual Code structural fields (id, name, type, file, line)
                 structural_conflicts = self._compare_structural_fields(td_comp, bu_comp)
                 conflicts.extend(structural_conflicts)
 
-                # Non-Ground Truth fields: metadata (algorithm, design_pattern, complexity)
+                # Metadata fields (algorithm, design_pattern, complexity) — compared with tolerance
                 # These are compared with tolerance for LLM inference differences
                 metadata_conflicts = self._compare_metadata_fields(td_comp, bu_comp)
                 conflicts.extend(metadata_conflicts)
@@ -320,7 +322,7 @@ class BlueprintComparator:
         bottom_up: Dict[str, Any]
     ) -> List[BlueprintConflict]:
         """
-        Compare Ground Truth structural fields (strict comparison).
+        Compare Actual Code structural fields (strict comparison).
         Fields: id, name, type, file, line
         """
         conflicts = []
@@ -339,10 +341,10 @@ class BlueprintComparator:
                 file_path=bottom_up.get("file")
             ))
 
-        # Check type
+        # Check type (only when both design and code specify a type and they differ)
         td_type = top_down.get("type")
         bu_type = bottom_up.get("type")
-        if td_type != bu_type:
+        if td_type and bu_type and td_type != bu_type:
             conflicts.append(BlueprintConflict(
                 severity=Severity.WARNING,
                 type=ConflictType.METHOD_MISMATCH,
@@ -377,7 +379,7 @@ class BlueprintComparator:
         bottom_up: Dict[str, Any]
     ) -> List[BlueprintConflict]:
         """
-        Compare non-Ground Truth metadata fields (tolerant comparison).
+        Compare metadata fields with tolerance (algorithm, design_pattern, etc.).
         Fields: algorithm, design_pattern, complexity
         Note: methodology is excluded as it's a development methodology, not product logic.
         """

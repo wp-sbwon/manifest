@@ -16,6 +16,7 @@ The executor can operate in two modes:
    MANIFEST_EVENT_DRIVEN=false environment variable)
 """
 import asyncio
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 from manifest.core.logger import get_logger
 from manifest.agents.workflow_event_bus import WorkflowEvent, WorkflowEventType
@@ -946,12 +947,32 @@ class WorkerSquadExecutor:
             ))
 
         await self._cleanup_event_subscriptions(task_id)
+        stages = workflow_state.get("stages", {})
+        await self._set_worker_squad_status(task_id, "completed", stages)
         logger.info(f"Workflow completed for task {task_id}")
+
+    async def _set_worker_squad_status(
+        self, task_id: str, status: str, stages: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Persist worker_squad.status to task in state (for observed status in View)."""
+        tasks = self.state_manager.get_task_checklist()
+        task = next((t for t in tasks if t.get("id") == task_id), None)
+        if not task:
+            return
+        if "worker_squad" not in task:
+            task["worker_squad"] = {}
+        task["worker_squad"]["status"] = status
+        if stages is not None:
+            task["worker_squad"]["stages"] = stages
+        task["updated_at"] = datetime.now().isoformat()
+        self.state_manager.set_task_checklist(tasks)
+        await self.state_manager.save_state()
 
     async def _publish_workflow_failed(
         self, task_id: str, stage: str, error_msg: str, stages: Dict[str, Any]
     ) -> None:
         """Publish WORKFLOW_FAILED event. Caller should return immediately after."""
+        await self._set_worker_squad_status(task_id, "failed", stages)
         if hasattr(self.coordinator, "event_bus"):
             await self.coordinator.event_bus.publish(WorkflowEvent(
                 event_type=WorkflowEventType.WORKFLOW_FAILED,
@@ -1271,6 +1292,7 @@ class WorkerSquadExecutor:
 
         error = await self._run_debug_loop_until_tests_pass(task_id, test_result, stages, previous_stages)
         if error is not None:
+            await self._set_worker_squad_status(task_id, "failed", stages)
             return {"success": False, "stages": stages, "error": error}
 
         # 6. Self Review + 7. Approver (with rework loop)
@@ -1279,6 +1301,7 @@ class WorkerSquadExecutor:
             task_id, self_review_result, stages, previous_stages
         )
         if error is not None:
+            await self._set_worker_squad_status(task_id, "failed", stages)
             return {"success": False, "stages": stages, "error": error}
 
         # 8. Run Sprint tests in background (NON-BLOCKING)
@@ -1288,6 +1311,9 @@ class WorkerSquadExecutor:
         sprint_id = task.get("sprint_id") if task else None
         if sprint_id and hasattr(self.coordinator, 'sprint_executor'):
             asyncio.create_task(self.coordinator.sprint_executor.run_sprint_tests(sprint_id, task_id))
+
+        # Persist completed status for observed status in View
+        await self._set_worker_squad_status(task_id, "completed", stages)
 
         # Publish workflow completed event
         if hasattr(self.coordinator, 'event_bus'):

@@ -16,7 +16,7 @@ from datetime import datetime
 from dataclasses import dataclass, field, asdict
 
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
-from manifest.audit.code.drift_auditor import Severity
+from manifest.audit.code.deviation_auditor import Severity
 from manifest.audit import doc_set
 from manifest.audit.doc_comparator import compare_intent, compare_architecture, DocDiff
 
@@ -103,14 +103,14 @@ class BlueprintSynchronizer:
     def compare_all_docs(self, manifest_dir: Optional[Path] = None) -> Dict[str, Any]:
         """
         Compare all doc types (blueprint, intent, architecture) between top-down and bottom-up.
-        Returns implementation progress (missing in bottom-up) separately from drift (conflicts).
+        Returns implementation progress (missing in bottom-up) separately from deviation (conflicts).
         """
         manifest_dir = manifest_dir or self.manifest_dir
         top_blueprint = doc_set.load_top_down(manifest_dir, "blueprint")
         bottom_blueprint = doc_set.load_bottom_up(manifest_dir, "blueprint")
         blueprint_conflicts = self.comparator.compare_blueprints(top_blueprint, bottom_blueprint)
         implementation_progress = [c for c in blueprint_conflicts if c.severity == Severity.IN_PROGRESS]
-        drift_conflicts = [c for c in blueprint_conflicts if c.severity in [Severity.ERROR, Severity.WARNING]]
+        deviation_conflicts = [c for c in blueprint_conflicts if c.severity in [Severity.ERROR, Severity.WARNING]]
         info_conflicts = [c for c in blueprint_conflicts if c.severity == Severity.INFO]
 
         top_intent = doc_set.load_top_down(manifest_dir, "intent")
@@ -124,7 +124,7 @@ class BlueprintSynchronizer:
         return {
             "blueprint": {
                 "implementation_progress": [c.to_dict() for c in implementation_progress],
-                "drift_conflicts": [c.to_dict() for c in drift_conflicts],
+                "deviation_conflicts": [c.to_dict() for c in deviation_conflicts],
                 "info": [c.to_dict() for c in info_conflicts],
             },
             "intent": {"diffs": [d.to_dict() for d in intent_diffs]},
@@ -387,7 +387,7 @@ class BlueprintSynchronizer:
         architecture: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Calculate implementation status for components (design_only/drift/implemented/extra).
+        Calculate implementation status for components (planned/deviation/healthy/extra).
         Also calculates completion percentage for features.
 
         Args:
@@ -421,9 +421,9 @@ class BlueprintSynchronizer:
             if comp_name:
                 bu_components_by_name[comp_name] = comp
 
-        # Calculate status for each top-down component
+        # Calculate status for each top-down component (internal names: healthy, planned, deviation, extra)
         component_statuses: Dict[str, str] = {}
-        component_drifts: Dict[str, List[str]] = {}
+        component_deviations: Dict[str, List[str]] = {}
 
         for comp_id, td_comp in td_components_by_id.items():
             comp_name = td_comp.get("name", "")
@@ -434,35 +434,30 @@ class BlueprintSynchronizer:
                 bu_comp = bu_components_by_name.get(comp_name)
 
             if not bu_comp:
-                # Component in design but not found in code (design only)
-                component_statuses[comp_id] = "design_only"
+                # In design plan but not in actual code
+                component_statuses[comp_id] = "planned"
             else:
-                # Component exists - check for drift
+                # Exists in both - check for deviation
                 conflicts = self.comparator.compare_components([td_comp], [bu_comp])
-                # Filter for significant conflicts (ERROR, WARNING)
                 significant_conflicts = [
                     c for c in conflicts
                     if c.severity in [Severity.ERROR, Severity.WARNING]
                 ]
 
                 if significant_conflicts:
-                    # Has drift
-                    component_statuses[comp_id] = "drift"
-                    component_drifts[comp_id] = [c.message for c in significant_conflicts]
+                    component_statuses[comp_id] = "deviation"
+                    component_deviations[comp_id] = [c.message for c in significant_conflicts]
                 else:
-                    # Implemented and matches
-                    component_statuses[comp_id] = "implemented"
+                    component_statuses[comp_id] = "healthy"
 
-        # Also mark extra components (in code but not in design)
+        # Mark extra components (in actual code but not in design plan)
         for comp_id, bu_comp in bu_components_by_id.items():
             comp_name = bu_comp.get("name", "")
             if comp_id not in td_components_by_id:
-                # Check by name
                 if comp_name not in td_components_by_name:
-                    # Extra component - mark as such
                     component_statuses[comp_id] = "extra"
 
-        # Calculate feature completion percentages if architecture is provided
+        # Feature completion percentages
         feature_completions: Dict[str, float] = {}
         if architecture:
             features = architecture.get("features", [])
@@ -474,28 +469,24 @@ class BlueprintSynchronizer:
                     feature_completions[feature_id] = 0.0
                     continue
 
-                # Count implemented components
-                implemented_count = 0
+                healthy_count = 0
                 total_count = len(feature_components)
-
                 for comp_id in feature_components:
-                    status = component_statuses.get(comp_id, "design_only")
-                    if status == "implemented":
-                        implemented_count += 1
-                    elif status == "drift":
-                        # Drift counts as partial (0.5)
-                        implemented_count += 0.5
+                    status = component_statuses.get(comp_id, "planned")
+                    if status == "healthy":
+                        healthy_count += 1
+                    elif status == "deviation":
+                        healthy_count += 0.5
 
-                # Calculate percentage
                 if total_count > 0:
-                    completion = (implemented_count / total_count) * 100
+                    completion = (healthy_count / total_count) * 100
                     feature_completions[feature_id] = round(completion, 1)
                 else:
                     feature_completions[feature_id] = 0.0
 
         return {
             "component_statuses": component_statuses,
-            "component_drifts": component_drifts,
+            "component_deviations": component_deviations,
             "feature_completions": feature_completions
         }
 
@@ -515,21 +506,18 @@ class BlueprintSynchronizer:
             Updated architecture dictionary
         """
         component_statuses = status_info.get("component_statuses", {})
-        component_drifts = status_info.get("component_drifts", {})
+        component_deviations = status_info.get("component_deviations", {})
         feature_completions = status_info.get("feature_completions", {})
 
-        # Update component statuses in architecture
-        # First, ensure components list exists in architecture
         if "components" not in architecture:
             architecture["components"] = []
 
-        # Update component status
         for comp in architecture.get("components", []):
             comp_id = comp.get("id", "")
             if comp_id in component_statuses:
                 comp["status"] = component_statuses[comp_id]
-                if comp_id in component_drifts:
-                    comp["drift_details"] = component_drifts[comp_id]
+                if comp_id in component_deviations:
+                    comp["deviation_details"] = component_deviations[comp_id]
 
         # Update feature completion percentages
         for feature in architecture.get("features", []):

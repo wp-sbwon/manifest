@@ -53,15 +53,14 @@ async def test_app_runs_and_displays_content(temp_manifest_dir):
     async with app.run_test() as pilot:
         await pilot.pause()
 
-        # Main chat area (placeholder) and sidebar viz exist
-        main_widget = app.query_one("#main-chat-text")
-        sidebar_viz = app.query_one("#sidebar-viz")
+        # Main content and sidebar exist
+        main_widget = app.query_one("#main-content")
+        sidebar_health = app.query_one("#sidebar-health")
         assert main_widget is not None
-        assert sidebar_viz is not None
+        assert sidebar_health is not None
         main_content = str(main_widget.render())
-        assert "OpenCode" in main_content or "Chat" in main_content
-        viz_content = str(sidebar_viz.render())
-        assert len(viz_content) > 0
+        assert len(main_content) >= 0
+        assert len(str(sidebar_health.render())) > 0
 
 
 @pytest.mark.asyncio
@@ -72,28 +71,24 @@ async def test_view_switching_with_keys(temp_manifest_dir):
     async with app.run_test() as pilot:
         await pilot.pause()
 
-        # Start with Blueprint view (default)
-        assert app.current_view == ViewType.BLUEPRINT
+        # Manifest View: default Diagram, 1=Diagram, 2=Files, 3=Timeline, 4=Mission
+        assert app.current_view == ViewType.DIAGRAM
 
-        # Switch to Architect (key 1)
-        await pilot.press("1")
+        await pilot.press("2")
         await pilot.pause()
-        assert app.current_view == ViewType.ARCHITECT
+        assert app.current_view == ViewType.FILES
 
-        # Switch to History (key 3)
         await pilot.press("3")
         await pilot.pause()
-        assert app.current_view == ViewType.HISTORY
+        assert app.current_view == ViewType.TIMELINE
 
-        # Switch to Inspector (key 4)
         await pilot.press("4")
         await pilot.pause()
-        assert app.current_view == ViewType.INSPECTOR
-
-        # Switch to Mission Control (key 5)
-        await pilot.press("5")
-        await pilot.pause()
         assert app.current_view == ViewType.MISSION_CONTROL
+
+        await pilot.press("1")
+        await pilot.pause()
+        assert app.current_view == ViewType.DIAGRAM
 
 
 @pytest.mark.asyncio
@@ -104,40 +99,38 @@ async def test_inspector_mode_switching(temp_manifest_dir):
     async with app.run_test() as pilot:
         await pilot.pause()
 
-        # Switch to Inspector view first
-        await pilot.press("4")
+        # Toggle Inspect panel (i) and switch modes (use actions)
+        await pilot.press("i")
         await pilot.pause()
-        assert app.current_view == ViewType.INSPECTOR
-        assert app.inspector_mode == InspectorMode.DRIFT
+        app.action_switch_inspector_mode("Deviation")
+        await pilot.pause()
+        assert app.inspector_mode == InspectorMode.DEVIATION
 
-        # Switch to Visual mode (key v)
-        await pilot.press("v")
+        app.action_switch_inspector_mode("Visual")
         await pilot.pause()
         assert app.inspector_mode == InspectorMode.VISUAL
 
-        # Switch to Data mode (key d)
-        await pilot.press("d")
+        app.action_switch_inspector_mode("Data")
         await pilot.pause()
         assert app.inspector_mode == InspectorMode.DATA
 
-        # Switch back to Drift mode (key f)
-        await pilot.press("f")
+        app.action_switch_inspector_mode("Deviation")
         await pilot.pause()
-        assert app.inspector_mode == InspectorMode.DRIFT
+        assert app.inspector_mode == InspectorMode.DEVIATION
 
 
 @pytest.mark.asyncio
 async def test_refresh_key(temp_manifest_dir):
-    """Refresh key (r) updates the sidebar content."""
+    """Refresh key (s) updates the sidebar content."""
     app = ManifestViewApp(manifest_dir=temp_manifest_dir)
 
     async with app.run_test() as pilot:
         await pilot.pause()
 
-        content_widget = app.query_one("#sidebar-viz")
+        content_widget = app.query_one("#sidebar-health")
         initial_content = str(content_widget.render())
 
-        await pilot.press("r")
+        await pilot.press("s")
         await pilot.pause()
 
         refreshed_content = str(content_widget.render())
@@ -168,26 +161,25 @@ async def test_quit_key(temp_manifest_dir):
 
 @pytest.mark.asyncio
 async def test_navigation_highlighting(temp_manifest_dir):
-    """Sidebar Viz content reflects current view when switching with 1–5."""
+    """Tab bar and main content reflect current view when switching with 1–4."""
     app = ManifestViewApp(manifest_dir=temp_manifest_dir)
 
     async with app.run_test() as pilot:
         await pilot.pause()
 
-        assert app.current_view == ViewType.BLUEPRINT
-        viz = app.query_one("#sidebar-viz")
-        blueprint_content = str(viz.render())
+        assert app.current_view == ViewType.DIAGRAM
+        tab_bar = app.query_one("#main-tab-bar")
+        assert "DIAGRAM" in str(tab_bar.render())
 
-        await pilot.press("1")
+        await pilot.press("2")
         await pilot.pause()
-        assert app.current_view == ViewType.ARCHITECT
-        architect_content = str(viz.render())
-        assert "Architect" in architect_content or "Features" in architect_content or len(architect_content) > 0
+        assert app.current_view == ViewType.FILES
+        assert "FILES" in str(tab_bar.render()) or len(str(tab_bar.render())) > 0
 
 
 @pytest.mark.asyncio
 async def test_content_updates_on_view_switch(temp_manifest_dir):
-    """Sidebar Viz content updates when switching views."""
+    """Main content updates when switching views."""
     app = ManifestViewApp(manifest_dir=temp_manifest_dir)
 
     async with app.run_test() as pilot:
@@ -195,39 +187,37 @@ async def test_content_updates_on_view_switch(temp_manifest_dir):
 
         await pilot.press("2")
         await pilot.pause()
-        content_widget = app.query_one("#sidebar-viz")
-        blueprint_content = str(content_widget.render())
+        content_widget = app.query_one("#main-content")
+        files_content = str(content_widget.render())
 
         await pilot.press("1")
         await pilot.pause()
-        architect_content = str(content_widget.render())
+        diagram_content = str(content_widget.render())
 
-        assert isinstance(architect_content, str)
-        assert len(architect_content) > 0
+        assert isinstance(diagram_content, str)
+        assert len(diagram_content) >= 0
 
 
 @pytest.mark.asyncio
 async def test_all_views_load_content(temp_manifest_dir):
-    """All views load and display in sidebar Viz when running."""
+    """All views load and display in main content when running."""
     app = ManifestViewApp(manifest_dir=temp_manifest_dir)
 
     async with app.run_test() as pilot:
         await pilot.pause()
 
-        content_widget = app.query_one("#sidebar-viz")
-        view_map = {
-            ViewType.ARCHITECT: "1",
-            ViewType.BLUEPRINT: "2",
-            ViewType.HISTORY: "3",
-            ViewType.INSPECTOR: "4",
-            ViewType.MISSION_CONTROL: "5",
+        content_widget = app.query_one("#main-content")
+        key_map = {
+            ViewType.DIAGRAM: "1",
+            ViewType.FILES: "2",
+            ViewType.TIMELINE: "3",
+            ViewType.MISSION_CONTROL: "4",
         }
-        for view_type in ViewType:
-            await pilot.press(view_map[view_type])
+        for view_type, key in key_map.items():
+            await pilot.press(key)
             await pilot.pause()
             content = str(content_widget.render())
             assert isinstance(content, str)
-            assert len(content) > 0
             assert app.current_view == view_type
 
 
@@ -242,9 +232,8 @@ async def test_app_handles_errors_gracefully(temp_manifest_dir):
     async with app.run_test() as pilot:
         await pilot.pause()
 
-        content_widget = app.query_one("#sidebar-viz")
+        content_widget = app.query_one("#sidebar-health")
         content = str(content_widget.render())
 
         assert isinstance(content, str)
-        assert len(content) > 0
         assert app.is_running

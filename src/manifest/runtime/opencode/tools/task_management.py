@@ -10,12 +10,13 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from manifest.core.logger import get_logger
+from manifest.core.task_constants import TASK_STATUSES, TASK_STAGES
 
 logger = get_logger(__name__)
 
 TASKS_FILE = "tasks.json"
-VALID_STATUSES = {"pending", "in_progress", "blocked", "completed", "cancelled"}
-VALID_STAGES = {"planning", "coding", "testing", "review", "done"}
+VALID_STATUSES = TASK_STATUSES
+VALID_STAGES = TASK_STAGES
 
 
 def _default_tasks_data() -> Dict[str, Any]:
@@ -82,7 +83,7 @@ class TaskManagementTool:
         return {"ok": True, "task": task, "task_id": task_id}
 
     def update_task_status(self, task_id: str, status: str) -> Dict[str, Any]:
-        """Update task status. Valid: pending, in_progress, blocked, completed, cancelled."""
+        """Update task status. Valid: pending, in_progress, paused, blocked, completed, cancelled."""
         if status not in VALID_STATUSES:
             return {"ok": False, "error": f"Invalid status: {status}"}
         data = self._load()
