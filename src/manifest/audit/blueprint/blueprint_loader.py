@@ -1,19 +1,66 @@
 """
 Centralized blueprint loading utility.
 
-This module provides a single point for loading blueprint files, eliminating
-code duplication across the codebase. It handles loading blueprint.json,
-blueprint_code.json, and supports loading with or without metadata.
-
-The BlueprintLoader uses static methods so it can be called without
-instantiating a class, making it convenient for one-off loading operations.
+Loads blueprint.json and blueprint_code.json in the new entity format
+(version, root_id, entities, contracts). Normalizes on load; if legacy
+format (components) is detected, runs migration in place.
 """
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional
+
+from manifest.audit.entity_schema import empty_blueprint_root
+from manifest.audit.entity_validation import is_legacy_format, normalize_for_schema
+from manifest.audit.entity_schema import PROJECT_ROOT_ID
+from manifest.audit.blueprint_migrate import migrate_file
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _load_and_normalize(path: Path, is_plan: bool) -> Dict[str, Any]:
+    """Load JSON, migrate if legacy, normalize, return new-format dict."""
+    if not path.exists():
+        out = empty_blueprint_root()
+        out["components"] = []
+        return out
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        logger.error("Error loading %s: %s", path, e, exc_info=True)
+        return empty_blueprint_root()
+    if is_legacy_format(data):
+        logger.info("Legacy format detected in %s; running migration", path)
+        if migrate_file(path, is_plan=is_plan):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        else:
+            logger.warning(
+                "Migration did not run or failed; returning empty. Run: python -m manifest.audit.blueprint_migrate --manifest-dir %s",
+                path.parent,
+            )
+            out = empty_blueprint_root()
+            out["components"] = []
+            return out
+    data = normalize_for_schema(data)
+    # Backward compat: components = non-root entities with name/file for comparator
+    entities = data.get("entities") or []
+    components = []
+    for e in entities:
+        if (e.get("id") or "") == PROJECT_ROOT_ID:
+            continue
+        c = dict(e)
+        if "name" not in c or not c["name"]:
+            c["name"] = (
+                (c.get("intent") or {}).get("narrative") or {}
+            ).get("role") or c.get("id") or ""
+        if "file" not in c or not c["file"]:
+            c["file"] = ((c.get("reality") or {}).get("symbol") or "")
+        components.append(c)
+    data["components"] = components
+    data["zones"] = data.get("zones") or {}
+    return data
 
 
 class BlueprintLoader:
@@ -30,94 +77,24 @@ class BlueprintLoader:
         with_metadata: bool = False,
         default_source: str = "llm_design"
     ) -> Dict[str, Any]:
-        """Load blueprint.json file from the manifest directory.
-
-        If with_metadata is True, uses BlueprintMetadata to load with
-        additional metadata. Otherwise, loads the raw JSON file.
-
-        Args:
-            manifest_dir: Path to the .manifest directory containing blueprint.json.
-            with_metadata: Whether to include metadata in the loaded blueprint.
-                Metadata includes source information and component details.
-            default_source: Default source identifier for metadata when loading
-                with metadata enabled.
-
-        Returns:
-            Dictionary containing blueprint data (components, contracts, zones).
-            Returns default empty structure if file doesn't exist or loading fails.
-            Errors are logged but don't raise exceptions.
-        """
+        """Load blueprint.json (plan). Returns new format: version, root_id, entities, contracts."""
+        manifest_dir = Path(manifest_dir)
         blueprint_file = manifest_dir / "blueprint.json"
-
-        if not blueprint_file.exists():
-            logger.debug(f"Blueprint file not found: {blueprint_file}")
-            return {
-                "version": "1.0",
-                "components": [],
-                "contracts": [],
-                "zones": {}
-            }
-
-        try:
-            if with_metadata:
-                from manifest.audit.blueprint.blueprint_metadata import load_blueprint_with_metadata
-                return load_blueprint_with_metadata(
-                    blueprint_file,
-                    default_source,
-                    False
-                )
-            else:
-                with open(blueprint_file, "r", encoding="utf-8") as f:
-                    return json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading blueprint from {blueprint_file}: {e}", exc_info=True)
-            return {
-                "version": "1.0",
-                "components": [],
-                "contracts": [],
-                "zones": {}
-            }
+        data = _load_and_normalize(blueprint_file, is_plan=True)
+        if with_metadata:
+            from manifest.audit.blueprint.blueprint_metadata import ensure_blueprint_metadata
+            data = ensure_blueprint_metadata(data, default_source, False)
+        return data
 
     @staticmethod
     def load_code_blueprint(manifest_dir: Path) -> Dict[str, Any]:
-        """Load blueprint_code.json file.
-
-        This file contains blueprint information extracted from actual code
-        (as opposed to blueprint.json which is the intended design). Used
-        for comparing intended design vs actual implementation.
-
-        Args:
-            manifest_dir: Path to the .manifest directory containing blueprint_code.json.
-
-        Returns:
-            Dictionary containing code-extracted blueprint data.
-            Returns default empty structure if file doesn't exist or loading fails.
-            Errors are logged but don't raise exceptions.
-        """
+        """Load blueprint_code.json (actual). Returns new format: version, root_id, entities, contracts."""
+        manifest_dir = Path(manifest_dir)
         code_blueprint_file = manifest_dir / "blueprint_code.json"
-
-        if not code_blueprint_file.exists():
-            logger.debug(f"Code blueprint file not found: {code_blueprint_file}")
-            return {
-                "version": "1.0",
-                "components": [],
-                "contracts": []
-            }
-
-        try:
-            from manifest.audit.blueprint.blueprint_metadata import load_blueprint_with_metadata
-            return load_blueprint_with_metadata(
-                code_blueprint_file,
-                "code_extraction",
-                True
-            )
-        except Exception as e:
-            logger.error(f"Error loading code blueprint from {code_blueprint_file}: {e}", exc_info=True)
-            return {
-                "version": "1.0",
-                "components": [],
-                "contracts": []
-            }
+        data = _load_and_normalize(code_blueprint_file, is_plan=False)
+        from manifest.audit.blueprint.blueprint_metadata import ensure_blueprint_metadata
+        data = ensure_blueprint_metadata(data, "code_extraction", True, "ast_parsing")
+        return data
 
     @staticmethod
     def save_blueprint(
@@ -127,32 +104,24 @@ class BlueprintLoader:
     ) -> bool:
         """
         Save blueprint.json with optional backup.
-
-        Args:
-            manifest_dir: Path to .manifest directory
-            blueprint_data: Blueprint data to save
-            backup: Whether to create backup before saving
-
-        Returns:
-            True if successful, False otherwise
+        Uses save_blueprint_with_metadata for validation and new-format persistence.
         """
+        from manifest.audit.blueprint.blueprint_metadata import save_blueprint_with_metadata
+
+        manifest_dir = Path(manifest_dir)
         blueprint_file = manifest_dir / "blueprint.json"
 
-        try:
-            # Create backup if requested
-            if backup and blueprint_file.exists():
-                backup_file = manifest_dir / "blueprint.json.backup"
-                import shutil
-                shutil.copy2(blueprint_file, backup_file)
-                logger.debug(f"Created backup: {backup_file}")
+        if backup and blueprint_file.exists():
+            backup_file = manifest_dir / "blueprint.json.backup"
+            import shutil
+            shutil.copy2(blueprint_file, backup_file)
+            logger.debug("Created backup: %s", backup_file)
 
-            # Save blueprint
-            with open(blueprint_file, "w", encoding="utf-8") as f:
-                json.dump(blueprint_data, f, indent=2, ensure_ascii=False)
+        ok = save_blueprint_with_metadata(
+            blueprint_data, blueprint_file, "llm_design", False, "manual"
+        )
+        if ok:
             from manifest.core.design_history import record_design_save
             record_design_save(manifest_dir, "blueprint", "blueprint.json")
-            logger.info(f"Blueprint saved to {blueprint_file}")
-            return True
-        except Exception as e:
-            logger.error(f"Error saving blueprint to {blueprint_file}: {e}", exc_info=True)
-            return False
+            logger.info("Blueprint saved to %s", blueprint_file)
+        return ok

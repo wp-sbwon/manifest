@@ -3,19 +3,24 @@ Design–Code Blueprint Identity Alignment.
 
 Canonical identity rule: For accurate deviation calculation, each component in
 blueprint.json (design) must use the same `id` and `name` as in blueprint_code.json
-(code). The comparator matches components by `name`; human-friendly descriptions
-belong in `description`, not in `name`.
-
-This module validates and optionally auto-corrects design blueprint components
-against the code blueprint when saving design, so top-down and bottom-up docs
-"come to the same point" for comparison.
+(code). Supports both legacy (components) and new entity format (entities).
 """
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
 
+from manifest.audit.entity_schema import PROJECT_ROOT_ID
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _get_components_list(blueprint: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return list of component/entity dicts (exclude root). Supports entities or components."""
+    components = blueprint.get("components")
+    if components is not None:
+        return components
+    entities = blueprint.get("entities") or []
+    return [e for e in entities if (e.get("id") or "") != PROJECT_ROOT_ID]
 
 
 def validate_and_align_design_identity(
@@ -25,19 +30,7 @@ def validate_and_align_design_identity(
 ) -> Tuple[Dict[str, Any], List[str]]:
     """
     Validate design blueprint component identity against code blueprint and optionally align.
-
-    For each design component whose `id` exists in the code blueprint, ensures `name`
-    matches. If not and auto_align_name is True, sets design component `name` to the
-    code component's `name` so deviation comparison works correctly.
-
-    Args:
-        manifest_dir: Path to .manifest (containing blueprint_code.json).
-        design_blueprint: The design blueprint dict (may be mutated if auto_align_name).
-        auto_align_name: If True, correct design component names to match code by id.
-
-    Returns:
-        (design_blueprint, list of warning messages). design_blueprint is the same
-        dict (possibly with names updated); warnings describe any alignments made.
+    Works with both new format (entities) and legacy (components).
     """
     warnings: List[str] = []
     code_file = manifest_dir / "blueprint_code.json"
@@ -53,22 +46,25 @@ def validate_and_align_design_identity(
         return design_blueprint, warnings
 
     code_by_id: Dict[str, Dict[str, Any]] = {
-        c["id"]: c for c in code_blueprint.get("components", []) if c.get("id")
+        c["id"]: c for c in _get_components_list(code_blueprint) if c.get("id")
     }
-    design_components = design_blueprint.get("components") or []
+    design_components = _get_components_list(design_blueprint)
     for comp in design_components:
         comp_id = comp.get("id")
         if not comp_id or comp_id not in code_by_id:
             continue
         code_comp = code_by_id[comp_id]
-        code_name = code_comp.get("name")
-        design_name = comp.get("name")
+        code_name = code_comp.get("name") or ((code_comp.get("intent") or {}).get("narrative") or {}).get("role")
+        design_name = comp.get("name") or ((comp.get("intent") or {}).get("narrative") or {}).get("role")
         if not code_name:
             continue
         if design_name != code_name:
             if auto_align_name:
                 old_name = design_name or "(missing)"
                 comp["name"] = code_name
+                if "intent" in comp and isinstance(comp["intent"], dict) and "narrative" in comp["intent"]:
+                    comp["intent"]["narrative"] = dict(comp["intent"]["narrative"])
+                    comp["intent"]["narrative"]["role"] = code_name
                 msg = f"Aligned design component id={comp_id} name '{old_name}' -> '{code_name}' (code blueprint)"
                 warnings.append(msg)
                 logger.info(msg)

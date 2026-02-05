@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
 
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 def ensure_blueprint_metadata(blueprint: Dict[str, Any], source: str,
                               ground_truth: bool, extraction_method: str = None) -> Dict[str, Any]:
@@ -60,13 +64,15 @@ def load_blueprint_with_metadata(blueprint_file: Path, default_source: str = "ll
     if not blueprint_file.exists():
         return {
             "version": "1.0",
+            "root_id": "",
             "source": default_source,
             "ground_truth": default_ground_truth,
             "last_updated": datetime.utcnow().isoformat(),
             "extraction_method": "llm_inference" if default_source.startswith("llm") else "ast_parsing",
-            "zones": {"client": [], "server": [], "data": []},
+            "entities": [],
+            "contracts": [],
             "components": [],
-            "contracts": []
+            "zones": {},
         }
 
     try:
@@ -84,13 +90,15 @@ def load_blueprint_with_metadata(blueprint_file: Path, default_source: str = "ll
         # Return default blueprint with metadata
         return {
             "version": "1.0",
+            "root_id": "",
             "source": default_source,
             "ground_truth": default_ground_truth,
             "last_updated": datetime.utcnow().isoformat(),
             "extraction_method": "llm_inference" if default_source.startswith("llm") else "ast_parsing",
-            "zones": {"client": [], "server": [], "data": []},
+            "entities": [],
+            "contracts": [],
             "components": [],
-            "contracts": []
+            "zones": {},
         }
 
 
@@ -115,6 +123,14 @@ def save_blueprint_with_metadata(blueprint: Dict[str, Any], blueprint_file: Path
         True if successful, False otherwise
     """
     try:
+        # Migrate legacy (components) to new format (entities) before save
+        from manifest.audit.entity_validation import is_legacy_format
+        from manifest.audit.blueprint_migrate import migrate_blueprint_data
+        from manifest.audit.entity_validation import validate_blueprint_data
+
+        if is_legacy_format(blueprint):
+            blueprint = migrate_blueprint_data(blueprint, is_plan=(blueprint_file.name == "blueprint.json"))
+
         blueprint = ensure_blueprint_metadata(blueprint, source, ground_truth, extraction_method)
         blueprint["last_updated"] = datetime.utcnow().isoformat()
 
@@ -130,9 +146,30 @@ def save_blueprint_with_metadata(blueprint: Dict[str, Any], blueprint_file: Path
             for w in identity_warnings:
                 logger.debug("Design identity: %s", w)
 
+        valid, errors = validate_blueprint_data(blueprint)
+        if not valid and errors:
+            logger.error("Blueprint validation failed before save: %s", errors)
+            return False
+
+        # Persist only new-format keys; strip compat-only keys (components, zones)
+        out = {k: v for k, v in blueprint.items() if k not in ("components", "zones")}
+        # Normalize contracts to use "from"/"to" (JSON schema) not from_id/to_id
+        contracts = out.get("contracts") or []
+        normalized_contracts = []
+        for c in contracts:
+            if not isinstance(c, dict):
+                continue
+            nc = dict(c)
+            if "from" not in nc and "from_id" in nc:
+                nc["from"] = nc.get("from_id") or ""
+            if "to" not in nc and "to_id" in nc:
+                nc["to"] = nc.get("to_id") or ""
+            normalized_contracts.append(nc)
+        out["contracts"] = normalized_contracts
+
         blueprint_file.parent.mkdir(parents=True, exist_ok=True)
         with open(blueprint_file, "w", encoding="utf-8") as f:
-            json.dump(blueprint, f, indent=2, ensure_ascii=False)
+            json.dump(out, f, indent=2, ensure_ascii=False)
         return True
     except Exception:
         return False

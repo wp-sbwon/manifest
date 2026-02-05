@@ -302,13 +302,30 @@ class PlannerAgent:
         try:
             blueprint = load_blueprint_with_metadata(blueprint_file, "llm_design", False)
 
-            # Update components with metadata (excluding methodology)
-            # For now, update the first component or create a metadata section
-            if "components" in blueprint and blueprint["components"]:
-                # Update the first component (or we could match by task_id)
-                # This is a simplified approach - in production, we'd match components by task
+            # Update entity intent with methodology (new format) or component (legacy)
+            from manifest.audit.entity_schema import PROJECT_ROOT_ID
+
+            if "entities" in blueprint and blueprint["entities"]:
+                # New format: find first non-root entity and update its intent.governance.rules
+                for ent in blueprint["entities"]:
+                    if (ent.get("id") or "") == PROJECT_ROOT_ID:
+                        continue
+                    intent = ent.get("intent") or {}
+                    governance = intent.get("governance") or {}
+                    rules = list(governance.get("rules") or [])
+                    if "algorithm" in methodology_info:
+                        rules.append(f"algorithm: {methodology_info['algorithm']}")
+                    if "design_pattern" in methodology_info:
+                        rules.append(f"design_pattern: {methodology_info['design_pattern']}")
+                    if "complexity" in methodology_info:
+                        rules.append(f"complexity: {methodology_info['complexity']}")
+                    if rules:
+                        intent["governance"] = {**governance, "rules": rules}
+                        ent["intent"] = intent
+                    break
+            elif "components" in blueprint and blueprint["components"]:
+                # Legacy: update first component
                 comp = blueprint["components"][0]
-                # Only update algorithm, design_pattern, complexity (not methodology)
                 if "algorithm" in methodology_info:
                     comp["algorithm"] = methodology_info["algorithm"]
                     comp["algorithm_reasoning"] = methodology_info.get("algorithm_reasoning", "")
