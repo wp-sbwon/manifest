@@ -26,6 +26,16 @@ from manifest.audit.metadata.architecture_metadata import load_architecture_with
 from manifest.core.logger import get_logger
 from manifest.view.file_watcher import ViewFileWatcher
 from manifest.audit.monitoring.deviation_monitor import DeviationMonitor
+from manifest.view.entity_model import get_entities_for_view
+from manifest.view.diagram import (
+    load_diagram_config,
+    build_diagram_spec,
+    build_diagram_spec_from_entities,
+    build_flat_diagram_spec,
+    render_diagram,
+    is_app_component,
+    order_components_for_diagram,
+)
 
 logger = get_logger(__name__)
 
@@ -147,26 +157,28 @@ def _status_label_markup(status: str, text: Optional[str] = None) -> str:
 
 
 def _task_status_color_tag(status: str) -> str:
-    """Color for task lifecycle (not design vs code)."""
-    if status == "pending":
-        return "dim"
-    if status == "in_progress":
-        return "cyan"
-    if status == "paused":
+    """Color for task lifecycle (not design vs code). Status-code color coded: pending ≠ green."""
+    s = (status or "").strip().lower()
+    if s == "pending":
+        return "#b8860b"   # dark goldenrod; not green (completed = green)
+    if s == "in_progress":
+        return "#58a6ff"   # blue
+    if s == "paused":
         return "orange1"
-    if status == "blocked":
+    if s == "blocked":
         return "red"
-    if status == "completed":
+    if s == "completed":
         return "green"
-    if status == "cancelled":
+    if s == "cancelled":
         return "grey50"
-    return "white"
+    return "#8b949e"      # dim grey for unknown
 
 
 def _task_status_markup(status: str) -> str:
-    """Task status label with color, in brackets."""
-    label = status_display_label(status)
-    tag = _task_status_color_tag(status)
+    """Task status label with color, in brackets. Color from normalized status (lowercase)."""
+    raw = status or "?"
+    label = status_display_label(raw)
+    tag = _task_status_color_tag(raw)
     return f" [dim]│[/] [{tag}]{label}[/] [dim]│[/] "
 
 
@@ -248,71 +260,6 @@ def _component_type_color(comp: Dict[str, Any], name: str) -> str:
     return ACCENT_BLUE
 
 
-def _order_components_for_diagram(
-    components: List[Dict[str, Any]],
-    contracts: List[Dict[str, Any]],
-    blueprint: Dict[str, Any],
-) -> List[Dict[str, Any]]:
-    """Order components for diagram: prefer zone (server) order when present, else contract flow."""
-    zones = blueprint.get("zones") or {}
-    server_ids = zones.get("server") or []
-    if server_ids:
-        id_to_comp = {c.get("id"): c for c in components if c.get("id")}
-        ordered = [id_to_comp[cid] for cid in server_ids if cid in id_to_comp]
-        seen = {c.get("id") for c in ordered}
-        for c in components:
-            if c.get("id") and c.get("id") not in seen:
-                ordered.append(c)
-        return ordered[:14]
-    return _order_components_by_flow(components, contracts) if contracts else components[:14]
-
-
-def _render_architecture_flow_diagram(
-    blueprint: Dict[str, Any],
-    comp_status: Dict[str, str],
-    box_width: int = 28,
-) -> str:
-    """Vertical flow diagram: title 'ARCHITECTURE FLOW', then one box per component (■ = status).
-
-    Intended view (mock): blueprint.components ordered by blueprint.zones.server when present,
-    so flow is e.g. main → add → sub → mul → format_result. Data from blueprint.json + comp_status
-    from design vs code comparison. If title or order looked wrong, cause was (1) Rich markup
-    parsing '[ARCHITECTURE FLOW]' as a style tag, (2) contract-first order putting format_result
-    before sub/mul; zone order fixes the latter.
-    """
-    lines: List[str] = []
-    components = blueprint.get("components", []) or []
-    contracts = blueprint.get("contracts", []) or []
-    comp_list = _order_components_for_diagram(components, contracts, blueprint)
-    if not comp_list:
-        return "  (no components)"
-    S = "■"
-    # Title bar: literal "ARCHITECTURE FLOW" (no Rich tag; [ARCHITECTURE FLOW] would be parsed as style)
-    lines.append("[white]  ┌" + "─" * (box_width + 2) + "┐[/]")
-    lines.append("[white]  │  ARCHITECTURE FLOW" + " " * max(0, box_width - 21) + "│[/]")
-    lines.append("[white]  └" + "─" * (box_width + 2) + "┘[/]")
-    for i, c in enumerate(comp_list):
-        cid = c.get("id")
-        raw_name = (c.get("name") or cid or "?")
-        name = raw_name[: box_width - 6].strip()
-        st = comp_status.get(cid or "", "planned")
-        status_tag = _status_color_tag(st)
-        type_tag = _component_type_color(c, raw_name)
-        w = max(len(name) + 6, 12)
-        w = min(w, box_width + 2)
-        top = "  ┌" + "─" * (w - 2) + "┐"
-        # Mid: │ ■ name │ with type color for box, status color for ■
-        mid = f"  [{type_tag}]│ [/][{status_tag}]{S}[/] [{type_tag}]{name:<{w-6}}│[/]"
-        bot = "  └" + "─" * (w - 2) + "┘"
-        lines.append(f"  [{type_tag}]{top}[/]")
-        lines.append(mid)
-        lines.append(f"  [{type_tag}]{bot}[/]")
-        if i < len(comp_list) - 1:
-            lines.append(" " * (w // 2 + 2) + "│")
-            lines.append(" " * (w // 2 + 2) + "▼")
-    return "\n".join(lines)
-
-
 def _render_project_map(
     architecture: Dict[str, Any],
     blueprint: Dict[str, Any],
@@ -321,8 +268,17 @@ def _render_project_map(
     feature_status: Dict[str, str],
     manifest_dir: Optional[Path] = None,
 ) -> str:
-    """Diagram: vertical flow from blueprint and status."""
-    return _render_architecture_flow_diagram(blueprint, comp_status)
+    """Render diagram via diagram module (spec + config)."""
+    components = blueprint.get("components") or []
+    contracts = blueprint.get("contracts") or []
+    comp_list = order_components_for_diagram(components, contracts, blueprint, filter_app_only=True)
+    if not comp_list and not architecture.get("features"):
+        return "  (no components)"
+    config = load_diagram_config(manifest_dir)
+    spec = build_diagram_spec(architecture, blueprint, comp_status, title=config.get("title"))
+    if not spec.get("nodes"):
+        spec = build_flat_diagram_spec(comp_list, comp_status, title=config.get("title"))
+    return render_diagram(spec, config)
 
 
 def _render_unified_architecture_code_diagram(
@@ -333,7 +289,7 @@ def _render_unified_architecture_code_diagram(
     feature_status: Dict[str, str],
     manifest_dir: Optional[Path] = None,
 ) -> str:
-    """Diagram: vertical flow with type and status colors."""
+    """Vertical flow diagram from _render_project_map."""
     diagram = _render_project_map(
         architecture, blueprint, comp_names, comp_status, feature_status, manifest_dir
     )
@@ -581,8 +537,8 @@ class ManifestViewApp(App[None]):
         Binding("shift+tab", "select_prev_node", "Prev", key_display="⇧Tab"),
         Binding("d", "toggle_differences", "Design/Diff", key_display="D"),
         Binding("s", "refresh", "Refresh", key_display="S"),
-        Binding("up", "select_prev_node", "Prev", key_display="↑"),
-        Binding("down", "select_next_node", "Next", key_display="↓"),
+        Binding("p", "select_prev_node", "Prev"),
+        Binding("n", "select_next_node", "Next"),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -593,7 +549,11 @@ class ManifestViewApp(App[None]):
         self.inspector_mode = InspectorMode.DESIGN
         self._right_panel_differences = False  # D toggles Design vs Differences
         self._last_completed_task_ids: set = set()
-        self._selected_node_index: int = 0
+        self._selected_node_index: int = 1  # 1-based; 1 = root
+        self._diagram_component_list: List[Dict[str, Any]] = []
+        self._diagram_blueprint: Optional[Dict[str, Any]] = None
+        self._diagram_comp_status: Dict[str, str] = {}
+        self._view_data: Dict[str, Any] = {}
         self._state_manager: Optional[StateManager] = None
         self._task_manager: Optional[TaskManager] = None
         self._blueprint_sync: Optional[BlueprintSynchronizer] = None
@@ -639,8 +599,41 @@ class ManifestViewApp(App[None]):
         sprints = [{"id": sid} for sid in sprint_ids]
         return tasks, sprints
 
+    def _ensure_diagram_components(self) -> None:
+        """Populate diagram from get_entities_for_view (single source). Keeps inspection in sync with diagram."""
+        try:
+            view_data = get_entities_for_view(self.manifest_dir)
+            blueprint = view_data["blueprint"]
+            code_blueprint = view_data["code_blueprint"]
+            comp_status = view_data["comp_status"]
+            architecture = view_data["architecture"]
+            diagram_blueprint = blueprint if (blueprint.get("components")) else code_blueprint
+            components = diagram_blueprint.get("components") or []
+            contracts = diagram_blueprint.get("contracts") or []
+            entities = diagram_blueprint.get("entities") or []
+            root_id = diagram_blueprint.get("root_id") or "PROJECT_ROOT"
+            if entities and root_id:
+                from manifest.view.diagram.builder import _entity_tree_order
+                ordered = _entity_tree_order(entities, contracts, root_id, filter_app_only=True)
+            else:
+                ordered = order_components_for_diagram(
+                    components, contracts, diagram_blueprint, filter_app_only=True
+                )
+            self._diagram_component_list = ordered
+            self._diagram_blueprint = diagram_blueprint
+            self._diagram_comp_status = comp_status
+            self._view_data = view_data
+            n_nodes = 1 + len(ordered)
+            self._selected_node_index = max(1, min(self._selected_node_index, n_nodes))
+        except Exception as e:
+            logger.debug("Ensure diagram components failed: %s", e)
+            self._diagram_component_list = []
+            self._diagram_blueprint = None
+            self._diagram_comp_status = {}
+            self._view_data = {}
+
     def _get_selectable_nodes(self) -> List[Tuple[str, str, Dict[str, Any]]]:
-        """List of nodes: root, then features, then components (1-based index)."""
+        """List of nodes: root, then diagram components only (matches diagram; 1-based index)."""
         root_fallback: Tuple[str, str, Dict[str, Any]] = (
             "root",
             "PROJECT_ROOT",
@@ -656,15 +649,7 @@ class ManifestViewApp(App[None]):
                 "PROJECT_ROOT",
                 {"id": "PROJECT_ROOT", "name": "System Core", "description": root_desc},
             ))
-            for feat in architecture.get("features", []) or []:
-                if isinstance(feat, dict) and feat.get("id"):
-                    nodes.append(("feature", feat["id"], feat))
-            top_down = BlueprintLoader.load_blueprint(
-                self.manifest_dir,
-                with_metadata=True,
-                default_source="llm_design",
-            )
-            for comp in top_down.get("components", []) or []:
+            for comp in self._diagram_component_list:
                 if isinstance(comp, dict) and comp.get("id"):
                     nodes.append(("component", comp["id"], comp))
         except Exception as e:
@@ -709,14 +694,13 @@ class ManifestViewApp(App[None]):
         return comp_status.get(nid) == "deviation"
 
     def action_select_prev_node(self) -> None:
-        """Select previous node (Up)."""
-        nodes = self._get_selectable_nodes()
-        if self._selected_node_index > 0:
+        """Select previous node (Up). Index is 1-based (1 = root)."""
+        if self._selected_node_index > 1:
             self._selected_node_index -= 1
             self.refresh_view()
 
     def action_select_next_node(self) -> None:
-        """Select next node (Down)."""
+        """Select next node (Down). Index is 1-based; max = len(nodes)."""
         nodes = self._get_selectable_nodes()
         if self._selected_node_index < len(nodes):
             self._selected_node_index += 1
@@ -726,10 +710,10 @@ class ManifestViewApp(App[None]):
         """Detail for selected node (feature or component)."""
         nodes = self._get_selectable_nodes()
         if not nodes:
-            return "No features or components. Select with ↑/↓ in Diagram view."
+            return "No features or components. Use n/p in Diagram view to change selection."
         if self._selected_node_index <= 0 or self._selected_node_index > len(nodes):
             n_feat = sum(1 for k, _, _ in nodes if k == "feature")
-            return f"Select a feature (1–{n_feat}) or component ({n_feat + 1}–{len(nodes)}) with ↑/↓."
+            return f"Select a feature or component with [n] Next / [p] Prev."
         kind, nid, data = nodes[self._selected_node_index - 1]
         if kind == "feature":
             lines = [
@@ -775,26 +759,38 @@ class ManifestViewApp(App[None]):
         return "\n".join(lines)
 
     def _load_diagram_view(self) -> Union[str, RenderableType]:
-        """Diagram: flow and status."""
+        """Diagram from spec + config (entity-tree when available, else architecture/flat)."""
         try:
-            arch_file = self.manifest_dir / "architecture.json"
-            architecture = load_architecture_with_metadata(arch_file)
-            comp_names = _blueprint_component_names(self.manifest_dir)
-            top_down = BlueprintLoader.load_blueprint(
-                self.manifest_dir,
-                with_metadata=True,
-                default_source="llm_design",
+            blueprint = self._diagram_blueprint
+            comp_status = self._diagram_comp_status or {}
+            if not blueprint:
+                return "  (no blueprint — run app or sync refresh)"
+            architecture = self._view_data.get("architecture") or {}
+            if not architecture and (self.manifest_dir / "architecture.json").exists():
+                architecture = load_architecture_with_metadata(self.manifest_dir / "architecture.json")
+            config = load_diagram_config(self.manifest_dir)
+            spec = build_diagram_spec(
+                architecture, blueprint, comp_status, title=config.get("title")
             )
-            bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
-            status_info = self._get_blueprint_sync().calculate_implementation_status(
-                top_down, bottom_up, architecture
-            )
-            comp_status = status_info.get("component_statuses", {})
-            feature_status = _feature_status_from_components(architecture, comp_status)
-            diagram_txt = _render_unified_architecture_code_diagram(
-                architecture, top_down, comp_names, comp_status, feature_status, self.manifest_dir
-            )
-            return diagram_txt
+            if not spec.get("nodes"):
+                entities = blueprint.get("entities") or []
+                root_id = blueprint.get("root_id") or "PROJECT_ROOT"
+                if entities and root_id:
+                    spec = build_diagram_spec_from_entities(
+                        entities,
+                        blueprint.get("contracts") or [],
+                        comp_status,
+                        root_id=root_id,
+                        title=config.get("title"),
+                        filter_app_only=True,
+                    )
+                else:
+                    spec = build_flat_diagram_spec(
+                        self._diagram_component_list,
+                        comp_status,
+                        title=config.get("title"),
+                    )
+            return render_diagram(spec, config)
         except Exception as e:
             logger.debug("Diagram view load failed: %s", e)
             return f"(load failed: {e})"
@@ -1195,19 +1191,36 @@ class ManifestViewApp(App[None]):
             logger.debug("Shadow results failed: %s", e)
         return "—", "—"
 
+    def _get_diagram_label_for_node(self, kind: str, nid: str, data: Dict[str, Any]) -> str:
+        """Label for right panel: match diagram (feature name for single-comp feature, else component name)."""
+        if kind == "root":
+            return "System Core"
+        arch_file = self.manifest_dir / "architecture.json"
+        architecture = load_architecture_with_metadata(arch_file) if arch_file.exists() else {}
+        for feat in architecture.get("features") or []:
+            if not isinstance(feat, dict):
+                continue
+            comp_ids = feat.get("components") or []
+            if nid not in comp_ids:
+                continue
+            if len(comp_ids) == 1:
+                return (feat.get("name") or feat.get("id") or "?").strip()
+            return (data.get("name") or nid or "?").strip()
+        return (data.get("name") or nid or "?").strip()
+
     def _get_info_hub_content(self) -> str:
-        """Core inspection: 8 fields by category (Planning, Code Reality, Results, Alert). Data from docs; Code Reality from codebase."""
+        """Inspector: Goal Intent, Interface, Logic Style, Actual Code (dependencies etc.), Rules. Data from docs and blueprint_code."""
         nodes = self._get_selectable_nodes()
         idx = max(0, min(self._selected_node_index - 1, len(nodes) - 1))
         if not nodes:
             return "(No nodes. Run app or refresh.)"
         kind, nid, data = nodes[idx]
-        display_name = (data.get("name") or nid or "?").strip()
+        display_name = self._get_diagram_label_for_node(kind, nid, data)
         deviating = self._selected_node_is_deviating()
         header = (
-            "[bold cyan]System Core Inspection[/]\n"
+            "[bold cyan]Inspector[/]\n"
             "[dim]────────────────────────────────────────[/]\n"
-            f"[white]{display_name}[/]  [dim][TAB] NEXT[/]"
+            f"[white]{display_name}[/]"
         )
         if deviating:
             header += "  [red bold][D] DIFF[/]"
@@ -1223,39 +1236,40 @@ class ManifestViewApp(App[None]):
 
         return self._get_info_hub_component(header, nid, data, deviating)
 
-    def _factor_box(self, title: str, body: str) -> str:
-        """One inspection factor: title, rule, then content (indented)."""
-        rule = "[dim]" + "─" * 36 + "[/]"
+    def _inspection_section(self, title: str, body: str) -> str:
+        """One inspection section: title, rule, then content (indented). Sub-headers use #58a6ff (same as OpenCode/sidebar-title)."""
+        rule = "[#58a6ff]" + "─" * 36 + "[/]"
         indented = "\n  ".join(body.split("\n"))
-        return f"[bold white]{title}[/]\n{rule}\n  {indented}\n"
+        return f"[bold #58a6ff]{title}[/]\n{rule}\n  {indented}\n"
 
     def _get_info_hub_root(self, header: str, deviating: bool) -> str:
-        """Inspection for PROJECT_ROOT: 8 factor sections from architecture."""
+        """Inspection for PROJECT_ROOT: sections from architecture (Goal Intent, Interface, Logic Style, Dependencies, Side Effects, Complexity, Output, Rules)."""
         arch_file = self.manifest_dir / "architecture.json"
         arch = load_architecture_with_metadata(arch_file) if arch_file.exists() else {}
         goal = (arch.get("mission") or "").strip() or "Project root."
-        interface_plan = "Binary Execution -> Console Output"
+        interface_plan = (arch.get("interface") or "").strip() or "—"
         style = (arch.get("architecture_style") or "").strip() or "—"
         rules = arch.get("global_rules") or []
         last_out, trace = self._get_shadow_results_for_node("PROJECT_ROOT")
         rules_text = "\n  ".join(f"[white]» {str(r)[:72]}[/]" for r in (rules or [])[:6]) or "[white]—[/]"
-        code_reality = "[white]Dependencies: —  Side Effects: —  Complexity: —[/]"
         parts = [
             header,
-            self._factor_box("Goal Intent", f"[white]{goal[:280] or '—'}[/]"),
-            self._factor_box("Interface Contract", f"[white]{interface_plan}[/]"),
-            self._factor_box("Logic Style", f"[white]{style}[/]"),
-            self._factor_box("Code Reality", code_reality),
-            self._factor_box("Last Output", f"[white]{last_out[:160] if last_out != '—' else '—'}[/]"),
-            self._factor_box("Shadow Trace Output", f"[white]{trace[:240] if trace != '—' else '—'}[/]"),
-            self._factor_box("Essential Rules", rules_text),
+            self._inspection_section("Goal Intent", f"[white]{goal[:280] or '—'}[/]"),
+            self._inspection_section("Interface Contract", f"[white]{interface_plan}[/]"),
+            self._inspection_section("Logic Style", f"[white]{style}[/]"),
+            self._inspection_section("Dependencies", "[white]—[/]"),
+            self._inspection_section("Side Effects", "[white]—[/]"),
+            self._inspection_section("Complexity", "[white]—[/]"),
+            self._inspection_section("Last Output", f"[white]{last_out[:160] if last_out != '—' else '—'}[/]"),
+            self._inspection_section("Shadow Trace Output", f"[white]{trace[:240] if trace != '—' else '—'}[/]"),
+            self._inspection_section("Essential Rules", rules_text),
         ]
         if deviating:
-            parts.append(self._factor_box("Deviation Alert", "[red]Plan and code mismatch. [D] DIFF to compare.[/]"))
+            parts.append(self._inspection_section("Deviation Alert", "[red]Plan and code mismatch. [D] DIFF to compare.[/]"))
         return "\n".join(parts)
 
     def _get_info_hub_component(self, header: str, nid: str, data: Dict[str, Any], deviating: bool) -> str:
-        """Inspection for component: 8 factor sections from design (docs) and Code Reality (blueprint_code)."""
+        """Inspection for component: design (Goal, Interface, Rules) and Actual Code (blueprint_code: dependencies, side_effects, complexity)."""
         design_comp: Dict[str, Any] = dict(data)
         top_down = BlueprintLoader.load_blueprint(
             self.manifest_dir, with_metadata=False, default_source="llm_design"
@@ -1265,42 +1279,49 @@ class ManifestViewApp(App[None]):
                 design_comp.update(c)
                 break
         actual_comp: Dict[str, Any] = {}
-        path = self.manifest_dir / "blueprint_code.json"
-        if path.exists():
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    for c in json.load(f).get("components", []) or []:
-                        if isinstance(c, dict) and c.get("id") == nid:
-                            actual_comp = c
-                            break
-            except Exception:
-                pass
+        bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+        for c in (bottom_up.get("components") or []):
+            if not isinstance(c, dict):
+                continue
+            if c.get("id") == nid:
+                actual_comp = c
+                break
+        if not actual_comp and data.get("name"):
+            for c in (bottom_up.get("components") or []):
+                if isinstance(c, dict) and c.get("name") == data.get("name"):
+                    actual_comp = c
+                    break
         goal = (design_comp.get("description") or "").strip() or "—"
         interface_plan = (design_comp.get("interface") or "—").strip()
         style = (design_comp.get("logic_style") or "—").strip()
         rules = design_comp.get("project_rules") or []
         deps = ", ".join((actual_comp.get("dependencies") or [])[:8]) or "—"
         side_effects = ", ".join((actual_comp.get("side_effects") or [])[:5]) or "—"
-        complexity = (actual_comp.get("complexity") or "—").strip()
+        complexity_raw = actual_comp.get("complexity")
+        complexity = (str(complexity_raw).strip() if complexity_raw is not None else "—") or "—"
+        detected_iface = (actual_comp.get("detected_interface") or "").strip() or "—"
+        if not actual_comp:
+            actual_code_blurb = "No code data. Run sync or refresh to generate blueprint_code.json."
+        else:
+            actual_code_blurb = f"interface: {detected_iface}\ndependencies: {deps}\nside_effects: {side_effects}\ncomplexity: {complexity}"
         last_out, trace = self._get_shadow_results_for_node(nid)
         rules_text = "\n  ".join(f"[white]» {str(r)[:72]}[/]" for r in (rules or [])[:6]) or "[white]—[/]"
-        code_reality = f"[white]Dependencies: {deps[:64]}[/]\n  [white]Side Effects: {side_effects[:64]}[/]\n  [white]Complexity: {complexity[:48]}[/]"
         parts = [
             header,
-            self._factor_box("Goal Intent", f"[white]{goal[:280] or '—'}[/]"),
-            self._factor_box("Interface Contract", f"[white]{interface_plan[:72]}[/]"),
-            self._factor_box("Logic Style", f"[white]{style[:48]}[/]"),
-            self._factor_box("Code Reality", code_reality),
-            self._factor_box("Last Output", f"[white]{last_out[:160] if last_out != '—' else '—'}[/]"),
-            self._factor_box("Shadow Trace Output", f"[white]{trace[:240] if trace != '—' else '—'}[/]"),
-            self._factor_box("Essential Rules", rules_text),
+            self._inspection_section("Goal Intent", f"[white]{goal[:280] or '—'}[/]"),
+            self._inspection_section("Interface Contract", f"[white]{interface_plan[:72]}[/]"),
+            self._inspection_section("Logic Style", f"[white]{style[:48]}[/]"),
+            self._inspection_section("Actual Code", f"[white]{actual_code_blurb}[/]"),
+            self._inspection_section("Last Output", f"[white]{last_out[:160] if last_out != '—' else '—'}[/]"),
+            self._inspection_section("Shadow Trace Output", f"[white]{trace[:240] if trace != '—' else '—'}[/]"),
+            self._inspection_section("Essential Rules", rules_text),
         ]
         if deviating:
-            parts.append(self._factor_box("Deviation Alert", "[red]Plan and code mismatch. [D] DIFF to compare.[/]"))
+            parts.append(self._inspection_section("Deviation Alert", "[red]Plan and code mismatch. [D] DIFF to compare.[/]"))
         return "\n".join(parts)
 
     def _get_info_hub_diff_view(self, header: str, kind: str, nid: str, data: Dict[str, Any], deviating: bool) -> str:
-        """Differences view: Planned | Code side-by-side."""
+        """Differences view: Planned | Code side-by-side. actual_comp from blueprint_code via BlueprintLoader (id then name fallback)."""
         design_comp: Dict[str, Any] = dict(data)
         top_down = BlueprintLoader.load_blueprint(
             self.manifest_dir, with_metadata=False, default_source="llm_design"
@@ -1310,16 +1331,18 @@ class ManifestViewApp(App[None]):
                 design_comp.update(c)
                 break
         actual_comp: Dict[str, Any] = {}
-        path = self.manifest_dir / "blueprint_code.json"
-        if path.exists():
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    for c in json.load(f).get("components", []) or []:
-                        if isinstance(c, dict) and c.get("id") == nid:
-                            actual_comp = c
-                            break
-            except Exception:
-                pass
+        bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+        for c in (bottom_up.get("components") or []):
+            if not isinstance(c, dict):
+                continue
+            if c.get("id") == nid:
+                actual_comp = c
+                break
+        if not actual_comp and data.get("name"):
+            for c in (bottom_up.get("components") or []):
+                if isinstance(c, dict) and (c.get("name") or "").strip() == (data.get("name") or "").strip():
+                    actual_comp = c
+                    break
         rows = [
             ("Interface", design_comp.get("interface") or "—", actual_comp.get("detected_interface") or "—"),
             ("Goal Intent", (design_comp.get("description") or "—")[:32], "—"),
@@ -1354,7 +1377,7 @@ class ManifestViewApp(App[None]):
                     yield Static("", id="main-content")
             with Container(id="info-hub"):
                 with VerticalScroll(id="info-hub-scroll"):
-                    yield Static("[bold cyan]System Core Inspection[/]\n[dim]────────────────────────────────────────[/]\n  (loading)", id="info-hub-content", classes="sidebar-section")
+                    yield Static("[bold cyan]Inspector[/]\n[dim]────────────────────────────────────────[/]\n  (loading)", id="info-hub-content", classes="sidebar-section")
                 yield Static("[dim][E] Edit Design  [S] Re-Sync Data[/]", id="info-hub-footer")
         yield Footer()
         with Container(id="app-version-strip"):
@@ -1363,6 +1386,7 @@ class ManifestViewApp(App[None]):
                 yield Static(f"Manifest app {APP_VERSION}", id="footer-version")
 
     def on_mount(self) -> None:
+        self._ensure_diagram_components()
         self._refresh_sidebar()
         self._refresh_main_content()
         self._refresh_header_metrics()
@@ -1411,16 +1435,35 @@ class ManifestViewApp(App[None]):
             logger.debug("Deviation check failed: %s", e)
 
     def _get_header_strip_content(self) -> Union[str, RenderableType]:
-        """Header: Manifest View, Planning/Differences, STATUS, TIME."""
+        """Header: Manifest View, Planning/Differences, STATUS (implementation status), TIME."""
         planning_active = not self._right_panel_differences
         diff_active = self._right_panel_differences
         now = datetime.now().strftime("%H:%M:%S")
-        # Fixed structure: blue title, Planning/Differences (UI state), STATUS label, TIME (live clock)
         planning = "[bold white][ Planning ][/]" if planning_active else "[dim][ Planning ][/]"
         diff = "[bold red underline][ Differences ][/]" if diff_active else "[dim][ Differences ][/]"
+        # Overall implementation status from diagram component statuses (healthy/partial/deviation/planned)
+        comp_status = self._diagram_comp_status or {}
+        if comp_status:
+            deviation_n = sum(1 for s in comp_status.values() if s == "deviation")
+            partial_n = sum(1 for s in comp_status.values() if s == "partial")
+            healthy_n = sum(1 for s in comp_status.values() if s == "healthy")
+            planned_n = sum(1 for s in comp_status.values() if s == "planned")
+            if deviation_n > 0:
+                status_label, status_tag = "Deviation", "red"
+            elif partial_n > 0:
+                status_label, status_tag = "Partial", "yellow"
+            elif healthy_n == len(comp_status) and len(comp_status) > 0:
+                status_label, status_tag = "Healthy", "green"
+            elif planned_n == len(comp_status):
+                status_label, status_tag = "Planned", "grey70"
+            else:
+                status_label, status_tag = "Partial", "yellow"
+            status_markup = f"[{status_tag}]{status_label}[/]"
+        else:
+            status_markup = "[dim]—[/]"
         return (
             f"[bold {ACCENT_BLUE}]Manifest View[/]  {planning}  {diff}     "
-            f"STATUS: [dim]—[/]  TIME: [dim]{now}[/]"
+            f"STATUS: {status_markup}  TIME: [dim]{now}[/]"
         )
 
     def _refresh_header_metrics(self) -> None:
@@ -1474,6 +1517,7 @@ class ManifestViewApp(App[None]):
 
     def refresh_view(self) -> None:
         """Refresh all."""
+        self._ensure_diagram_components()
         self._refresh_sidebar()
         self._refresh_main_content()
         self._refresh_header_metrics()

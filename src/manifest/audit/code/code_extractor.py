@@ -232,10 +232,14 @@ class CodeExtractor:
                 if design_pattern:
                     entity.design_pattern = design_pattern
 
-                # Analyze complexity
+                # Analyze complexity (always set so Inspector shows something)
                 complexity = self._analyze_complexity_from_code(tree, entity)
-                if complexity:
-                    entity.complexity = complexity
+                entity.complexity = complexity or "O(1)"
+
+                # Infer side effects so Inspector shows them
+                side_effects = self._infer_side_effects(tree, entity)
+                if side_effects:
+                    entity.side_effects = side_effects
 
             # Extract relationships
             relationships = self._infer_relationships(tree, file_path, module_path, entities)
@@ -620,14 +624,12 @@ class CodeExtractor:
 
         count_nesting(entity_node)
 
-        # Simple heuristics
+        # Simple heuristics (always return a value so Inspector shows something)
         if max_nesting == 0:
-            # No loops - could be O(1) or O(n) depending on operations
-            # Check for recursion
             has_recursion = self._has_recursion(tree, entity)
             if has_recursion:
-                return "O(n)"  # Conservative estimate
-            return None  # Too uncertain
+                return "O(n)"
+            return "O(1)"
         elif max_nesting == 1:
             return "O(n)"
         elif max_nesting == 2:
@@ -665,96 +667,150 @@ class CodeExtractor:
 
         return False
 
-    def _generate_blueprint(self) -> Dict[str, Any]:
-        """Generate blueprint.json from extracted components and contracts."""
-        # Organize components by zone (simplified - can be enhanced)
-        zones = {
-            "client": [],
-            "server": [],
-            "data": []
-        }
+    def _infer_side_effects(self, tree: ast.AST, entity: Component) -> List[str]:
+        """Infer side effects from entity AST so Inspector can show them."""
+        entity_node = None
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef)) and node.name == entity.name:
+                entity_node = node
+                break
+        if not entity_node:
+            return []
+        effects: Set[str] = set()
+        for node in ast.walk(entity_node):
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name):
+                    name = node.func.id
+                    if name == "open":
+                        effects.add("file_io")
+                    elif name == "print":
+                        effects.add("stdout")
+                elif isinstance(node.func, ast.Attribute):
+                    attr = node.func.attr.lower()
+                    obj = node.func.value
+                    if isinstance(obj, ast.Name):
+                        mod = obj.id.lower()
+                        if "logging" in mod or attr in ("info", "debug", "warning", "error", "log"):
+                            effects.add("logging")
+                        if mod in ("requests", "urllib", "http") or "request" in mod:
+                            effects.add("network")
+                        if mod == "subprocess":
+                            effects.add("subprocess")
+                    if attr in ("write", "read", "readline", "readlines") or "file" in attr:
+                        effects.add("file_io")
+        return sorted(effects)
 
-        # Build dependencies per component from contracts (external-* to_id)
+    def _generate_blueprint(self) -> Dict[str, Any]:
+        """Generate blueprint in new entity format (version, root_id, entities, contracts)."""
+        from datetime import datetime
+        from manifest.audit.entity_schema import empty_intent, empty_reality
+        from manifest.audit.entity_schema import PROJECT_ROOT_ID as ROOT_ID
+
+        entity_ids = {c.id for c in self.components.values()}
         comp_deps: Dict[str, List[str]] = {c.id: [] for c in self.components.values()}
         for contract in self.contracts:
             if contract.to_id.startswith("external-"):
                 mod = contract.to_id.replace("external-", "", 1).strip()
                 if mod and mod not in comp_deps.get(contract.from_id, []):
                     comp_deps.setdefault(contract.from_id, []).append(mod)
+            elif contract.to_id in entity_ids:
+                if contract.to_id not in comp_deps.get(contract.from_id, []):
+                    comp_deps.setdefault(contract.from_id, []).append(contract.to_id)
 
-        # Convert components to blueprint format (Actual Code: detected_interface, dependencies, side_effects)
-        blueprint_components = []
+        by_module: Dict[str, List[str]] = {}
         for comp in self.components.values():
-            if comp.detected_interface:
-                det_iface = comp.detected_interface
-            elif comp.type == "class":
-                det_iface = f"{comp.name}({', '.join(comp.methods or [])})"
-            else:
-                det_iface = f"{comp.name}()"
-            comp_dict = {
-                "id": comp.id,
-                "name": comp.name,
-                "type": comp.type,
-                "file": comp.file,
-                "line": comp.line,
-                "module_path": comp.module_path
-            }
-            if comp.methods:
-                comp_dict["methods"] = comp.methods
-            if comp.attributes:
-                comp_dict["attributes"] = comp.attributes
-            if comp.algorithm:
-                comp_dict["algorithm"] = comp.algorithm
-            if comp.design_pattern:
-                comp_dict["design_pattern"] = comp.design_pattern
+            mp = comp.module_path or ""
+            by_module.setdefault(mp, []).append(comp.id)
+        file_level_deps: Dict[str, Set[str]] = {}
+        for mp, cids in by_module.items():
+            all_deps: Set[str] = set()
+            for cid in cids:
+                all_deps.update(comp_deps.get(cid, []))
+            file_level_deps[mp] = all_deps
+        for comp in self.components.values():
+            mp = comp.module_path or ""
+            for d in file_level_deps.get(mp, []):
+                if d not in comp_deps.get(comp.id, []):
+                    comp_deps.setdefault(comp.id, []).append(d)
+
+        root_children: List[str] = []
+        entities: List[Dict[str, Any]] = []
+        for comp in self.components.values():
+            root_children.append(comp.id)
+            det_iface = (
+                comp.detected_interface
+                if comp.detected_interface
+                else (f"{comp.name}({', '.join(comp.methods or [])})" if comp.type == "class" else f"{comp.name}()")
+            )
+            traits = list(getattr(comp, "side_effects", []) or [])
             if comp.complexity:
-                comp_dict["complexity"] = comp.complexity
-            if comp.notes:
-                comp_dict["notes"] = comp.notes
-            comp_dict["detected_interface"] = det_iface
-            comp_dict["dependencies"] = comp.dependencies or comp_deps.get(comp.id, [])
-            comp_dict["side_effects"] = getattr(comp, "side_effects", []) or []
+                traits.append(f"complexity:{comp.complexity}")
+            reality = {
+                "symbol": (comp.file or comp.module_path or "")[:500],
+                "protocol": {"input": [], "output": [{"name": "signature", "type": "string"}] if det_iface else []},
+                "profile": {"language": "", "platform": "", "io_model": "", "state_model": ""},
+                "dependencies": comp.dependencies or comp_deps.get(comp.id, []),
+                "traits": traits,
+                "topology_actual": {"type": "", "map": []},
+                "preview": "",
+            }
+            entity = {
+                "id": comp.id,
+                "children": [],
+                "dependencies": comp_deps.get(comp.id, []),
+                "intent": empty_intent(),
+                "reality": reality,
+            }
+            entity["name"] = comp.name
+            entity["file"] = comp.file
+            if comp.methods:
+                entity["methods"] = comp.methods
+            if comp.attributes:
+                entity["attributes"] = comp.attributes
+            entities.append(entity)
 
-            blueprint_components.append(comp_dict)
+        root_entity = {
+            "id": ROOT_ID,
+            "children": root_children,
+            "dependencies": [],
+            "intent": empty_intent(),
+            "reality": empty_reality(),
+        }
+        entities.insert(0, root_entity)
 
-            # Simple zone assignment (can be enhanced with heuristics)
-            if "ui" in comp.module_path or "widget" in comp.module_path:
-                zones["client"].append(comp.id)
-            elif "core" in comp.module_path or "bridge" in comp.module_path:
-                zones["server"].append(comp.id)
-            else:
-                zones["data"].append(comp.id)
-
-        # Convert contracts to blueprint format
         blueprint_contracts = []
         for contract in self.contracts:
-            contract_dict = {
+            blueprint_contracts.append({
                 "from": contract.from_id,
                 "to": contract.to_id,
                 "type": contract.type,
-                "file": contract.file
-            }
-            if contract.symbols:
-                contract_dict["symbols"] = contract.symbols
-            blueprint_contracts.append(contract_dict)
+                "file": contract.file,
+                "symbols": list(contract.symbols or []),
+            })
 
-        from datetime import datetime
-
-        return {
+        result = {
             "version": "1.0",
+            "root_id": ROOT_ID,
+            "entities": entities,
+            "contracts": blueprint_contracts,
             "source": "code_extraction",
             "from_actual_code": True,
-            "ground_truth": True,  # backward compatibility
+            "ground_truth": True,
             "last_updated": datetime.utcnow().isoformat(),
             "extraction_method": "ast_parsing",
-            "zones": zones,
-            "components": blueprint_components,
-            "contracts": blueprint_contracts
         }
+        from manifest.audit.entity_validation import normalize_for_schema
+        return normalize_for_schema(result)
 
     def save_blueprint(self, blueprint: Dict[str, Any], output_path: Path) -> bool:
-        """Save blueprint to file with metadata."""
+        """Save blueprint to file with metadata. Validates before write; aborts on failure."""
+        from manifest.audit.entity_validation import validate_blueprint_data
         from manifest.audit.blueprint.blueprint_metadata import save_blueprint_with_metadata
+        valid, errors = validate_blueprint_data(blueprint)
+        if not valid and errors:
+            from manifest.core.logger import get_logger
+            get_logger(__name__).error("Blueprint validation failed: %s", errors)
+            return False
         return save_blueprint_with_metadata(
             blueprint, output_path, "code_extraction", True, "ast_parsing"
         )

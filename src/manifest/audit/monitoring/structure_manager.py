@@ -13,6 +13,11 @@ from dataclasses import dataclass, field
 from manifest.audit.code.code_extractor import CodeExtractor, Component, Contract
 from manifest.audit.blueprint.blueprint_metadata import load_blueprint_with_metadata, save_blueprint_with_metadata
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator
+from manifest.audit.entity_schema import (
+    PROJECT_ROOT_ID,
+    empty_intent,
+    empty_reality,
+)
 from manifest.audit.monitoring.file_watcher import FileWatcher
 from manifest.core.logger import get_logger
 
@@ -631,66 +636,87 @@ class StructureManager:
         self._save_blueprint_backup()
 
         blueprint = self._load_blueprint()
+        entities = blueprint.get("entities") or []
+        root_entity = next((e for e in entities if (e.get("id") or "") == PROJECT_ROOT_ID), None)
 
         if suggestion.suggestion_type == "add_component" and suggestion.component:
-            if "components" not in blueprint:
-                blueprint["components"] = []
+            if "entities" not in blueprint:
+                blueprint["entities"] = []
 
-            # Convert Component to dict
-            component_dict = {
-                "id": suggestion.component.id,
-                "name": suggestion.component.name,
-                "type": suggestion.component.type,
-                "file": suggestion.component.file,
-                "line": suggestion.component.line,
-                "methods": suggestion.component.methods,
-                "attributes": suggestion.component.attributes,
-                "module_path": suggestion.component.module_path
-            }
-
-            # Check if component already exists
             existing = self._find_component_in_blueprint(suggestion.component.id, blueprint)
             if not existing:
-                blueprint["components"].append(component_dict)
+                # New-format entity: id, children, dependencies, intent, reality
+                intent = empty_intent()
+                intent.setdefault("narrative", {})["role"] = suggestion.component.name
+                intent.setdefault("narrative", {})["mission"] = ""
+                entity = {
+                    "id": suggestion.component.id,
+                    "children": [],
+                    "dependencies": [],
+                    "intent": intent,
+                    "reality": empty_reality(),
+                    "name": suggestion.component.name,
+                    "file": suggestion.component.file or "",
+                    "methods": suggestion.component.methods or [],
+                    "attributes": suggestion.component.attributes or [],
+                }
+                if (suggestion.component.line or 0) > 0:
+                    entity["line"] = suggestion.component.line
+                entity["module_path"] = suggestion.component.module_path or ""
+                blueprint["entities"].append(entity)
+                if root_entity is not None:
+                    children = list(root_entity.get("children") or [])
+                    if suggestion.component.id not in children:
+                        children.append(suggestion.component.id)
+                        root_entity["children"] = children
 
         elif suggestion.suggestion_type == "update_component" and suggestion.component:
-            # Find and update existing component
-            if "components" in blueprint:
-                for comp in blueprint["components"]:
-                    if comp.get("id") == suggestion.component.id:
-                        comp.update({
-                            "name": suggestion.component.name,
-                            "methods": suggestion.component.methods,
-                            "attributes": suggestion.component.attributes
-                        })
-                        break
+            for ent in blueprint.get("entities") or []:
+                if (ent.get("id") or "") == PROJECT_ROOT_ID:
+                    continue
+                if ent.get("id") == suggestion.component.id:
+                    ent["name"] = suggestion.component.name
+                    intent = ent.get("intent") or {}
+                    narrative = intent.get("narrative") or {}
+                    narrative["role"] = suggestion.component.name
+                    intent["narrative"] = narrative
+                    ent["intent"] = intent
+                    if suggestion.component.methods is not None:
+                        ent["methods"] = suggestion.component.methods
+                    if suggestion.component.attributes is not None:
+                        ent["attributes"] = suggestion.component.attributes
+                    break
 
         elif suggestion.suggestion_type == "remove_component":
-            # Remove component from Blueprint
-            if "components" in blueprint:
-                blueprint["components"] = [
-                    c for c in blueprint["components"]
-                    if c.get("id") != suggestion.component_id
+            if entities:
+                blueprint["entities"] = [
+                    e for e in entities
+                    if e.get("id") != suggestion.component_id
                 ]
+                if root_entity is not None:
+                    root_entity["children"] = [
+                        cid for cid in (root_entity.get("children") or [])
+                        if cid != suggestion.component_id
+                    ]
 
         elif suggestion.suggestion_type == "add_contract" and suggestion.contract:
             if "contracts" not in blueprint:
                 blueprint["contracts"] = []
 
             contract_dict = {
-                "from_id": suggestion.contract.from_id,
-                "to_id": suggestion.contract.to_id,
+                "from": suggestion.contract.from_id,
+                "to": suggestion.contract.to_id,
                 "type": suggestion.contract.type,
-                "symbols": suggestion.contract.symbols,
-                "file": suggestion.contract.file
+                "symbols": list(suggestion.contract.symbols or []),
+                "file": suggestion.contract.file or "",
             }
 
-            # Check if contract already exists
             existing_contract = next(
                 (c for c in blueprint.get("contracts", [])
-                 if (c.get("from_id") == contract_dict["from_id"] and
-                     c.get("to_id") == contract_dict["to_id"] and
-                     c.get("type") == contract_dict["type"])),
+                 if (c.get("from") == contract_dict["from"] and c.get("to") == contract_dict["to"]
+                     and c.get("type") == contract_dict["type"]) or
+                 (c.get("from_id") == contract_dict["from"] and c.get("to_id") == contract_dict["to"]
+                     and c.get("type") == contract_dict["type"])),
                 None
             )
             if not existing_contract:
@@ -769,12 +795,18 @@ class StructureManager:
         component_id: str,
         blueprint: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """Find a component in Blueprint by ID."""
-        if not blueprint or "components" not in blueprint:
+        """Find a component in Blueprint by ID (entities first, then components compat)."""
+        if not blueprint:
             return None
-
+        entities = blueprint.get("entities") or []
+        for ent in entities:
+            if (ent.get("id") or "") == PROJECT_ROOT_ID:
+                continue
+            if ent.get("id") == component_id:
+                return ent
+        components = blueprint.get("components") or []
         return next(
-            (c for c in blueprint["components"] if c.get("id") == component_id),
+            (c for c in components if c.get("id") == component_id),
             None
         )
 
