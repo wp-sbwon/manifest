@@ -10,7 +10,6 @@ from typing import Dict, Any, Optional, List
 from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
 from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator
-from manifest.audit.metadata.architecture_metadata import load_architecture_with_metadata
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -52,22 +51,20 @@ class BlueprintSyncTool:
                 default_source="llm_design",
             )
             bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
-            arch_file = self.manifest_dir / "architecture.json"
-            architecture = load_architecture_with_metadata(arch_file)
             status_info = self._synchronizer.calculate_implementation_status(
-                top_down, bottom_up, architecture
+                top_down, bottom_up
             )
             return {
                 "ok": True,
-                "component_statuses": status_info.get("component_statuses", {}),
+                "node_statuses": status_info.get("node_statuses", {}),
                 "feature_completions": status_info.get("feature_completions", {}),
             }
         except Exception as e:
             logger.error("detect_deviation failed: %s", e, exc_info=True)
-            return {"ok": False, "error": str(e), "component_statuses": {}}
+            return {"ok": False, "error": str(e), "node_statuses": {}}
 
     def detect_drift(self) -> Dict[str, Any]:
-        """Alias for detect_deviation (backward compatibility)."""
+        """Alias for detect_deviation."""
         return self.detect_deviation()
 
     def sync_blueprint(self, mode: str = "workflow") -> Dict[str, Any]:
@@ -105,9 +102,9 @@ class DeviationCheckTool:
         self._sync_tool = BlueprintSyncTool(manifest_dir=self.manifest_dir)
 
     def check(self) -> Dict[str, Any]:
-        """Return deviation status (component_statuses: healthy/planned/deviation/extra)."""
+        """Return deviation status (node_statuses: healthy/planned/deviation/extra)."""
         return self._sync_tool.detect_deviation()
 
 
-# Backward compatibility
+# Alias
 DriftCheckTool = DeviationCheckTool

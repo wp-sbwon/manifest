@@ -299,20 +299,20 @@ class IntegrationTestAgent:
         sprint_tasks = [t for t in tasks if t.get("sprint_id") == sprint_id]
         task_list = "\n".join([f"- {t.get('name', t.get('id', ''))}: {t.get('description', '')}" for t in sprint_tasks])
 
-        # Extract component and API information from context
+        from manifest.audit.entity_schema import non_root_entities, entity_display_name, contracts_from_entities
+
         blueprint = context.get("tier_1", {}).get("blueprint", {})
-        components = blueprint.get("components", [])
-        component_list = "\n".join([f"- {c.get('name', c.get('id', ''))}" for c in components[:10]])  # Limit to first 10
+        entities = non_root_entities(blueprint)[:10]
+        component_list = "\n".join([f"- {entity_display_name(c) or c.get('id', '')}" for c in entities])
 
         # Extract APIs from contracts
-        contracts = blueprint.get("contracts", [])
+        contracts = contracts_from_entities(blueprint.get("entities", []))
         api_list = "\n".join([f"- {c.get('name', c.get('id', ''))}" for c in contracts[:10]])
 
-        # Get Architecture info
-        architecture = context.get("tier_1", {}).get("architecture", {})
+        # Blueprint only (features = top-layer entities). No architecture dict.
         architecture_info = f"""
-Architecture:
-{self._format_architecture(architecture)}
+Features (from blueprint):
+{self._format_blueprint_features(blueprint)}
 """
 
         # Get Blueprint info
@@ -380,40 +380,43 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
             test_files=test_files_str
         )
 
-    def _format_architecture(self, architecture: Dict[str, Any]) -> str:
-        """Format architecture data for prompt."""
-        if not architecture:
-            return "No architecture data available"
-
-        features = architecture.get("features", [])
-        requirements = architecture.get("requirements", [])
-
+    def _format_blueprint_features(self, blueprint: Dict[str, Any]) -> str:
+        """Format blueprint top-layer entities (features) and requirements for prompt. New schema only."""
+        if not blueprint:
+            return "No blueprint data available"
+        from manifest.audit.entity_schema import top_layer_entities, entity_display_name
+        features = top_layer_entities(blueprint)
         formatted = []
         if features:
             formatted.append("Features:")
-            for feature in features[:5]:  # Limit to first 5
-                formatted.append(f"  - {feature.get('name', feature.get('id', ''))}")
-
-        if requirements:
-            formatted.append("\nRequirements:")
-            for req in requirements[:5]:
-                formatted.append(f"  - {req.get('desc', req.get('id', ''))}")
-
-        return "\n".join(formatted) if formatted else "No architecture details"
+            for e in features[:5]:
+                formatted.append(f"  - {entity_display_name(e) or e.get('name', e.get('id', ''))}")
+        for e in features[:5]:
+            reqs = e.get("requirements") or []
+            if reqs:
+                formatted.append(f"\nRequirements ({e.get('id', '')}):")
+                for r in reqs[:5]:
+                    if isinstance(r, dict):
+                        formatted.append(f"  - {r.get('desc', r.get('id', ''))}")
+                    else:
+                        formatted.append(f"  - {r}")
+        return "\n".join(formatted) if formatted else "No features or requirements"
 
     def _format_blueprint(self, blueprint: Dict[str, Any]) -> str:
         """Format blueprint data for prompt."""
+        from manifest.audit.entity_schema import non_root_entities, entity_display_name, contracts_from_entities
+
         if not blueprint:
             return "No blueprint data available"
 
-        components = blueprint.get("components", [])
-        contracts = blueprint.get("contracts", [])
+        entities = non_root_entities(blueprint)[:10]
+        contracts = contracts_from_entities(blueprint.get("entities", []))
 
         formatted = []
-        if components:
-            formatted.append("Components:")
-            for comp in components[:10]:  # Limit to first 10
-                formatted.append(f"  - {comp.get('name', comp.get('id', ''))}")
+        if entities:
+            formatted.append("Nodes:")
+            for e in entities:
+                formatted.append(f"  - {entity_display_name(e) or e.get('id', '')}")
 
         if contracts:
             formatted.append("\nContracts:")

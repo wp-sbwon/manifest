@@ -7,7 +7,7 @@ Code analysis and extraction.
 from .code_extractor import CodeExtractor, Component, Contract
 from .deviation_auditor import DeviationAuditor, DeviationConflict, Severity
 
-# Backward compatibility
+# Alias
 DriftAuditor = DeviationAuditor
 DriftConflict = DeviationConflict
 

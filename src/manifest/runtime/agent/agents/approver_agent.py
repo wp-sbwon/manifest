@@ -105,10 +105,9 @@ class ApproverAgent:
                 quality_info["lint_results"][f] = self.quality_manager.run_lint(f)
                 quality_info["security_results"][f] = self.quality_manager.run_security_check(f)
 
-        # Check architecture compliance if component_id is available
-        component_id = context.get("component_id")
-        if component_id and files:
-            quality_info["architecture_compliance"] = self.quality_manager.check_architecture_compliance(files[0], component_id)
+        node_id = context.get("node_id")
+        if node_id and files:
+            quality_info["architecture_compliance"] = self.quality_manager.check_architecture_compliance(files[0], node_id)
 
         # Generate approval prompt with quality info
         prompt = self._generate_approval_prompt(

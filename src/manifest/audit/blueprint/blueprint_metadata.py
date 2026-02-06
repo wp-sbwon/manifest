@@ -31,7 +31,7 @@ def ensure_blueprint_metadata(blueprint: Dict[str, Any], source: str,
 
     blueprint["source"] = source
     blueprint["from_actual_code"] = ground_truth
-    blueprint["ground_truth"] = ground_truth  # backward compatibility
+    blueprint["ground_truth"] = ground_truth
 
     if "last_updated" not in blueprint:
         blueprint["last_updated"] = datetime.utcnow().isoformat()
@@ -71,9 +71,6 @@ def load_blueprint_with_metadata(blueprint_file: Path, default_source: str = "ll
             "last_updated": datetime.utcnow().isoformat(),
             "extraction_method": "llm_inference" if default_source.startswith("llm") else "ast_parsing",
             "entities": [],
-            "contracts": [],
-            "components": [],
-            "zones": {},
         }
 
     try:
@@ -88,7 +85,6 @@ def load_blueprint_with_metadata(blueprint_file: Path, default_source: str = "ll
 
         return blueprint
     except Exception:
-        # Return default blueprint with metadata
         return {
             "version": "1.0",
             "root_id": "",
@@ -97,9 +93,6 @@ def load_blueprint_with_metadata(blueprint_file: Path, default_source: str = "ll
             "last_updated": datetime.utcnow().isoformat(),
             "extraction_method": "llm_inference" if default_source.startswith("llm") else "ast_parsing",
             "entities": [],
-            "contracts": [],
-            "components": [],
-            "zones": {},
         }
 
 
@@ -145,38 +138,17 @@ def save_blueprint_with_metadata(blueprint: Dict[str, Any], blueprint_file: Path
             logger.error("Blueprint validation failed before save: %s", errors)
             return False
 
-        entities = list(blueprint.get("entities") or [])
-        contracts = blueprint.get("contracts") or []
         from manifest.audit.entity_schema import empty_outgoing_contracts
-        if contracts:
-            from_id_to_ocs: Dict[str, list] = {}
-            for c in contracts:
-                if not isinstance(c, dict):
-                    continue
-                from_id = c.get("from") or c.get("from_id") or ""
-                to_id = c.get("to") or c.get("to_id") or ""
-                if not from_id or not to_id:
-                    continue
-                from_id_to_ocs.setdefault(from_id, []).append({
-                    "to": to_id,
-                    "type": c.get("type", "dependency"),
-                    "file": c.get("file", ""),
-                    "symbols": list(c.get("symbols") or []),
-                })
-            for ent in entities:
-                eid = ent.get("id") or ""
-                ent["outgoing_contracts"] = from_id_to_ocs.get(eid, [])
-        else:
-            for ent in entities:
-                if "outgoing_contracts" not in ent or not isinstance(ent.get("outgoing_contracts"), list):
-                    ent["outgoing_contracts"] = empty_outgoing_contracts()
 
-        out = {k: v for k, v in blueprint.items() if k not in ("contracts", "components", "zones")}
-        out["entities"] = entities
+        entities = list(blueprint.get("entities") or [])
+        for ent in entities:
+            if "outgoing_contracts" not in ent or not isinstance(ent.get("outgoing_contracts"), list):
+                ent["outgoing_contracts"] = empty_outgoing_contracts()
 
+        blueprint["entities"] = entities
         blueprint_file.parent.mkdir(parents=True, exist_ok=True)
         with open(blueprint_file, "w", encoding="utf-8") as f:
-            json.dump(out, f, indent=2, ensure_ascii=False)
+            json.dump(blueprint, f, indent=2, ensure_ascii=False)
         return True
     except Exception:
         return False

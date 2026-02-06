@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional
 from manifest.core.logger import get_logger
 from manifest.core.state_manager import StateManager
 from manifest.core.prd_manager import PRDManager
-from manifest.audit.metadata.architecture_metadata import save_architecture_with_metadata
+from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
 from manifest.core.design_history import record_design_save
 
 logger = get_logger(__name__)
@@ -72,12 +72,11 @@ class ArchitectTool:
             return {"ok": True, "message": "PRD saved to .manifest/prd.json"}
         return {"ok": False, "error": "Failed to save PRD"}
 
-    def _write_architecture(self, architecture: Dict[str, Any]) -> Dict[str, Any]:
-        """Write architecture to .manifest/architecture.json only."""
-        arch_file = self.manifest_dir / "architecture.json"
-        if save_architecture_with_metadata(architecture, arch_file):
-            return {"ok": True, "message": "Architecture saved to .manifest/architecture.json"}
-        return {"ok": False, "error": "Failed to save architecture"}
+    def _write_architecture(self, blueprint: Dict[str, Any]) -> Dict[str, Any]:
+        """Write blueprint (entity graph) to .manifest/blueprint_design.json only. New schema only."""
+        if BlueprintLoader.save_blueprint(self.manifest_dir, blueprint, backup=True):
+            return {"ok": True, "message": "Blueprint saved to .manifest/blueprint_design.json"}
+        return {"ok": False, "error": "Failed to save blueprint"}
 
     def _write_intent(self, intent_data: Dict[str, Any]) -> Dict[str, Any]:
         """Write intent to .manifest/intent.json only."""

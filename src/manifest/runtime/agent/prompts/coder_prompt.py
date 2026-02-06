@@ -130,8 +130,8 @@ def get_coder_prompt(
         scope_section = f"""
 ## TASK SCOPE
 
-### Allowed Components
-{', '.join(task_scope.get('components', []))}
+### Allowed Entities
+{', '.join(str(e.get('id') or e.get('name') or '') for e in task_scope.get('entities', []))}
 
 ### Allowed Files
 {', '.join(task_scope.get('files', []))}

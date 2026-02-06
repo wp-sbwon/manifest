@@ -22,7 +22,6 @@ from manifest.core.git_manager import GitManager
 from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
 from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator
-from manifest.audit.metadata.architecture_metadata import load_architecture_with_metadata
 from manifest.core.logger import get_logger
 from manifest.view.file_watcher import ViewFileWatcher
 from manifest.audit.monitoring.deviation_monitor import DeviationMonitor
@@ -30,25 +29,57 @@ from manifest.view.entity_model import get_entities_for_view
 from manifest.view.diagram import (
     load_diagram_config,
     build_diagram_spec,
-    build_diagram_spec_from_entities,
-    build_diagram_spec_layered,
-    build_flat_diagram_spec,
     render_diagram,
-    is_app_component,
-    order_components_for_diagram,
+)
+from manifest.audit.entity_schema import (
+    PROJECT_ROOT_ID,
+    entity_display_name,
+    non_root_entities,
+    contracts_from_entities,
+    get_root_entity,
+    top_layer_entities,
+    root_intent,
 )
 
 logger = get_logger(__name__)
 
 
+def _entities_for_display(entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Flat dicts with id, name, file, type, methods for display."""
+    out: List[Dict[str, Any]] = []
+    for e in entities or []:
+        if (e.get("id") or "") == PROJECT_ROOT_ID:
+            continue
+        r = e.get("reality") or {}
+        name = entity_display_name(e) or "?"
+        file_path = r.get("symbol", e.get("file", ""))
+        parts = (file_path or "").replace("\\", "/").split("/")
+        module_path = "/".join(parts[:-1]) if len(parts) > 1 else (parts[0] if parts else "")
+        out.append({
+            "id": e.get("id"),
+            "name": name,
+            "file": file_path,
+            "module_path": module_path,
+            "type": r.get("type", e.get("type", "?")),
+            "methods": r.get("methods", e.get("methods", [])),
+            "attributes": r.get("attributes", e.get("attributes", [])),
+            "line": r.get("line", e.get("line")),
+            "algorithm": r.get("algorithm", e.get("algorithm")),
+            "design_pattern": r.get("design_pattern", e.get("design_pattern")),
+            "complexity": r.get("complexity", e.get("complexity")),
+            "notes": e.get("notes"),
+        })
+    return out
+
+
 def _blueprint_component_names(manifest_dir: Path) -> Dict[str, str]:
-    """Get display name for each component from blueprint."""
+    """Display name per node id from blueprint."""
     try:
         top_down = BlueprintLoader.load_blueprint(
             manifest_dir, with_metadata=False, default_source="llm_design"
         )
         out: Dict[str, str] = {}
-        for c in top_down.get("components", []):
+        for c in _entities_for_display(top_down.get("entities", [])):
             cid = c.get("id")
             name = (c.get("name") or cid or "?")[:30]
             if cid:
@@ -58,35 +89,31 @@ def _blueprint_component_names(manifest_dir: Path) -> Dict[str, str]:
         return {}
 
 
-def _architecture_features_by_component(architecture: Dict[str, Any]) -> Dict[str, List[str]]:
-    """Map component id to feature names that use it."""
+def _blueprint_features_by_component(blueprint: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Map component id to feature names that use it. New schema: top-layer entities = features, children = entity_ids."""
     comp_to_features: Dict[str, List[str]] = {}
-    for feat in architecture.get("features", []) or []:
-        if not isinstance(feat, dict):
-            continue
-        name = feat.get("name") or feat.get("id") or "?"
-        for cid in feat.get("components", []) or []:
+    for e in top_layer_entities(blueprint):
+        name = entity_display_name(e) or e.get("name") or e.get("id") or "?"
+        for cid in e.get("children") or []:
             comp_to_features.setdefault(cid, []).append(name)
     return comp_to_features
 
 
-def _feature_status_from_components(
-    architecture: Dict[str, Any],
-    comp_status: Dict[str, str],
+def _feature_status_from_entities(
+    blueprint: Dict[str, Any],
+    entity_status: Dict[str, str],
 ) -> Dict[str, str]:
-    """Get status per feature from its components (healthy, planned, partial, deviation)."""
+    """Return status per feature id (healthy, planned, partial, deviation). New schema: top-layer entities = features."""
     out: Dict[str, str] = {}
-    for feat in architecture.get("features", []) or []:
-        if not isinstance(feat, dict):
-            continue
-        fid = feat.get("id")
-        comp_ids = feat.get("components", []) or []
+    for e in top_layer_entities(blueprint):
+        fid = e.get("id")
+        ent_ids = list(e.get("children") or [])
         if not fid:
             continue
-        if not comp_ids:
+        if not ent_ids:
             out[fid] = "planned"
             continue
-        statuses = [comp_status.get(cid, "planned") for cid in comp_ids]
+        statuses = [entity_status.get(eid, "planned") for eid in ent_ids]
         if any(s == "deviation" for s in statuses):
             out[fid] = "deviation"
         elif all(s == "healthy" for s in statuses):
@@ -183,29 +210,29 @@ def _task_status_markup(status: str) -> str:
     return f" [dim]│[/] [{tag}]{label}[/] [dim]│[/] "
 
 
-def _order_components_by_flow(
-    components: List[Dict[str, Any]],
+def _order_entities_by_flow(
+    entities: List[Dict[str, Any]],
     contracts: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """Order components by contract flow; add the rest."""
-    id_to_comp: Dict[str, Dict[str, Any]] = {}
-    for c in components:
-        cid = c.get("id")
-        if cid:
-            id_to_comp[cid] = c
+    """Order entities by contract flow; add the rest."""
+    id_to_ent: Dict[str, Dict[str, Any]] = {}
+    for e in entities:
+        eid = e.get("id")
+        if eid:
+            id_to_ent[eid] = e
     ordered: List[Dict[str, Any]] = []
     seen: Set[str] = set()
     for contract in contracts:
         from_id = contract.get("from")
         to_id = contract.get("to")
-        for cid in (from_id, to_id):
-            if cid and cid not in seen and cid in id_to_comp:
-                ordered.append(id_to_comp[cid])
-                seen.add(cid)
-    for c in components:
-        cid = c.get("id")
-        if cid and cid not in seen:
-            ordered.append(c)
+        for eid in (from_id, to_id):
+            if eid and eid not in seen and eid in id_to_ent:
+                ordered.append(id_to_ent[eid])
+                seen.add(eid)
+    for e in entities:
+        eid = e.get("id")
+        if eid and eid not in seen:
+            ordered.append(e)
     return ordered[:12]
 
 
@@ -214,29 +241,29 @@ def _render_blueprint_diagram(
     title: str = "Design",
     comp_status: Optional[Dict[str, str]] = None,
 ) -> str:
-    """One line of component nodes with arrows between."""
+    """One line of entity nodes with arrows between."""
     lines: List[str] = []
-    components = blueprint.get("components", [])
-    contracts = blueprint.get("contracts", [])
-    if not components and not contracts:
+    entities_display = _entities_for_display(blueprint.get("entities", []))
+    contracts = contracts_from_entities(blueprint.get("entities", []))
+    if not entities_display and not contracts:
         return ""
     id_to_name: Dict[str, str] = {}
     name_len = 24
-    for c in components:
-        cid = c.get("id")
-        name = (c.get("name") or cid or "?")[:name_len]
-        if cid:
-            id_to_name[cid] = name
-    comp_list = _order_components_by_flow(components, contracts) if contracts else components[:12]
-    if not comp_list:
+    for e in entities_display:
+        eid = e.get("id")
+        name = (e.get("name") or eid or "?")[:name_len]
+        if eid:
+            id_to_name[eid] = name
+    entity_list = _order_entities_by_flow(entities_display, contracts) if contracts else entities_display[:12]
+    if not entity_list:
         lines.append(title)
-        lines.append("  (no components)")
+        lines.append("  (no nodes)")
         return "\n".join(lines)
     arrow = " ──► "
     node_parts: List[str] = []
-    for c in comp_list:
-        cid = c.get("id")
-        name = id_to_name.get(cid, (c.get("name") or cid or "?")[:name_len])
+    for e in entity_list:
+        cid = e.get("id")
+        name = id_to_name.get(cid, (e.get("name") or cid or "?")[:name_len])
         w = max(len(name), 2)
         st = (comp_status or {}).get(cid or "", "?")
         tag = _status_color_tag(st)
@@ -259,42 +286,6 @@ def _component_type_color(comp: Dict[str, Any], name: str) -> str:
     if typ == "function" or "method" in nm:
         return "cyan"
     return ACCENT_BLUE
-
-
-def _render_project_map(
-    architecture: Dict[str, Any],
-    blueprint: Dict[str, Any],
-    comp_names: Dict[str, str],
-    comp_status: Dict[str, str],
-    feature_status: Dict[str, str],
-    manifest_dir: Optional[Path] = None,
-) -> str:
-    """Render diagram via diagram module (spec + config)."""
-    components = blueprint.get("components") or []
-    contracts = blueprint.get("contracts") or []
-    comp_list = order_components_for_diagram(components, contracts, blueprint, filter_app_only=True)
-    if not comp_list and not architecture.get("features"):
-        return "  (no components)"
-    config = load_diagram_config(manifest_dir)
-    spec = build_diagram_spec(architecture, blueprint, comp_status, title=config.get("title"))
-    if not spec.get("nodes"):
-        spec = build_flat_diagram_spec(comp_list, comp_status, title=config.get("title"))
-    return render_diagram(spec, config)
-
-
-def _render_unified_architecture_code_diagram(
-    architecture: Dict[str, Any],
-    blueprint: Dict[str, Any],
-    comp_names: Dict[str, str],
-    comp_status: Dict[str, str],
-    feature_status: Dict[str, str],
-    manifest_dir: Optional[Path] = None,
-) -> str:
-    """Vertical flow diagram from _render_project_map."""
-    diagram = _render_project_map(
-        architecture, blueprint, comp_names, comp_status, feature_status, manifest_dir
-    )
-    return diagram if diagram else "(no architecture or blueprint)"
 
 
 def _item_display_name(item: Any, max_len: int = 60) -> str:
@@ -323,7 +314,7 @@ def _render_intent_summary(
     for i, f in enumerate(features[:20], 1):
         if isinstance(f, dict):
             name = (f.get("name") or f.get("id") or "?")[:35]
-            comp_ids = f.get("components", []) or []
+            comp_ids = f.get("entity_ids", []) or []
             if comp_ids and comp_names:
                 names = [comp_names.get(cid, cid)[:12] for cid in comp_ids[:5]]
                 comp_str = ", ".join(names)
@@ -362,35 +353,9 @@ def _render_modules_and_methods(manifest_dir: Path, max_rows: int = 40) -> Union
             data = json.load(f)
     except Exception:
         return "(failed to load blueprint_code)"
-    components = data.get("components", [])
-    zones = data.get("zones", {}) or {}
-    # If no components list, derive from zones: "comp-module_path-Name" -> module, name
-    if not components and zones:
-        seen: Set[str] = set()
-        for zone_list in zones.values():
-            if not isinstance(zone_list, list):
-                continue
-            for comp_id in zone_list:
-                if not isinstance(comp_id, str) or not comp_id.startswith("comp-"):
-                    continue
-                rest = comp_id[5:]  # drop "comp-"
-                if "-" not in rest:
-                    continue
-                last_dash = rest.rfind("-")
-                module_path = rest[:last_dash]
-                name = rest[last_dash + 1:]
-                key = (module_path, name)
-                if key not in seen:
-                    seen.add(key)
-                    components.append({
-                        "id": comp_id,
-                        "module_path": module_path,
-                        "name": name,
-                        "type": "class",
-                        "methods": [],
-                    })
+    components = _entities_for_display(data.get("entities", []))
     if not components:
-        return "(no components in blueprint_code)"
+        return "(no entities in blueprint_code)"
     tbl = Table(show_header=True, header_style="bold cyan", box=None)
     tbl.add_column("Module", style="dim", max_width=36)
     tbl.add_column("Name", max_width=28)
@@ -608,16 +573,13 @@ class ManifestViewApp(App[None]):
         return tasks, sprints
 
     def _ensure_diagram_components(self) -> None:
-        """Populate diagram from get_entities_for_view. Entity mode: layered spec + selectable nodes; else flat."""
+        """Populate diagram from get_entities_for_view; layered spec and selectable nodes."""
         try:
             view_data = get_entities_for_view(self.manifest_dir)
             blueprint = view_data["blueprint"]
             code_blueprint = view_data["code_blueprint"]
             comp_status = view_data["comp_status"]
-            architecture = view_data["architecture"]
-            diagram_blueprint = blueprint if (blueprint.get("components")) else code_blueprint
-            components = diagram_blueprint.get("components") or []
-            contracts = diagram_blueprint.get("contracts") or []
+            diagram_blueprint = code_blueprint if (code_blueprint.get("entities")) else blueprint
             entities = diagram_blueprint.get("entities") or []
             root_id = diagram_blueprint.get("root_id") or "PROJECT_ROOT"
             self._diagram_blueprint = diagram_blueprint
@@ -625,7 +587,7 @@ class ManifestViewApp(App[None]):
             self._view_data = view_data
 
             if entities and root_id:
-                spec = build_diagram_spec_layered(
+                spec = build_diagram_spec(
                     entities,
                     comp_status,
                     root_id=self._diagram_root_id,
@@ -642,39 +604,41 @@ class ManifestViewApp(App[None]):
                         {"id": parent_id, "name": "↑ Up", "description": "Back to parent."},
                     ))
                 else:
-                    arch_file = self.manifest_dir / "architecture.json"
-                    arch = load_architecture_with_metadata(arch_file) if arch_file.exists() else {}
-                    root_desc = (arch.get("mission") or "").strip() or "Project root."
+                    blueprint = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
+                    root_desc = (root_intent(blueprint).get("narrative") or {}).get("mission") or ""
+                    root_desc = (root_desc or "").strip() or "Project root."
                     selectable.append((
                         "root",
                         "PROJECT_ROOT",
                         {"id": "PROJECT_ROOT", "name": "System Core", "description": root_desc},
                     ))
                 for node in spec.get("nodes") or []:
-                    ent = node.get("_entity")
-                    eid = node.get("entity_id") or ""
-                    if ent and eid:
-                        selectable.append(("entity", eid, ent))
+                    data = node.get("_data")
+                    nid = node.get("id") or ""
+                    if data and nid:
+                        selectable.append(("node", nid, data))
                     for t in node.get("row") or []:
-                        te = t.get("_entity")
-                        tid = t.get("entity_id") or ""
-                        if te and tid:
-                            selectable.append(("entity", tid, te))
+                        td = t.get("_data")
+                        tid = t.get("id") or ""
+                        if td and tid:
+                            selectable.append(("node", tid, td))
                 self._diagram_selectable_nodes = selectable
                 self._diagram_component_list = [d for _, _, d in selectable if _ != "root" and _ != "up"]
             else:
                 self._diagram_layered_spec = None
-                self._diagram_selectable_nodes = []
-                if entities and root_id:
-                    from manifest.view.diagram.builder import _entity_tree_order
-                    ordered = _entity_tree_order(entities, contracts, root_id, filter_app_only=True)
-                else:
-                    ordered = order_components_for_diagram(
-                        components, contracts, diagram_blueprint, filter_app_only=True
-                    )
-                self._diagram_component_list = ordered
+                self._diagram_component_list = []
+                blueprint = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
+                root_desc = (root_intent(blueprint).get("narrative") or {}).get("mission") or ""
+                root_desc = (root_desc or "").strip() or "Project root."
+                self._diagram_selectable_nodes = [
+                    (
+                        "root",
+                        "PROJECT_ROOT",
+                        {"id": "PROJECT_ROOT", "name": "System Core", "description": root_desc},
+                    ),
+                ]
 
-            n_nodes = len(self._diagram_selectable_nodes) if self._diagram_selectable_nodes else (1 + len(self._diagram_component_list))
+            n_nodes = len(self._diagram_selectable_nodes)
             self._selected_node_index = max(1, min(self._selected_node_index, n_nodes))
         except Exception as e:
             logger.debug("Ensure diagram components failed: %s", e)
@@ -696,9 +660,9 @@ class ManifestViewApp(App[None]):
         )
         nodes: List[Tuple[str, str, Dict[str, Any]]] = []
         try:
-            arch_file = self.manifest_dir / "architecture.json"
-            architecture = load_architecture_with_metadata(arch_file) if arch_file.exists() else {}
-            root_desc = (architecture.get("mission") or "").strip() or "Project root."
+            blueprint = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
+            root_desc = (root_intent(blueprint).get("narrative") or {}).get("mission") or ""
+            root_desc = (root_desc or "").strip() or "Project root."
             nodes.append((
                 "root",
                 "PROJECT_ROOT",
@@ -706,8 +670,7 @@ class ManifestViewApp(App[None]):
             ))
             for comp in self._diagram_component_list:
                 if isinstance(comp, dict) and comp.get("id"):
-                    kind = "entity" if ("intent" in comp and "reality" in comp) else "component"
-                    nodes.append((kind, comp["id"], comp))
+                    nodes.append(("node", comp["id"], comp))
         except Exception as e:
             logger.debug("Selectable nodes failed: %s", e)
             if not nodes:
@@ -724,29 +687,25 @@ class ManifestViewApp(App[None]):
         if kind == "root":
             return False
         if kind == "feature":
-            arch_file = self.manifest_dir / "architecture.json"
-            architecture = load_architecture_with_metadata(arch_file)
             top_down = BlueprintLoader.load_blueprint(
                 self.manifest_dir, with_metadata=True, default_source="llm_design"
             )
             bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
             status_info = self._get_blueprint_sync().calculate_implementation_status(
-                top_down, bottom_up, architecture
+                top_down, bottom_up
             )
-            comp_status = status_info.get("component_statuses", {})
-            feat_status = _feature_status_from_components(architecture, comp_status)
+            comp_status = status_info.get("node_statuses", {})
+            feat_status = _feature_status_from_entities(top_down, comp_status)
             return feat_status.get(nid) == "deviation"
         # component
-        arch_file = self.manifest_dir / "architecture.json"
-        architecture = load_architecture_with_metadata(arch_file)
         top_down = BlueprintLoader.load_blueprint(
             self.manifest_dir, with_metadata=True, default_source="llm_design"
         )
         bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
         status_info = self._get_blueprint_sync().calculate_implementation_status(
-            top_down, bottom_up, architecture
+            top_down, bottom_up
         )
-        comp_status = status_info.get("component_statuses", {})
+        comp_status = status_info.get("node_statuses", {})
         return comp_status.get(nid) == "deviation"
 
     def action_select_prev_node(self) -> None:
@@ -769,7 +728,7 @@ class ManifestViewApp(App[None]):
             return
         idx = max(0, min(self._selected_node_index - 1, len(nodes) - 1))
         kind, nid, _ = nodes[idx]
-        if kind != "entity":
+        if kind != "node":
             return
         self._diagram_root_stack.append(self._diagram_root_id)
         self._diagram_root_id = nid
@@ -805,8 +764,8 @@ class ManifestViewApp(App[None]):
             for r in data.get("requirements", []) or []:
                 name = _item_display_name(r, 60) if isinstance(r, dict) else str(r)
                 lines.append(f"    - {name}")
-            comp_ids = data.get("components", []) or []
-            lines.append(f"  components: {', '.join(comp_ids) if comp_ids else '(none)'}")
+            ent_ids = data.get("entity_ids", []) or []
+            lines.append(f"  entities: {', '.join(ent_ids) if ent_ids else '(none)'}")
             return "\n".join(lines)
         comp = dict(data)
         from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_CODE_FILE
@@ -815,9 +774,13 @@ class ManifestViewApp(App[None]):
             try:
                 with open(path, "r", encoding="utf-8") as f:
                     code_data = json.load(f)
-                for c in code_data.get("components", []) or []:
+                for c in code_data.get("entities", []) or []:
                     if isinstance(c, dict) and c.get("id") == nid:
+                        r = c.get("reality") or {}
                         comp.update(c)
+                        comp["file"] = r.get("symbol", comp.get("file"))
+                        comp["methods"] = r.get("methods", comp.get("methods"))
+                        comp["type"] = r.get("type", comp.get("type"))
                         break
             except Exception:
                 pass
@@ -840,41 +803,19 @@ class ManifestViewApp(App[None]):
         return "\n".join(lines)
 
     def _load_diagram_view(self) -> Union[str, RenderableType]:
-        """Diagram: layered (L1 + L2 rows) when entity mode, else architecture/flat."""
+        """Diagram: layered spec (L1 + L2 rows) or empty."""
         try:
-            blueprint = self._diagram_blueprint
-            comp_status = self._diagram_comp_status or {}
-            if not blueprint:
+            if not self._diagram_blueprint:
                 return "  (no blueprint — run app or sync refresh)"
             config = load_diagram_config(self.manifest_dir)
             if self._diagram_layered_spec and self._diagram_layered_spec.get("nodes") is not None:
                 spec = dict(self._diagram_layered_spec)
                 spec["title"] = spec.get("title") or config.get("title") or "ARCHITECTURE FLOW"
                 return render_diagram(spec, config)
-            architecture = self._view_data.get("architecture") or {}
-            if not architecture and (self.manifest_dir / "architecture.json").exists():
-                architecture = load_architecture_with_metadata(self.manifest_dir / "architecture.json")
-            spec = build_diagram_spec(
-                architecture, blueprint, comp_status, title=config.get("title")
-            )
-            if not spec.get("nodes"):
-                entities = blueprint.get("entities") or []
-                root_id = blueprint.get("root_id") or "PROJECT_ROOT"
-                if entities and root_id:
-                    spec = build_diagram_spec_from_entities(
-                        entities,
-                        blueprint.get("contracts") or [],
-                        comp_status,
-                        root_id=root_id,
-                        title=config.get("title"),
-                        filter_app_only=True,
-                    )
-                else:
-                    spec = build_flat_diagram_spec(
-                        self._diagram_component_list,
-                        comp_status,
-                        title=config.get("title"),
-                    )
+            spec = {
+                "title": config.get("title") or "ARCHITECTURE FLOW",
+                "nodes": [],
+            }
             return render_diagram(spec, config)
         except Exception as e:
             logger.debug("Diagram view load failed: %s", e)
@@ -887,14 +828,11 @@ class ManifestViewApp(App[None]):
             top_down = BlueprintLoader.load_blueprint(
                 self.manifest_dir, with_metadata=True, default_source="llm_design"
             )
-            arch_file = self.manifest_dir / "architecture.json"
-            architecture = load_architecture_with_metadata(arch_file)
             status_info = self._get_blueprint_sync().calculate_implementation_status(
-                top_down, bottom_up, architecture
+                top_down, bottom_up
             )
-            comp_status = status_info.get("component_statuses", {})
-            components = bottom_up.get("components", []) or []
-            # Build tree: dir -> [(file, comp, status), ...]; file -> [(method, status), ...]
+            comp_status = status_info.get("node_statuses", {})
+            components = _entities_for_display(bottom_up.get("entities", []))
             dirs: Dict[str, List[Tuple[str, Dict[str, Any], str]]] = {}
             for c in components:
                 if not isinstance(c, dict):
@@ -1044,7 +982,7 @@ class ManifestViewApp(App[None]):
                 for conflict in conflicts[:20]:
                     severity = conflict.severity.value
                     msg = conflict.message[:70]
-                    comp_id = conflict.component_id or "?"
+                    comp_id = conflict.node_id or "?"
                     lines.append(f"  [{severity}] {comp_id}: {msg}")
                 if len(conflicts) > 20:
                     lines.append(f"  ... and {len(conflicts) - 20} more")
@@ -1055,12 +993,10 @@ class ManifestViewApp(App[None]):
                     default_source="llm_design",
                 )
                 bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
-                arch_file = self.manifest_dir / "architecture.json"
-                architecture = load_architecture_with_metadata(arch_file)
                 status_info = self._get_blueprint_sync().calculate_implementation_status(
-                    top_down, bottom_up, architecture
+                    top_down, bottom_up
                 )
-                comp_status = status_info.get("component_statuses", {})
+                comp_status = status_info.get("node_statuses", {})
                 healthy_n = sum(1 for s in comp_status.values() if s == "healthy")
                 planned_n = sum(1 for s in comp_status.values() if s == "planned")
                 partial_n = sum(1 for s in comp_status.values() if s == "partial")
@@ -1097,9 +1033,8 @@ class ManifestViewApp(App[None]):
     def _load_mission_control_view(self) -> Union[str, RenderableType]:
         """Mission: goal cards (id, name, status, body)."""
         try:
-            arch_file = self.manifest_dir / "architecture.json"
-            architecture = load_architecture_with_metadata(arch_file) if arch_file.exists() else {}
-            goals = architecture.get("goals") or []
+            blueprint = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
+            goals = root_intent(blueprint).get("goals") or []
             cards: List[Tuple[str, str, str, str]] = []
             for i, g in enumerate(goals[:10]):
                 if isinstance(g, dict):
@@ -1191,12 +1126,10 @@ class ManifestViewApp(App[None]):
                 self.manifest_dir, with_metadata=True, default_source="llm_design"
             )
             bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
-            arch_file = self.manifest_dir / "architecture.json"
-            architecture = load_architecture_with_metadata(arch_file)
             status_info = self._get_blueprint_sync().calculate_implementation_status(
-                top_down, bottom_up, architecture
+                top_down, bottom_up
             )
-            comp_status = status_info.get("component_statuses", {})
+            comp_status = status_info.get("node_statuses", {})
             total = len(comp_status) or 1
             deviation_count = sum(1 for s in comp_status.values() if s in ("deviation", "partial"))
             pct = int(100 * deviation_count / total)
@@ -1277,12 +1210,12 @@ class ManifestViewApp(App[None]):
         return "—", "—"
 
     def _get_diagram_label_for_node(self, kind: str, nid: str, data: Dict[str, Any]) -> str:
-        """Label for right panel: match diagram (feature name for single-comp feature, else component/entity name)."""
+        """Label for right panel: match diagram (feature name for single-comp feature, else node name)."""
         if kind == "root":
             return "System Core"
         if kind == "up":
             return "↑ Up"
-        if kind == "entity":
+        if kind == "node":
             role = ((data.get("intent") or {}).get("narrative") or {}).get("role") or ""
             if role:
                 return role.strip()
@@ -1290,21 +1223,47 @@ class ManifestViewApp(App[None]):
             if symbol:
                 return symbol.strip()
             return (data.get("name") or nid or "?").strip()
-        arch_file = self.manifest_dir / "architecture.json"
-        architecture = load_architecture_with_metadata(arch_file) if arch_file.exists() else {}
-        for feat in architecture.get("features") or []:
-            if not isinstance(feat, dict):
-                continue
-            comp_ids = feat.get("components") or []
+        blueprint = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
+        for e in top_layer_entities(blueprint):
+            comp_ids = list(e.get("children") or [])
             if nid not in comp_ids:
                 continue
             if len(comp_ids) == 1:
-                return (feat.get("name") or feat.get("id") or "?").strip()
+                return (entity_display_name(e) or e.get("name") or e.get("id") or "?").strip()
             return (data.get("name") or nid or "?").strip()
         return (data.get("name") or nid or "?").strip()
 
+    def _get_entities_by_id(self, nid: str) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+        """Resolve node by id from design and code blueprints."""
+        top = BlueprintLoader.load_blueprint(
+            self.manifest_dir, with_metadata=False, default_source="llm_design"
+        )
+        bottom = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+        design_ent = next((e for e in (top.get("entities") or []) if isinstance(e, dict) and (e.get("id") or "") == nid), None)
+        code_ent = next((e for e in (bottom.get("entities") or []) if isinstance(e, dict) and (e.get("id") or "") == nid), None)
+        return design_ent, code_ent
+
+    def _get_entity_for_inspector(self, nid: str, fallback: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Merged entity for inspector: intent from design, reality from code."""
+        design_ent, code_ent = self._get_entities_by_id(nid)
+        if not design_ent and not code_ent:
+            return fallback or {"id": nid, "intent": {}, "reality": {}, "children": [], "dependencies": [], "outgoing_contracts": []}
+        intent = (design_ent or {}).get("intent") or {}
+        reality = (code_ent or design_ent or {}).get("reality") or {}
+        children = (design_ent or code_ent or {}).get("children") or []
+        deps = (design_ent or code_ent or {}).get("dependencies") or []
+        contracts = (design_ent or code_ent or {}).get("outgoing_contracts") or []
+        return {
+            "id": nid,
+            "intent": intent,
+            "reality": reality,
+            "children": children,
+            "dependencies": deps,
+            "outgoing_contracts": contracts,
+        }
+
     def _get_info_hub_content(self) -> str:
-        """Inspector: Goal Intent, Interface, Logic Style, Actual Code (dependencies etc.), Rules. Data from docs and blueprint_code."""
+        """Inspector: node from blueprints."""
         nodes = self._get_selectable_nodes()
         idx = max(0, min(self._selected_node_index - 1, len(nodes) - 1))
         if not nodes:
@@ -1322,7 +1281,7 @@ class ManifestViewApp(App[None]):
         header += "\n\n"
 
         if self._right_panel_differences:
-            return self._get_info_hub_diff_view(header, kind, nid, data, deviating)
+            return self._get_info_hub_diff_view(header, nid, data, deviating)
 
         if kind == "up":
             return header + "\n\n  [dim]Press Backspace to go back.[/]"
@@ -1330,11 +1289,9 @@ class ManifestViewApp(App[None]):
             return self._get_info_hub_root(header, deviating)
         if kind == "feature":
             return header + self._render_detail_content()
-        if kind == "entity":
-            validation = (self._view_data.get("validation_by_id") or {}).get(nid) or {}
-            return self._get_info_hub_entity(header, nid, data, validation, deviating)
-
-        return self._get_info_hub_component(header, nid, data, deviating)
+        entity = data if (data.get("intent") is not None and data.get("reality") is not None) else self._get_entity_for_inspector(nid, data)
+        validation = (self._view_data.get("validation_by_id") or {}).get(nid) or {}
+        return self._get_info_hub_node(header, nid, entity, validation, deviating)
 
     def _inspection_section(self, title: str, body: str) -> str:
         """One inspection section: title, rule, then content (indented). Sub-headers use #58a6ff (same as OpenCode/sidebar-title)."""
@@ -1344,12 +1301,15 @@ class ManifestViewApp(App[None]):
 
     def _get_info_hub_root(self, header: str, deviating: bool) -> str:
         """Inspection for PROJECT_ROOT: sections from architecture (Goal Intent, Interface, Logic Style, Dependencies, Side Effects, Complexity, Output, Rules)."""
-        arch_file = self.manifest_dir / "architecture.json"
-        arch = load_architecture_with_metadata(arch_file) if arch_file.exists() else {}
-        goal = (arch.get("mission") or "").strip() or "Project root."
-        interface_plan = (arch.get("interface") or "").strip() or "—"
-        style = (arch.get("architecture_style") or "").strip() or "—"
-        rules = arch.get("global_rules") or []
+        blueprint = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
+        intent = root_intent(blueprint)
+        narrative = intent.get("narrative") or {}
+        profile = intent.get("profile") or {}
+        gov = intent.get("governance") or {}
+        goal = (narrative.get("mission") or "").strip() or "Project root."
+        interface_plan = (narrative.get("role") or "").strip() or "—"
+        style = (profile.get("architecture_style") or "").strip() or "—"
+        rules = list(gov.get("rules") or [])
         last_out, trace = self._get_shadow_results_for_node("PROJECT_ROOT")
         rules_text = "\n  ".join(f"[white]» {str(r)[:72]}[/]" for r in (rules or [])[:6]) or "[white]—[/]"
         parts = [
@@ -1368,8 +1328,8 @@ class ManifestViewApp(App[None]):
             parts.append(self._inspection_section("Deviation Alert", "[red]Plan and code mismatch. [D] DIFF to compare.[/]"))
         return "\n".join(parts)
 
-    def _get_info_hub_entity(self, header: str, nid: str, data: Dict[str, Any], validation: Dict[str, Any], deviating: bool) -> str:
-        """Inspector for entity: id, children, dependencies, intent, reality, outgoing_contracts, validation."""
+    def _get_info_hub_node(self, header: str, nid: str, data: Dict[str, Any], validation: Dict[str, Any], deviating: bool) -> str:
+        """Inspector for node: id, children, dependencies, intent, reality, outgoing_contracts, validation."""
         def _fmt(val: Any, max_len: int = 200) -> str:
             if val is None or val == "":
                 return "—"
@@ -1436,98 +1396,35 @@ class ManifestViewApp(App[None]):
             for d in deviations[:6]:
                 lines.append(f"  deviation: {_fmt(d, 120)}")
         body = "\n".join(lines)
-        parts = [header, self._inspection_section("Entity", body)]
+        parts = [header, self._inspection_section("Node", body)]
         if deviating:
             parts.append(self._inspection_section("Deviation Alert", "[red]Plan and code mismatch. [D] DIFF to compare.[/]"))
         return "\n".join(parts)
 
-    def _get_info_hub_component(self, header: str, nid: str, data: Dict[str, Any], deviating: bool) -> str:
-        """Inspection for component: design (Goal, Interface, Rules) and Actual Code (blueprint_code: dependencies, side_effects, complexity)."""
-        design_comp: Dict[str, Any] = dict(data)
-        top_down = BlueprintLoader.load_blueprint(
-            self.manifest_dir, with_metadata=False, default_source="llm_design"
-        )
-        for c in (top_down.get("components") or []):
-            if isinstance(c, dict) and c.get("id") == nid:
-                design_comp.update(c)
-                break
-        actual_comp: Dict[str, Any] = {}
-        bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
-        for c in (bottom_up.get("components") or []):
-            if not isinstance(c, dict):
-                continue
-            if c.get("id") == nid:
-                actual_comp = c
-                break
-        if not actual_comp and data.get("name"):
-            for c in (bottom_up.get("components") or []):
-                if isinstance(c, dict) and c.get("name") == data.get("name"):
-                    actual_comp = c
-                    break
-        goal = (design_comp.get("description") or "").strip() or "—"
-        interface_plan = (design_comp.get("interface") or "—").strip()
-        style = (design_comp.get("logic_style") or "—").strip()
-        rules = design_comp.get("project_rules") or []
-        deps = ", ".join((actual_comp.get("dependencies") or [])[:8]) or "—"
-        side_effects = ", ".join((actual_comp.get("side_effects") or [])[:5]) or "—"
-        complexity_raw = actual_comp.get("complexity")
-        complexity = (str(complexity_raw).strip() if complexity_raw is not None else "—") or "—"
-        detected_iface = (actual_comp.get("detected_interface") or "").strip() or "—"
-        if not actual_comp:
-            actual_code_blurb = "No code data. Run sync or refresh to generate blueprint_code."
-        else:
-            actual_code_blurb = f"interface: {detected_iface}\ndependencies: {deps}\nside_effects: {side_effects}\ncomplexity: {complexity}"
-        last_out, trace = self._get_shadow_results_for_node(nid)
-        rules_text = "\n  ".join(f"[white]» {str(r)[:72]}[/]" for r in (rules or [])[:6]) or "[white]—[/]"
-        parts = [
-            header,
-            self._inspection_section("Goal Intent", f"[white]{goal[:280] or '—'}[/]"),
-            self._inspection_section("Interface Contract", f"[white]{interface_plan[:72]}[/]"),
-            self._inspection_section("Logic Style", f"[white]{style[:48]}[/]"),
-            self._inspection_section("Actual Code", f"[white]{actual_code_blurb}[/]"),
-            self._inspection_section("Last Output", f"[white]{last_out[:160] if last_out != '—' else '—'}[/]"),
-            self._inspection_section("Shadow Trace Output", f"[white]{trace[:240] if trace != '—' else '—'}[/]"),
-            self._inspection_section("Essential Rules", rules_text),
-        ]
-        if deviating:
-            parts.append(self._inspection_section("Deviation Alert", "[red]Plan and code mismatch. [D] DIFF to compare.[/]"))
-        return "\n".join(parts)
-
-    def _get_info_hub_diff_view(self, header: str, kind: str, nid: str, data: Dict[str, Any], deviating: bool) -> str:
-        """Differences view: Planned | Code side-by-side. actual_comp from blueprint_code via BlueprintLoader (id then name fallback)."""
-        design_comp: Dict[str, Any] = dict(data)
-        top_down = BlueprintLoader.load_blueprint(
-            self.manifest_dir, with_metadata=False, default_source="llm_design"
-        )
-        for c in (top_down.get("components") or []):
-            if isinstance(c, dict) and c.get("id") == nid:
-                design_comp.update(c)
-                break
-        actual_comp: Dict[str, Any] = {}
-        bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
-        for c in (bottom_up.get("components") or []):
-            if not isinstance(c, dict):
-                continue
-            if c.get("id") == nid:
-                actual_comp = c
-                break
-        if not actual_comp and data.get("name"):
-            for c in (bottom_up.get("components") or []):
-                if isinstance(c, dict) and (c.get("name") or "").strip() == (data.get("name") or "").strip():
-                    actual_comp = c
-                    break
+    def _get_info_hub_diff_view(self, header: str, nid: str, data: Dict[str, Any], deviating: bool) -> str:
+        """Differences view: Plan (design intent/reality) | Code (code intent/reality) from entities."""
+        design_ent, code_ent = self._get_entities_by_id(nid)
+        plan = design_ent or data
+        actual = code_ent or data
+        plan_intent = plan.get("intent") or {}
+        plan_narr = plan_intent.get("narrative") or {}
+        plan_reality = plan.get("reality") or {}
+        actual_intent = actual.get("intent") or {}
+        actual_narr = actual_intent.get("narrative") or {}
+        actual_reality = actual.get("reality") or {}
+        def _s(v: Any, w: int = 28) -> str:
+            return (str(v) if v is not None and v != "" else "—")[:w].replace("\n", " ")
         rows = [
-            ("Interface", design_comp.get("interface") or "—", actual_comp.get("detected_interface") or "—"),
-            ("Goal Intent", (design_comp.get("description") or "—")[:32], "—"),
-            ("Dependencies", "—", ", ".join((actual_comp.get("dependencies") or [])[:5])),
-            ("Side Effects", "—", ", ".join((actual_comp.get("side_effects") or [])[:5]) or "—"),
-            ("Complexity", design_comp.get("logic_style") or "—", actual_comp.get("complexity") or "—"),
+            ("role", _s(plan_narr.get("role")), _s(actual_narr.get("role"))),
+            ("mission", _s(plan_narr.get("mission")), _s(actual_narr.get("mission"))),
+            ("symbol", _s(plan_reality.get("symbol")), _s(actual_reality.get("symbol"))),
+            ("blueprint.type", _s(plan_intent.get("blueprint", {}).get("type")), _s(actual_intent.get("blueprint", {}).get("type"))),
         ]
         lines = [header, "[white]  Planned          |  Code[/]", "[white]  " + "-" * 30 + "+" + "-" * 30 + "[/]"]
         for label, d_val, a_val in rows:
-            match = (d_val or "—") == (a_val or "—") if label == "Interface" else True
-            d_str = str(d_val)[:30].replace("\n", " ")
-            a_str = str(a_val)[:30].replace("\n", " ")
+            match = (d_val or "—") == (a_val or "—")
+            d_str = (d_val or "—")[:30].replace("\n", " ")
+            a_str = (a_val or "—")[:30].replace("\n", " ")
             if not match:
                 lines.append(f"  [red]{d_str:<30}[/] | [red]{a_str}[/]")
             else:

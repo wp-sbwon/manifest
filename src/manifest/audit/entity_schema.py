@@ -158,21 +158,79 @@ def default_entities() -> List[Dict[str, Any]]:
     return []
 
 
-def default_contracts() -> List[Dict[str, Any]]:
-    return []
-
-
 @dataclass
 class BlueprintRoot:
-    """Top-level shape for blueprint_design.json and blueprint_code.json."""
+    """Root shape for blueprint JSON."""
     version: str = "1.0"
     root_id: str = ""
     entities: List[Dict[str, Any]] = field(default_factory=default_entities)
-    contracts: List[Dict[str, Any]] = field(default_factory=default_contracts)
+
+
+def contracts_from_entities(entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Derive flat contract list from entities' outgoing_contracts."""
+    out: List[Dict[str, Any]] = []
+    for e in entities or []:
+        eid = e.get("id") or ""
+        for oc in e.get("outgoing_contracts") or []:
+            if not isinstance(oc, dict):
+                continue
+            out.append({
+                "from": eid,
+                "to": oc.get("to") or "",
+                "type": oc.get("type") or "dependency",
+                "file": oc.get("file") or "",
+                "symbols": list(oc.get("symbols") or []),
+            })
+    return out
 
 
 # Root entity id used in blueprint/blueprint_code (plan and actual)
 PROJECT_ROOT_ID = "PROJECT_ROOT"
+
+
+def entity_display_name(e: Dict[str, Any]) -> str:
+    """Display name: role, symbol, name, or id."""
+    if not e:
+        return ""
+    n = (e.get("intent") or {}).get("narrative") or {}
+    role = n.get("role") if isinstance(n, dict) else ""
+    if role:
+        return role
+    return (e.get("reality") or {}).get("symbol") or e.get("name") or e.get("id") or ""
+
+
+def non_root_entities(blueprint: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return entities except the root."""
+    entities = blueprint.get("entities") or []
+    return [e for e in entities if (e.get("id") or "") != PROJECT_ROOT_ID]
+
+
+def get_root_entity(blueprint: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Return the root entity (id PROJECT_ROOT_ID) or None."""
+    entities = blueprint.get("entities") or []
+    for e in entities:
+        if (e.get("id") or "") == PROJECT_ROOT_ID:
+            return e
+    return None
+
+
+def top_layer_entities(blueprint: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return top-layer entities (root's children). Layer 0 = features."""
+    root = get_root_entity(blueprint)
+    if not root:
+        return []
+    child_ids = set(root.get("children") or [])
+    entities = blueprint.get("entities") or []
+    return [e for e in entities if (e.get("id") or "") in child_ids]
+
+
+def root_intent(blueprint: Dict[str, Any]) -> Dict[str, Any]:
+    """Return root entity's intent dict. Empty dict if no root."""
+    root = get_root_entity(blueprint)
+    if not root:
+        return {}
+    return root.get("intent") or {}
+
 
 # ---------------------------------------------------------------------------
 # Empty entity / intent / reality for defaults (no null)
@@ -307,7 +365,7 @@ def entity_json_schema() -> Dict[str, Any]:
 
 
 def blueprint_root_json_schema() -> Dict[str, Any]:
-    """Return a JSON Schema for blueprint/blueprint_code root (version, root_id, entities, contracts)."""
+    """Return a JSON Schema for blueprint/blueprint_code root (version, root_id, entities)."""
     return {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
@@ -319,20 +377,6 @@ def blueprint_root_json_schema() -> Dict[str, Any]:
             "entities": {
                 "type": "array",
                 "items": entity_json_schema(),
-            },
-            "contracts": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "required": ["from", "to", "type"],
-                    "properties": {
-                        "from": {"type": "string"},
-                        "to": {"type": "string"},
-                        "type": {"type": "string"},
-                        "file": {"type": "string"},
-                        "symbols": {"type": "array", "items": {"type": "string"}},
-                    },
-                },
             },
         },
     }

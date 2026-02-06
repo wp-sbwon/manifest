@@ -2,21 +2,11 @@
 
 The view app reads from the project’s `.manifest/` directory. This page lists each file, what the app uses it for, and who creates it (top-down vs bottom-up).
 
-## architecture.json
+## Blueprint only (no architecture.json, no conversion)
 
-**Used for:** Diagram (features, nodes), Inspector root (Goal, Interface, Logic Style, Rules), Mission (goals), status.
+**Source of truth:** Blueprint entity graph (`blueprint_design.json`). Root entity intent holds mission, goals, interface; root's children = top-layer entities (features). No separate architecture file or architecture dict.
 
-| Field | Purpose |
-|-------|---------|
-| `mission` | Root Inspector: Goal Intent |
-| `interface` | Root Inspector: Interface Contract |
-| `architecture_style` | Root Inspector: Logic Style |
-| `global_rules` | Root Inspector: Essential Rules |
-| `features` | Diagram nodes; each has id, name, components[], status, requirements |
-| `goals` | Mission tab (id, name, description, status) |
-| `diagram_title` | Diagram title (optional) |
-
-**Created by:** Top-down (Architect / agents). Core may fix metadata on load (e.g. goals shape).
+**Used for:** Diagram (top layer = features), Inspector root (Goal, Interface, Logic Style, Rules), Mission (goals). Load via `BlueprintLoader.load_blueprint(manifest_dir)`; use `entity_schema.get_root_entity`, `top_layer_entities`, `root_intent` for mission, goals, features. New schema, new logic only.
 
 ---
 

@@ -50,8 +50,7 @@ class CoderAgent:
             agent_id: Unique identifier for this agent.
             executor: Executor instance for LLM API calls.
             state_manager: State manager for saving agent output to channels.
-            terminal_router: Optional terminal router (kept for backward compatibility,
-                but command execution should use tool_executor instead).
+            terminal_router: Optional; tool_executor preferred for commands.
             tool_executor: Optional tool executor for executing tool calls.
                 This is the primary way to execute commands and file operations.
         """
@@ -341,10 +340,7 @@ class CoderAgent:
             }
 
     async def _save_response(self, content: str):
-        """Save agent response to state.
-
-        Note: State saving is handled by agent_bridge._handle_agent_chunk() to avoid
-        duplicate saves. This method is kept for backward compatibility.
+        """Save agent response to state. No-op; state saved by bridge.
 
         Args:
             content: The complete agent output content.

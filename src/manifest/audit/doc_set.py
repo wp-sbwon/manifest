@@ -48,8 +48,8 @@ def load_top_down(manifest_dir: Path, doc_type: str) -> Dict[str, Any]:
             logger.warning("Failed to load intent.json: %s", e)
             return {"version": "1.0", "sprint": "", "features": []}
     if doc_type == "architecture":
-        from manifest.audit.metadata.architecture_metadata import load_architecture_with_metadata
-        return load_architecture_with_metadata(manifest_dir / TOP_DOWN_FILES["architecture"])
+        from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
+        return BlueprintLoader.load_blueprint(manifest_dir)
     return {}
 
 
@@ -72,12 +72,6 @@ def load_bottom_up(manifest_dir: Path, doc_type: str) -> Dict[str, Any]:
             logger.warning("Failed to load intent_code.json: %s", e)
             return {"version": "1.0", "sprint": "", "features": []}
     if doc_type == "architecture":
-        if not path.exists():
-            return {"version": "1.0", "features": [], "requirements": [], "goals": []}
-        try:
-            from manifest.audit.metadata.architecture_metadata import load_architecture_with_metadata
-            return load_architecture_with_metadata(path)
-        except Exception as e:
-            logger.warning("Failed to load architecture_code.json: %s", e)
-            return {"version": "1.0", "features": [], "requirements": [], "goals": []}
+        from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
+        return BlueprintLoader.load_code_blueprint(manifest_dir)
     return {}

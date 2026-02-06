@@ -545,8 +545,8 @@ class WorkerSquadExecutor:
                 completed_stage, workflow_state, stage_data
             )
 
-        # Fallback to hardcoded logic
-        return self._determine_next_stage_legacy(
+        # Fallback when no workflow definition
+        return self._determine_next_stage_fallback(
             completed_stage, workflow_state, stage_data
         )
 
@@ -644,15 +644,15 @@ class WorkerSquadExecutor:
                 return False
         return True
 
-    def _determine_next_stage_legacy(
+    def _determine_next_stage_fallback(
         self,
         completed_stage: str,
         workflow_state: Dict[str, Any],
         stage_data: Dict[str, Any]
     ) -> Optional[str]:
-        """Determine the next stage to execute based on workflow logic and conditions.
+        """Determine next stage when no workflow definition is set (hardcoded sequence).
 
-        This method implements conditional execution logic:
+        Implements conditional execution logic:
         - Test stage: Routes to debug if failed, self_review if passed
         - Debug stage: Loops back to test (up to max iterations)
         - Approver stage: Loops back to coder if rejected

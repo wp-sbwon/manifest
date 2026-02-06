@@ -303,7 +303,7 @@ class PlannerAgent:
         try:
             blueprint = load_blueprint_with_metadata(blueprint_file, "llm_design", False)
 
-            # Update entity intent with methodology (new format) or component (legacy)
+            # Update entity intent with methodology
             from manifest.audit.entity_schema import PROJECT_ROOT_ID
 
             if "entities" in blueprint and blueprint["entities"]:

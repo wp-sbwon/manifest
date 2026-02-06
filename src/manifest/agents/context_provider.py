@@ -5,9 +5,9 @@ This module implements the Tiered Orchestration system that provides agents
 with context at different levels of abstraction:
 
 - Tier 0: The Law - Project policies and rules (manifest-policy.md)
-- Tier 1: The Intent - High-level goals and architecture (intent.json, architecture.json)
-- Tier 2: The Blueprint - Architecture components (blueprint.json, scoped to task)
-- Tier 3: Surgical Code - Actual code files (scoped to task)
+- Tier 1: The Intent - Root and top-layer entities from blueprint (intent.json); architecture derived from entity graph
+- Tier 2: The Blueprint - Entities (scoped to task)
+- Tier 3: Surgical Code - File contents (scoped to task)
 - Skills: Agent-specific capabilities and tools
 
 Different agent types receive different context tiers. Orchestrators get
@@ -20,6 +20,7 @@ import json
 import ast
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple
+from manifest.audit.entity_schema import contracts_from_entities
 from manifest.agents.task_scoper import TaskScoper
 from manifest.agents.skills_manager import SkillsManager
 from manifest.agents.context_size_calculator import ContextSizeCalculator
@@ -142,7 +143,7 @@ class ContextProvider:
 
         # Get task scope for skills
         task_scope = {
-            "components": task_context.get("components", []),
+            "entities": task_context.get("entities", []),
             "allowed_files": task_context.get("files", []),
             "allowed_modifications": task_context.get("allowed_modifications", []),
             "requirements": task_context.get("requirements", [])
@@ -227,58 +228,46 @@ class ContextProvider:
         else:
             tier_1["intent"] = {"version": "1.0", "sprint": "", "features": []}
 
-        # Load architecture.json with metadata
-        from manifest.audit.metadata.architecture_metadata import load_architecture_with_metadata
-        tier_1["architecture"] = load_architecture_with_metadata(self.architecture_file)
+        # Blueprint only (entity graph). No architecture.json, no conversion.
+        from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
+        tier_1["blueprint"] = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
 
         return tier_1
 
     def _load_tier_2_scoped(self, task_context: Dict[str, Any]) -> Dict[str, Any]:
-        """Load Tier 2: The Blueprint (scoped to task)."""
+        """Load Tier 2 blueprint."""
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
+        from manifest.audit.entity_schema import PROJECT_ROOT_ID
         blueprint_data = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
 
-        # Filter to scoped components
-        scoped_components = task_context.get("components", [])
-        component_ids = {comp.get("id") for comp in scoped_components if comp.get("id")}
+        scoped_entities = task_context.get("entities", [])
+        entity_ids = {e.get("id") for e in scoped_entities if e.get("id")}
 
-        # Filter components
-        all_components = blueprint_data.get("components", [])
-        filtered_components = [
-            comp for comp in all_components
-            if comp.get("id") in component_ids or not component_ids  # If no scope, include all
+        all_entities = blueprint_data.get("entities") or []
+        filtered_entities = [
+            e for e in all_entities
+            if (e.get("id") or "") != PROJECT_ROOT_ID
+            and (e.get("id") in entity_ids or not entity_ids)
         ]
 
-        # Filter zones to include only relevant components
-        zones = blueprint_data.get("zones", {})
-        filtered_zones = {}
-        for zone_name, zone_components in zones.items():
-            filtered_zone_components = [
-                comp for comp in zone_components
-                if comp.get("id") in component_ids or not component_ids
-            ]
-            if filtered_zone_components:
-                filtered_zones[zone_name] = filtered_zone_components
-
-        # Filter contracts related to scoped components
-        contracts = blueprint_data.get("contracts", [])
+        contracts = contracts_from_entities(blueprint_data.get("entities", []))
         filtered_contracts = [
-            contract for contract in contracts
+            c for c in contracts
             if any(
-                comp_id in contract.get("components", []) or comp_id in contract.get("providers", []) or comp_id in contract.get("consumers", [])
-                for comp_id in component_ids
-            ) or not component_ids
+                eid in (c.get("from"), c.get("to"))
+                for eid in entity_ids
+            ) or not entity_ids
         ]
 
         return {
             "version": blueprint_data.get("version", "1.0"),
-            "zones": filtered_zones,
-            "components": filtered_components,
-            "contracts": filtered_contracts
+            "entities": filtered_entities,
+            "contracts": filtered_contracts,
+            "zones": {},
         }
 
     def _load_tier_3_scoped(self, task_context: Dict[str, Any]) -> Dict[str, Any]:
-        """Load Tier 3: Surgical Code (only files in task scope)."""
+        """Load Tier 3 file contents."""
         allowed_files = task_context.get("files", [])
         file_contents = {}
 
@@ -331,7 +320,7 @@ class ContextProvider:
         previous_stages = previous_stages or {}
         task_context = self.task_scoper.get_task_context(task_id)
         task_scope = {
-            "components": task_context.get("components", []),
+            "entities": task_context.get("entities", []),
             "allowed_files": task_context.get("files", []),
             "allowed_modifications": task_context.get("allowed_modifications", []),
             "requirements": task_context.get("requirements", [])
@@ -540,7 +529,7 @@ class ContextProvider:
             task_scope = context.get("task_scope", {})
             summary["task_id"] = context.get("task_id")
             summary["agent_type"] = context.get("agent_type")
-            summary["component_count"] = len(task_scope.get("components", []))
+            summary["entity_count"] = len(task_scope.get("entities", []))
             summary["file_count"] = len(task_scope.get("allowed_files", []))
             tier_3 = context.get("tier_3", {})
             summary["loaded_files_count"] = tier_3.get("file_count", 0)

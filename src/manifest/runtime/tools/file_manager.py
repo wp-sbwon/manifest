@@ -238,7 +238,7 @@ class FileManager:
         elif permission == "ask":
             logger.warning(
                 f"Permission 'ask' for read '{file_path}' by agent '{self.agent_type}' - "
-                "allowing for now (approval not implemented)"
+                "proceeding"
             )
 
         try:
@@ -308,7 +308,7 @@ class FileManager:
         elif permission == "ask":
             logger.warning(
                 f"Permission 'ask' for grep '{file_path}' by agent '{self.agent_type}' - "
-                "allowing for now (approval not implemented)"
+                "proceeding"
             )
 
         try:
@@ -416,7 +416,7 @@ class FileManager:
         elif permission == "ask":
             logger.warning(
                 f"Permission 'ask' for list '{directory or '.'}' by agent '{self.agent_type}' - "
-                "allowing for now (approval not implemented)"
+                "proceeding"
             )
 
         try:

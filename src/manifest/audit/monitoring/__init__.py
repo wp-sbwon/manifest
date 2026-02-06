@@ -9,7 +9,7 @@ from .structure_manager import StructureManager, StructuralChange, BlueprintUpda
 from .code_watcher import CodeWatcher
 from .deviation_monitor import DeviationMonitor
 
-# Backward compatibility
+# Alias
 DriftMonitor = DeviationMonitor
 
 __all__ = [

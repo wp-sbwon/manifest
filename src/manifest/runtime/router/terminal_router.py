@@ -35,7 +35,6 @@ class TerminalRouter:
         self,
         working_dir: Optional[Path] = None,
         watchdog=None,
-        use_opencode: Optional[bool] = None,
         permission_manager: Optional["PermissionManager"] = None,
         agent_type: Optional[str] = None
     ):
@@ -44,7 +43,6 @@ class TerminalRouter:
         Args:
             working_dir: Directory where commands should be executed.
             watchdog: Optional watchdog for monitoring command execution.
-            use_opencode: Unused; kept for compatibility.
             permission_manager: Optional PermissionManager for access control.
             agent_type: Optional agent type for permission checks.
         """

@@ -45,90 +45,47 @@ class TaskScoper:
             self._intent_data = {"version": "1.0", "sprint": "", "features": []}
 
     def get_task_context(self, task_id: str) -> Dict[str, Any]:
-        """Get scoped context for a specific task.
-
-        Analyzes the blueprint and intent to determine which components,
-        files, and requirements are relevant to this task. This creates
-        a boundary that limits what the agent can see and modify.
+        """Get scoped context for a task.
 
         Args:
-            task_id: ID of the task to get context for.
+            task_id: Task ID.
 
         Returns:
-            Dictionary containing:
-            - components: List of blueprint components relevant to the task
-            - files: List of file paths the task can access
-            - requirements: List of requirements relevant to the task
-            - allowed_modifications: List of files/components that can be modified
+            Dict with entities, files, requirements, allowed_modifications.
         """
-        # Find components related to task
-        components = self._get_task_components(task_id)
-
-        # Find files related to task based on components
-        files = self._get_task_files(task_id, components)
-
-        # Get task-specific requirements from intent
+        entities = self._get_task_entities(task_id)
+        files = self._get_task_files(task_id, entities)
         requirements = self._get_task_requirements(task_id)
-
-        # Determine which files/components can be modified
-        allowed_modifications = self._get_allowed_modifications(components, files)
+        allowed_modifications = self._get_allowed_modifications(entities, files)
 
         return {
-            "components": components,
+            "entities": entities,
             "files": files,
             "requirements": requirements,
             "allowed_modifications": allowed_modifications
         }
 
-    def _get_task_components(self, task_id: str) -> List[Dict[str, Any]]:
-        """Get blueprint components that are related to a task.
+    def _get_task_entities(self, task_id: str) -> List[Dict[str, Any]]:
+        """Return entities related to a task."""
+        from manifest.audit.entity_schema import PROJECT_ROOT_ID
+        entities = self._blueprint_data.get("entities") or []
+        nodes = [e for e in entities if (e.get("id") or "") != PROJECT_ROOT_ID]
+        task_nodes = [e for e in nodes if e.get("task_id") == task_id or task_id in (e.get("tasks") or [])]
+        return task_nodes if task_nodes else nodes
 
-        Filters blueprint components based on task_id. If components have
-        a task_id field or tasks list, only matching components are returned.
-        If no mapping exists, returns all components (fallback behavior).
-
-        Args:
-            task_id: ID of the task to find components for.
-
-        Returns:
-            List of component dictionaries from the blueprint.
-        """
-        # In a real implementation, tasks would be mapped to components
-        # For now, return all components (can be refined later)
-        components = self._blueprint_data.get("components", [])
-
-        # Filter by task_id if components have task_id field
-        task_components = []
-        for comp in components:
-            if comp.get("task_id") == task_id or task_id in comp.get("tasks", []):
-                task_components.append(comp)
-            # If no task mapping, include all (will be refined with actual task mapping)
-
-        return task_components if task_components else components
-
-    def _get_task_files(self, task_id: str, components: List[Dict[str, Any]]) -> List[str]:
-        """Get files related to task based on components."""
+    def _get_task_files(self, task_id: str, entities: List[Dict[str, Any]]) -> List[str]:
+        """Return file paths for task from entity reality or file."""
         files = set()
-
-        # Get files from components
-        for comp in components:
-            comp_files = comp.get("files", [])
-            if isinstance(comp_files, list):
-                files.update(comp_files)
-            elif isinstance(comp_files, str):
-                files.add(comp_files)
-
-        # Get files from zones
-        zones = self._blueprint_data.get("zones", {})
-        for zone_name, zone_components in zones.items():
-            for comp in zone_components:
-                if comp in components or any(c.get("id") == comp.get("id") for c in components):
-                    comp_files = comp.get("files", [])
-                    if isinstance(comp_files, list):
-                        files.update(comp_files)
-                    elif isinstance(comp_files, str):
-                        files.add(comp_files)
-
+        for ent in entities:
+            ent_files = ent.get("files", [])
+            if isinstance(ent_files, list):
+                files.update(ent_files)
+            elif isinstance(ent_files, str):
+                files.add(ent_files)
+            else:
+                symbol = (ent.get("reality") or {}).get("symbol") or ent.get("file")
+                if symbol:
+                    files.add(symbol)
         return sorted(list(files))
 
     def _get_task_requirements(self, task_id: str) -> List[Dict[str, Any]]:
@@ -146,21 +103,19 @@ class TaskScoper:
 
         return requirements
 
-    def _get_allowed_modifications(self, components: List[Dict[str, Any]], files: List[str]) -> List[str]:
+    def _get_allowed_modifications(self, entities: List[Dict[str, Any]], files: List[str]) -> List[str]:
         """Determine allowed file modification paths."""
         allowed = set()
 
-        # Add directories from files
         for file_path in files:
             path = Path(file_path)
             if path.parent != Path("."):
                 allowed.add(str(path.parent))
 
-        # Add directories from components
-        for comp in components:
-            comp_dir = comp.get("directory")
-            if comp_dir:
-                allowed.add(comp_dir)
+        for ent in entities:
+            ent_dir = ent.get("directory")
+            if ent_dir:
+                allowed.add(ent_dir)
 
         return sorted(list(allowed)) if allowed else ["."]  # Default to current directory
 
@@ -191,7 +146,7 @@ class TaskScoper:
         context = self.get_task_context(task_id)
         return {
             "task_id": task_id,
-            "component_count": len(context.get("components", [])),
+            "entity_count": len(context.get("entities", [])),
             "file_count": len(context.get("files", [])),
             "requirement_count": len(context.get("requirements", [])),
             "allowed_directories": context.get("allowed_modifications", [])
@@ -203,42 +158,29 @@ class TaskScoper:
         context: Optional[Dict[str, Any]] = None,
         model_config: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """
-        Validate task granularity against rules and context size.
-
-        Enhanced validation that checks both file/component counts and
-        estimated context size against model limits.
+        """Validate task granularity; return valid, warnings, errors, counts.
 
         Args:
-            task_id: ID of the task to validate.
-            context: Optional pre-computed context (to avoid recomputation).
-            model_config: Optional model configuration for size validation.
+            task_id: Task ID.
+            context: Pre-computed context (optional).
+            model_config: Model config for size validation (optional).
 
         Returns:
-            Dict with validation result:
-            {
-                "valid": bool,
-                "warnings": List[str],
-                "errors": List[str],
-                "file_count": int,
-                "component_count": int,
-                "context_size_validation": Optional[Dict]  # If model_config provided
-            }
+            Dict with valid, warnings, errors, file_count, entity_count, context_size_validation.
         """
         if context is None:
             context_data = self.get_task_context(task_id)
         else:
-            # Extract task context info from provided context
             context_data = {
                 "files": context.get("task_scope", {}).get("allowed_files", []),
-                "components": context.get("task_scope", {}).get("components", [])
+                "entities": context.get("task_scope", {}).get("entities", [])
             }
 
         files = context_data.get("files", [])
-        components = context_data.get("components", [])
+        entities = context_data.get("entities", [])
 
         file_count = len(files)
-        component_count = len(components)
+        entity_count = len(entities)
 
         warnings = []
         errors = []
@@ -254,16 +196,15 @@ class TaskScoper:
             elif file_count > 7:
                 warnings.append(f"Task modifies {file_count} files (recommended max: 7). Consider splitting.")
 
-            # Check component count
-            if component_count > 3:
-                warnings.append(f"Task spans {component_count} components. Consider splitting if components are unrelated.")
+            if entity_count > 3:
+                warnings.append(f"Task spans {entity_count} entities. Consider splitting if entities are unrelated.")
 
         result = {
             "valid": len(errors) == 0,
             "warnings": warnings,
             "errors": errors,
             "file_count": file_count,
-            "component_count": component_count
+            "entity_count": entity_count
         }
 
         # Add context size validation if model config provided
@@ -290,12 +231,7 @@ class TaskScoper:
         return result
 
     def can_execute_in_parallel(self, task_id_1: str, task_id_2: str) -> bool:
-        """
-        Check if two tasks can be executed in parallel.
-
-        Returns:
-            True if tasks can run in parallel (no file overlap, no dependencies)
-        """
+        """Return True if two tasks can run in parallel (no file or entity overlap)."""
         context_1 = self.get_task_context(task_id_1)
         context_2 = self.get_task_context(task_id_2)
 
@@ -306,30 +242,16 @@ class TaskScoper:
         if files_1 & files_2:
             return False
 
-        # Check component dependencies
-        components_1 = {c.get("id") for c in context_1.get("components", [])}
-        components_2 = {c.get("id") for c in context_2.get("components", [])}
+        ids_1 = {e.get("id") for e in context_1.get("entities", [])}
+        ids_2 = {e.get("id") for e in context_2.get("entities", [])}
 
-        # If tasks share components, they might have dependencies
-        if components_1 & components_2:
-            # Check if components are tightly coupled (would need more sophisticated analysis)
-            # For now, if they share components, assume they can't run in parallel
+        if ids_1 & ids_2:
             return False
 
         return True
 
     def validate_parallel_execution(self, task_ids: List[str]) -> Dict[str, Any]:
-        """
-        Validate if a list of tasks can be executed in parallel.
-
-        Returns:
-            Dict with validation result:
-            {
-                "can_parallelize": bool,
-                "conflicts": List[Dict[str, str]],  # [{"task1": "task-1", "task2": "task-2", "reason": "..."}]
-                "parallel_groups": List[List[str]]  # Groups of tasks that can run in parallel
-            }
-        """
+        """Validate parallel execution; return can_parallelize, conflicts, parallel_groups."""
         conflicts = []
         parallel_groups = []
         remaining_tasks = task_ids.copy()

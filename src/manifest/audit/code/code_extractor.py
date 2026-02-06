@@ -103,8 +103,7 @@ class CodeExtractor:
             root: Optional root directory. Uses self.root if not provided.
 
         Returns:
-            Dictionary containing blueprint structure with components,
-            contracts, and metadata.
+            Blueprint dict: version, root_id, entities (with outgoing_contracts), and metadata.
         """
         if root is None:
             root = self.root

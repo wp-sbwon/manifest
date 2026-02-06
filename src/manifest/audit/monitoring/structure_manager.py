@@ -29,7 +29,7 @@ logger = get_logger(__name__)
 class StructuralChange:
     """Represents a structural change detected in code."""
     change_type: str  # "added", "modified", "deleted"
-    component_id: Optional[str] = None
+    node_id: Optional[str] = None
     file_path: str = ""
     component_data: Optional[Dict[str, Any]] = None
     timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
@@ -52,9 +52,9 @@ class CodeChangeSuggestion:
     suggestion_type: str  # "create_file", "modify_file", "add_import", "add_class", "add_method"
     file_path: str = ""
     action: str = ""  # Detailed action description
-    blueprint_component_id: str = ""
+    blueprint_entity_id: str = ""
     reason: str = ""
-    affected_components: List[str] = field(default_factory=list)
+    affected_entities: List[str] = field(default_factory=list)
     action_data: Optional[Dict[str, Any]] = None  # Additional structured data for parsing
 
 
@@ -132,7 +132,7 @@ class StructureManager:
 
                     if previous_blueprint:
                         # Check if component exists in previous blueprint
-                        existing = self._find_component_in_blueprint(
+                        existing = self._find_entity_in_blueprint(
                             component.id,
                             previous_blueprint
                         )
@@ -141,7 +141,7 @@ class StructureManager:
 
                     changes.append(StructuralChange(
                         change_type=change_type,
-                        component_id=component.id,
+                        node_id=component.id,
                         file_path=str(path),
                         component_data={
                             "name": component.name,
@@ -179,7 +179,7 @@ class StructureManager:
 
         for change in code_changes:
             if change.change_type == "added" and change.component_data:
-                # Suggest adding new component to Blueprint
+                # Suggest adding to Blueprint
                 component = self._create_component_from_change(change)
                 if component:
                     suggestions.append(BlueprintUpdateSuggestion(
@@ -191,7 +191,7 @@ class StructureManager:
                     ))
 
             elif change.change_type == "modified" and change.component_data:
-                # Suggest updating existing component
+                # Suggest updating in Blueprint
                 component = self._create_component_from_change(change)
                 if component:
                     suggestions.append(BlueprintUpdateSuggestion(
@@ -203,11 +203,11 @@ class StructureManager:
                     ))
 
             elif change.change_type == "deleted":
-                # Suggest removing component from Blueprint
-                if change.component_id:
+                # Suggest removing from Blueprint
+                if change.node_id:
                     suggestions.append(BlueprintUpdateSuggestion(
                         suggestion_type="remove_component",
-                        reason=f"Component deleted: {change.component_id}",
+                        reason=f"Node deleted: {change.node_id}",
                         confidence=0.7,
                         affected_files=[change.file_path]
                     ))
@@ -219,68 +219,63 @@ class StructureManager:
         previous_blueprint: Optional[Dict[str, Any]] = None,
         current_blueprint: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """
-        Detect changes between previous and current Blueprint.
+        """Detect changes between previous and current Blueprint.
 
         Args:
-            previous_blueprint: Previous Blueprint (optional, will load if not provided)
-            current_blueprint: Current Blueprint (optional, will load if not provided)
+            previous_blueprint: Previous Blueprint (optional).
+            current_blueprint: Current Blueprint (optional).
 
         Returns:
-            Dict with detected changes:
-            {
-                "new_components": [...],
-                "modified_components": [...],
-                "deleted_components": [...],
-                "new_contracts": [...],
-                "modified_contracts": [...],
-                "deleted_contracts": [...]
-            }
+            Dict with new_entities, modified_entities, deleted_entities, new_contracts, modified_contracts, deleted_contracts.
         """
         if previous_blueprint is None:
-            # Try to load from backup or use empty
-            previous_blueprint = self._load_previous_blueprint() or {"components": [], "contracts": []}
+            previous_blueprint = self._load_previous_blueprint() or {"entities": []}
 
         if current_blueprint is None:
             current_blueprint = self._load_blueprint()
 
         changes = {
-            "new_components": [],
-            "modified_components": [],
-            "deleted_components": [],
+            "new_entities": [],
+            "modified_entities": [],
+            "deleted_entities": [],
             "new_contracts": [],
             "modified_contracts": [],
             "deleted_contracts": []
         }
 
-        # Compare components
-        prev_components = {c.get("id"): c for c in previous_blueprint.get("components", [])}
-        curr_components = {c.get("id"): c for c in current_blueprint.get("components", [])}
+        from manifest.audit.entity_schema import non_root_entities
 
-        # Find new components
-        for comp_id, comp in curr_components.items():
-            if comp_id not in prev_components:
-                changes["new_components"].append(comp)
+        def _entity_methods(e: Dict[str, Any]) -> list:
+            return (e.get("reality") or {}).get("methods", e.get("methods", []))
+
+        def _entity_attributes(e: Dict[str, Any]) -> list:
+            return (e.get("reality") or {}).get("attributes", e.get("attributes", []))
+
+        prev_entities = {e.get("id"): e for e in non_root_entities(previous_blueprint)}
+        curr_entities = {e.get("id"): e for e in non_root_entities(current_blueprint)}
+
+        for ent_id, ent in curr_entities.items():
+            if ent_id not in prev_entities:
+                changes["new_entities"].append(ent)
             else:
-                # Check if modified (simple comparison)
-                prev_comp = prev_components[comp_id]
-                if (comp.get("methods") != prev_comp.get("methods") or
-                    comp.get("attributes") != prev_comp.get("attributes")):
-                    changes["modified_components"].append(comp)
+                prev_ent = prev_entities[ent_id]
+                if (_entity_methods(ent) != _entity_methods(prev_ent) or
+                    _entity_attributes(ent) != _entity_attributes(prev_ent)):
+                    changes["modified_entities"].append(ent)
 
-        # Find deleted components
-        for comp_id in prev_components:
-            if comp_id not in curr_components:
-                changes["deleted_components"].append(prev_components[comp_id])
+        for ent_id in prev_entities:
+            if ent_id not in curr_entities:
+                changes["deleted_entities"].append(prev_entities[ent_id])
 
-        # Compare contracts
+        from manifest.audit.entity_schema import contracts_from_entities
+
+        prev_flat = contracts_from_entities(previous_blueprint.get("entities", []))
+        curr_flat = contracts_from_entities(current_blueprint.get("entities", []))
         prev_contracts = {
-            (c.get("from_id"), c.get("to_id"), c.get("type")): c
-            for c in previous_blueprint.get("contracts", [])
+            (c.get("from"), c.get("to"), c.get("type")): c for c in prev_flat
         }
         curr_contracts = {
-            (c.get("from_id"), c.get("to_id"), c.get("type")): c
-            for c in current_blueprint.get("contracts", [])
+            (c.get("from"), c.get("to"), c.get("type")): c for c in curr_flat
         }
 
         # Find new contracts
@@ -309,8 +304,8 @@ class StructureManager:
         Generate suggestions to change code based on Blueprint changes.
 
         Args:
-            blueprint_changes: Dict with changed components/contracts (optional, will detect if not provided)
-            current_code_blueprint: Current code-extracted blueprint (optional)
+            blueprint_changes: Detected changes (optional).
+            current_code_blueprint: Code blueprint (optional).
 
         Returns:
             List of code change suggestions
@@ -323,105 +318,95 @@ class StructureManager:
 
         suggestions = []
 
-        # Check for new components in Blueprint
-        new_components = blueprint_changes.get("new_components", [])
-        for component in new_components:
-            file_path = component.get("file", "")
+        new_entities = blueprint_changes.get("new_entities", [])
+        for entity in new_entities:
+            file_path = entity.get("file", "")
             if not file_path or not Path(file_path).exists():
-                # Component doesn't exist in code - suggest creating it
-                suggested_path = self._suggest_file_path(component)
+                suggested_path = self._suggest_file_path(entity)
                 suggestions.append(CodeChangeSuggestion(
                     suggestion_type="create_file",
                     file_path=suggested_path,
-                    action=f"Create {component.get('type', 'component')} {component.get('name', '')} with methods: {', '.join(component.get('methods', []))}",
-                    blueprint_component_id=component.get("id", ""),
-                    reason=f"Component '{component.get('name', '')}' defined in Blueprint but not found in code",
-                    affected_components=[component.get("id", "")]
+                    action=f"Create {entity.get('type', 'entity')} {entity.get('name', '')} with methods: {', '.join(entity.get('methods', []))}",
+                    blueprint_entity_id=entity.get("id", ""),
+                    reason=f"Entity '{entity.get('name', '')}' defined in Blueprint but not found in code",
+                    affected_entities=[entity.get("id", "")]
                 ))
             else:
-                # Component exists but might need updates
-                existing = self._find_component_in_blueprint(
-                    component.get("id", ""),
+                existing = self._find_entity_in_blueprint(
+                    entity.get("id", ""),
                     current_code_blueprint
                 )
                 if not existing:
                     suggestions.append(CodeChangeSuggestion(
                         suggestion_type="add_class",
                         file_path=file_path,
-                        action=f"Add class {component.get('name', '')} with methods: {', '.join(component.get('methods', []))}",
-                        blueprint_component_id=component.get("id", ""),
-                        reason=f"Component '{component.get('name', '')}' defined in Blueprint but missing in code file",
-                        affected_components=[component.get("id", "")]
+                        action=f"Add class {entity.get('name', '')} with methods: {', '.join(entity.get('methods', []))}",
+                        blueprint_entity_id=entity.get("id", ""),
+                        reason=f"Entity '{entity.get('name', '')}' defined in Blueprint but missing in code file",
+                        affected_entities=[entity.get("id", "")]
                     ))
                 else:
-                    # Component exists but might need method/attribute updates
                     existing_methods = set(existing.get("methods", []))
-                    blueprint_methods = set(component.get("methods", []))
+                    blueprint_methods = set(entity.get("methods", []))
                     missing_methods = blueprint_methods - existing_methods
 
                     if missing_methods:
                         suggestions.append(CodeChangeSuggestion(
                             suggestion_type="add_method",
                             file_path=file_path,
-                            action=f"Add methods to {component.get('name', '')}: {', '.join(missing_methods)}",
-                            blueprint_component_id=component.get("id", ""),
-                            reason=f"Component '{component.get('name', '')}' is missing methods defined in Blueprint",
-                            affected_components=[component.get("id", "")],
-                            # Store method names for easier parsing
-                            action_data={"class_name": component.get('name', ''), "methods": list(missing_methods)}
+                            action=f"Add methods to {entity.get('name', '')}: {', '.join(missing_methods)}",
+                            blueprint_entity_id=entity.get("id", ""),
+                            reason=f"Entity '{entity.get('name', '')}' is missing methods defined in Blueprint",
+                            affected_entities=[entity.get("id", "")],
+                            action_data={"class_name": entity.get('name', ''), "methods": list(missing_methods)}
                         ))
 
-        # Check for modified components
-        modified_components = blueprint_changes.get("modified_components", [])
-        for component in modified_components:
-            file_path = component.get("file", "")
+        modified_entities = blueprint_changes.get("modified_entities", [])
+        for entity in modified_entities:
+            file_path = entity.get("file", "")
             if file_path and Path(file_path).exists():
-                existing = self._find_component_in_blueprint(
-                    component.get("id", ""),
+                existing = self._find_entity_in_blueprint(
+                    entity.get("id", ""),
                     current_code_blueprint
                 )
                 if existing:
                     existing_methods = set(existing.get("methods", []))
-                    blueprint_methods = set(component.get("methods", []))
+                    blueprint_methods = set(entity.get("methods", []))
                     missing_methods = blueprint_methods - existing_methods
-                    extra_methods = existing_methods - blueprint_methods
 
                     if missing_methods:
                         suggestions.append(CodeChangeSuggestion(
                             suggestion_type="add_method",
                             file_path=file_path,
                             action=f"Add methods: {', '.join(missing_methods)}",
-                            blueprint_component_id=component.get("id", ""),
-                            reason=f"Component '{component.get('name', '')}' needs methods from updated Blueprint",
-                            affected_components=[component.get("id", "")],
-                            # Store method names for easier parsing
-                            action_data={"class_name": component.get('name', ''), "methods": list(missing_methods)}
+                            blueprint_entity_id=entity.get("id", ""),
+                            reason=f"Entity '{entity.get('name', '')}' needs methods from updated Blueprint",
+                            affected_entities=[entity.get("id", "")],
+                            action_data={"class_name": entity.get('name', ''), "methods": list(missing_methods)}
                         ))
 
-        # Check for new contracts (dependencies)
         new_contracts = blueprint_changes.get("new_contracts", [])
         for contract in new_contracts:
-            from_id = contract.get("from_id", "")
-            to_id = contract.get("to_id", "")
+            from_id = contract.get("from", "")
+            to_id = contract.get("to", "")
             contract_type = contract.get("type", "dependency")
 
-            from_file = self._get_file_for_component(from_id)
-            to_file = self._get_file_for_component(to_id)
+            from_file = self._get_file_for_entity(from_id)
+            to_file = self._get_file_for_entity(to_id)
 
             if from_file and to_file:
-                # Determine import path
-                to_component = self._find_component_in_blueprint(to_id, self._load_blueprint())
-                if to_component:
-                    module_path = to_component.get("module_path", "")
-                    component_name = to_component.get("name", "")
+                to_entity = self._find_entity_in_blueprint(to_id, self._load_blueprint())
+                if to_entity:
+                    module_path = to_entity.get("module_path", "")
+                    entity_name = to_entity.get("name", "")
 
                     suggestions.append(CodeChangeSuggestion(
                         suggestion_type="add_import",
                         file_path=from_file,
-                        action=f"Import {component_name} from {module_path}",
-                        blueprint_component_id=from_id,
+                        action=f"Import {entity_name} from {module_path}",
+                        blueprint_entity_id=from_id,
                         reason=f"Contract defined in Blueprint: {from_id} → {to_id} ({contract_type})",
-                        affected_components=[from_id, to_id]
+                        affected_entities=[from_id, to_id]
                     ))
 
         return suggestions
@@ -435,83 +420,72 @@ class StructureManager:
         Analyze impact of Blueprint changes on existing code.
 
         Args:
-            blueprint_changes: Dict with changed components/contracts
-            current_code_blueprint: Current code-extracted blueprint (optional)
+            blueprint_changes: Detected changes.
+            current_code_blueprint: Code blueprint (optional).
 
         Returns:
-            Dict with impact analysis:
-            {
-                "affected_files": [...],
-                "affected_components": [...],
-                "breaking_changes": [...],
-                "safe_changes": [...],
-                "migration_steps": [...]
-            }
+            Dict with affected_files, affected_entities, breaking_changes, safe_changes, migration_steps.
         """
         if current_code_blueprint is None:
             current_code_blueprint = self._load_code_blueprint()
 
         impact = {
             "affected_files": set(),
-            "affected_components": [],
+            "affected_entities": [],
             "breaking_changes": [],
             "safe_changes": [],
             "migration_steps": []
         }
 
-        # Analyze new components
-        for component in blueprint_changes.get("new_components", []):
-            file_path = component.get("file", "")
+        for entity in blueprint_changes.get("new_entities", []):
+            file_path = entity.get("file", "")
             if file_path:
                 impact["affected_files"].add(file_path)
-            impact["affected_components"].append(component.get("id", ""))
+            impact["affected_entities"].append(entity.get("id", ""))
             impact["safe_changes"].append({
-                "type": "new_component",
-                "component_id": component.get("id", ""),
-                "description": f"New component '{component.get('name', '')}' - safe to add"
+                "type": "new_entity",
+                "entity_id": entity.get("id", ""),
+                "description": f"New entity '{entity.get('name', '')}' - safe to add"
             })
 
-        # Analyze modified components
-        for component in blueprint_changes.get("modified_components", []):
-            file_path = component.get("file", "")
+        for entity in blueprint_changes.get("modified_entities", []):
+            file_path = entity.get("file", "")
             if file_path:
                 impact["affected_files"].add(file_path)
 
-            component_id = component.get("id", "")
-            impact["affected_components"].append(component_id)
+            entity_id = entity.get("id", "")
+            impact["affected_entities"].append(entity_id)
 
-            # Check if it's a breaking change (removed methods)
-            existing = self._find_component_in_blueprint(component_id, current_code_blueprint)
+            existing = self._find_entity_in_blueprint(entity_id, current_code_blueprint)
             if existing:
                 existing_methods = set(existing.get("methods", []))
-                blueprint_methods = set(component.get("methods", []))
+                blueprint_methods = set(entity.get("methods", []))
                 removed_methods = existing_methods - blueprint_methods
 
                 if removed_methods:
                     impact["breaking_changes"].append({
                         "type": "removed_methods",
-                        "component_id": component_id,
+                        "entity_id": entity_id,
                         "methods": list(removed_methods),
-                        "description": f"Component '{component.get('name', '')}' has removed methods: {', '.join(removed_methods)}"
+                        "description": f"Entity '{entity.get('name', '')}' has removed methods: {', '.join(removed_methods)}"
                     })
 
-        # Analyze deleted components
-        for component in blueprint_changes.get("deleted_components", []):
-            file_path = component.get("file", "")
+        for entity in blueprint_changes.get("deleted_entities", []):
+            file_path = entity.get("file", "")
             if file_path:
                 impact["affected_files"].add(file_path)
 
-            component_id = component.get("id", "")
+            entity_id = entity.get("id", "")
             impact["breaking_changes"].append({
-                "type": "deleted_component",
-                "component_id": component_id,
-                "description": f"Component '{component.get('name', '')}' was deleted from Blueprint"
+                "type": "deleted_entity",
+                "entity_id": entity_id,
+                "description": f"Entity '{entity.get('name', '')}' was deleted from Blueprint"
             })
 
         # Analyze new contracts
         for contract in blueprint_changes.get("new_contracts", []):
-            from_file = self._get_file_for_component(contract.get("from_id", ""))
-            to_file = self._get_file_for_component(contract.get("to_id", ""))
+            from_file = self._get_file_for_entity(contract.get("from", ""))
+            to_file = self._get_file_for_entity(contract.get("to", ""))
 
             if from_file:
                 impact["affected_files"].add(from_file)
@@ -520,9 +494,9 @@ class StructureManager:
 
             impact["safe_changes"].append({
                 "type": "new_contract",
-                "from_id": contract.get("from_id", ""),
-                "to_id": contract.get("to_id", ""),
-                "description": f"New dependency: {contract.get('from_id', '')} → {contract.get('to_id', '')}"
+                "from_id": contract.get("from", ""),
+                "to_id": contract.get("to", ""),
+                "description": f"New dependency: {contract.get('from', '')} → {contract.get('to', '')}"
             })
 
         # Convert sets to lists for JSON serialization
@@ -551,50 +525,46 @@ class StructureManager:
         steps = []
         step_num = 1
 
-        # Step 1: Handle breaking changes first (deletions)
-        deleted = blueprint_changes.get("deleted_components", [])
+        deleted = blueprint_changes.get("deleted_entities", [])
         if deleted:
             steps.append({
                 "step": step_num,
                 "type": "breaking",
-                "action": "Review and remove deleted components",
-                "components": [c.get("id", "") for c in deleted],
+                "action": "Review and remove deleted entities",
+                "entities": [e.get("id", "") for e in deleted],
                 "priority": "high"
             })
             step_num += 1
 
-        # Step 2: Handle removed methods
         breaking = [c for c in impact["breaking_changes"] if c["type"] == "removed_methods"]
         if breaking:
             steps.append({
                 "step": step_num,
                 "type": "breaking",
-                "action": "Update code to remove deprecated methods",
+                "action": "Update code to remove methods no longer in design",
                 "details": breaking,
                 "priority": "high"
             })
             step_num += 1
 
-        # Step 3: Add new components
-        new_components = blueprint_changes.get("new_components", [])
-        if new_components:
+        new_entities = blueprint_changes.get("new_entities", [])
+        if new_entities:
             steps.append({
                 "step": step_num,
                 "type": "addition",
-                "action": "Create new components",
-                "components": [c.get("id", "") for c in new_components],
+                "action": "Create new entities",
+                "entities": [e.get("id", "") for e in new_entities],
                 "priority": "medium"
             })
             step_num += 1
 
-        # Step 4: Update modified components
-        modified = blueprint_changes.get("modified_components", [])
+        modified = blueprint_changes.get("modified_entities", [])
         if modified:
             steps.append({
                 "step": step_num,
                 "type": "modification",
-                "action": "Update existing components",
-                "components": [c.get("id", "") for c in modified],
+                "action": "Update existing entities",
+                "entities": [e.get("id", "") for e in modified],
                 "priority": "medium"
             })
             step_num += 1
@@ -606,7 +576,7 @@ class StructureManager:
                 "step": step_num,
                 "type": "dependency",
                 "action": "Add imports and dependencies",
-                "contracts": [f"{c.get('from_id', '')} → {c.get('to_id', '')}" for c in new_contracts],
+                "contracts": [f"{c.get('from', '')} → {c.get('to', '')}" for c in new_contracts],
                 "priority": "low"
             })
             step_num += 1
@@ -645,7 +615,7 @@ class StructureManager:
             if "entities" not in blueprint:
                 blueprint["entities"] = []
 
-            existing = self._find_component_in_blueprint(suggestion.component.id, blueprint)
+            existing = self._find_entity_in_blueprint(suggestion.component.id, blueprint)
             if not existing:
                 intent = empty_intent()
                 intent.setdefault("narrative", {})["role"] = suggestion.component.name
@@ -693,17 +663,15 @@ class StructureManager:
             if entities:
                 blueprint["entities"] = [
                     e for e in entities
-                    if e.get("id") != suggestion.component_id
+                    if e.get("id") != suggestion.blueprint_entity_id
                 ]
                 if root_entity is not None:
                     root_entity["children"] = [
                         cid for cid in (root_entity.get("children") or [])
-                        if cid != suggestion.component_id
+                        if cid != suggestion.blueprint_entity_id
                     ]
 
         elif suggestion.suggestion_type == "add_contract" and suggestion.contract:
-            if "contracts" not in blueprint:
-                blueprint["contracts"] = []
             from_id = suggestion.contract.from_id or ""
             to_id = suggestion.contract.to_id or ""
             oc = {
@@ -712,19 +680,20 @@ class StructureManager:
                 "file": suggestion.contract.file or "",
                 "symbols": list(suggestion.contract.symbols or []),
             }
-            contract_dict = {"from": from_id, "to": to_id, **oc}
-            existing_contract = next(
-                (c for c in blueprint.get("contracts", [])
-                 if (c.get("from") == from_id and c.get("to") == to_id and c.get("type") == contract_dict["type"])
-                 or (c.get("from_id") == from_id and c.get("to_id") == to_id and c.get("type") == contract_dict["type"])),
-                None,
-            )
-            if not existing_contract:
-                blueprint["contracts"].append(contract_dict)
-                for ent in blueprint.get("entities") or []:
-                    if (ent.get("id") or "") == from_id:
-                        ent.setdefault("outgoing_contracts", []).append(oc)
-                        break
+            for ent in blueprint.get("entities") or []:
+                if (ent.get("id") or "") != from_id:
+                    continue
+                ocs = ent.setdefault("outgoing_contracts", [])
+                if not isinstance(ocs, list):
+                    ent["outgoing_contracts"] = []
+                    ocs = ent["outgoing_contracts"]
+                if any(
+                    (x.get("to") == to_id and (x.get("type") or "dependency") == (oc.get("type") or "dependency"))
+                    for x in ocs if isinstance(x, dict)
+                ):
+                    break
+                ocs.append(oc)
+                break
 
         return save_blueprint_with_metadata(
             blueprint,
@@ -794,25 +763,21 @@ class StructureManager:
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         return BlueprintLoader.load_code_blueprint(self.manifest_dir)
 
-    def _find_component_in_blueprint(
+    def _find_entity_in_blueprint(
         self,
-        component_id: str,
+        entity_id: str,
         blueprint: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """Find a component in Blueprint by ID (entities first, then components compat)."""
+        """Find entity in blueprint by ID."""
         if not blueprint:
             return None
         entities = blueprint.get("entities") or []
         for ent in entities:
             if (ent.get("id") or "") == PROJECT_ROOT_ID:
                 continue
-            if ent.get("id") == component_id:
+            if ent.get("id") == entity_id:
                 return ent
-        components = blueprint.get("components") or []
-        return next(
-            (c for c in components if c.get("id") == component_id),
-            None
-        )
+        return None
 
     def _create_component_from_change(
         self,
@@ -823,7 +788,7 @@ class StructureManager:
             return None
 
         return Component(
-            id=change.component_id or f"{change.file_path}:{change.component_data.get('name', 'unknown')}",
+            id=change.node_id or f"{change.file_path}:{change.component_data.get('name', 'unknown')}",
             name=change.component_data.get("name", ""),
             type=change.component_data.get("type", "class"),
             file=change.file_path,
@@ -833,25 +798,25 @@ class StructureManager:
             module_path=change.file_path.replace(str(self.project_root), "").lstrip("/")
         )
 
-    def _suggest_file_path(self, component: Dict[str, Any]) -> str:
-        """Suggest file path for a new component."""
-        component_type = component.get("type", "class")
-        component_name = component.get("name", "component")
+    def _suggest_file_path(self, entity: Dict[str, Any]) -> str:
+        """Suggest file path for a new entity."""
+        entity_type = entity.get("type", "class")
+        entity_name = entity.get("name", "entity")
 
-        # Simple heuristic: use component name and type
-        if component_type == "class":
-            # Convert CamelCase to snake_case
+        if entity_type == "class":
             import re
-            snake_case = re.sub(r'(?<!^)(?=[A-Z])', '_', component_name).lower()
+            snake_case = re.sub(r'(?<!^)(?=[A-Z])', '_', entity_name).lower()
             return f"src/{snake_case}.py"
 
-        return f"src/{component_name.lower()}.py"
+        return f"src/{entity_name.lower()}.py"
 
-    def _get_file_for_component(self, component_id: str) -> str:
-        """Get file path for a component ID."""
+    def _get_file_for_entity(self, entity_id: str) -> str:
+        """Get file path for an entity ID."""
         blueprint = self._load_blueprint()
-        component = self._find_component_in_blueprint(component_id, blueprint)
-        return component.get("file", "") if component else ""
+        ent = self._find_entity_in_blueprint(entity_id, blueprint)
+        if not ent:
+            return ""
+        return (ent.get("reality") or {}).get("symbol", ent.get("file", ""))
 
     def _save_blueprint_backup(self) -> bool:
         """Save a backup of the current Blueprint before applying changes."""
@@ -905,9 +870,9 @@ class StructureManager:
 
                 # Create file with basic skeleton
                 content = f'"""\n{suggestion.action}\n"""\n\n'
-                if suggestion.blueprint_component_id:
+                if suggestion.blueprint_entity_id:
                     blueprint = self._load_blueprint()
-                    comp = self._find_component_in_blueprint(suggestion.blueprint_component_id, blueprint)
+                    comp = self._find_entity_in_blueprint(suggestion.blueprint_entity_id, blueprint)
                     if comp:
                         content += self._generate_class_skeleton(comp)
 
@@ -1070,7 +1035,7 @@ class StructureManager:
 
         Args:
             file_path: Path to the Python file
-            suggestion: CodeChangeSuggestion with blueprint_component_id
+            suggestion: CodeChangeSuggestion with blueprint_entity_id
 
         Returns:
             True if class was added successfully
@@ -1082,9 +1047,9 @@ class StructureManager:
 
             # Load component from blueprint
             blueprint = self._load_blueprint()
-            comp = self._find_component_in_blueprint(suggestion.blueprint_component_id, blueprint)
+            comp = self._find_entity_in_blueprint(suggestion.blueprint_entity_id, blueprint)
             if not comp:
-                logger.error(f"Component {suggestion.blueprint_component_id} not found in blueprint")
+                logger.error(f"Node {suggestion.blueprint_entity_id} not found in blueprint")
                 return False
 
             # Read file content
