@@ -192,7 +192,8 @@ class FileWatcher:
         Returns:
             True if Blueprint file has changed
         """
-        blueprint_file = self.project_root / ".manifest" / "blueprint.json"
+        from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE
+        blueprint_file = self.project_root / ".manifest" / BLUEPRINT_DESIGN_FILE
         if not blueprint_file.exists():
             return False
 

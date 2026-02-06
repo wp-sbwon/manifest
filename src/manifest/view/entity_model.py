@@ -1,30 +1,20 @@
 """
-Integration module for view: load blueprint + blueprint_code, run compare/sync, attach validation per entity.
-
-View consumes get_entities_for_view() as the single source for diagram and inspector data.
+Load design and code blueprints, compare, attach validation; write integrated view schema.
 """
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Set
 
 from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
 from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator
+from manifest.audit.blueprint.view_schema import build_view_schema, write_view_schema
 from manifest.audit.entity_schema import PROJECT_ROOT_ID
 
 
 def get_entities_for_view(manifest_dir: Path) -> Dict[str, Any]:
     """
-    Load design and code blueprints, run comparison, attach validation per entity.
-
-    Returns a single dict for the view:
-      - blueprint: design blueprint (with components compat from loader)
-      - code_blueprint: code blueprint (with components compat)
-      - comp_status: component_id -> status (healthy | planned | deviation | partial)
-      - validation_by_id: entity_id -> { "status": str, "deviations": [str] }
-      - architecture: loaded architecture.json (for features/diagram title)
-      - conflicts: list of BlueprintConflict (from comparator)
-
-    No validation key is stored in blueprint/code files; it is computed here.
+    Load design and code, compare, attach validation. Returns dict with blueprint,
+    code_blueprint, comp_status, validation_by_id, architecture, conflicts, view_schema.
     """
     manifest_dir = Path(manifest_dir)
     blueprint = BlueprintLoader.load_blueprint(
@@ -46,9 +36,11 @@ def get_entities_for_view(manifest_dir: Path) -> Dict[str, Any]:
     comparator = BlueprintComparator()
     conflicts: List[Any] = comparator.compare_blueprints(blueprint, code_blueprint)
 
-    # Build validation per entity: status from comp_status, deviations from conflicts
+    view_schema = build_view_schema(blueprint, code_blueprint, comp_status, conflicts)
+    write_view_schema(manifest_dir, view_schema)
+
     validation_by_id: Dict[str, Dict[str, Any]] = {}
-    entity_ids: set = set()
+    entity_ids: Set[str] = set()
     for ent in (blueprint.get("entities") or []) + (code_blueprint.get("entities") or []):
         eid = ent.get("id")
         if eid:
@@ -72,4 +64,5 @@ def get_entities_for_view(manifest_dir: Path) -> Dict[str, Any]:
         "validation_by_id": validation_by_id,
         "architecture": architecture,
         "conflicts": conflicts,
+        "view_schema": view_schema,
     }

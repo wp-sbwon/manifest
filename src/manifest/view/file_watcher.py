@@ -1,9 +1,7 @@
 """
-View File Watcher: watch .manifest/ files for real-time View sync.
+Watch .manifest/ files; invoke callback on change.
 
-Polls key files in .manifest/ and invokes a callback when any change is
-detected. Used by ManifestViewApp to refresh Task and Design-vs-Code views
-when tasks.json, blueprint_code.json (Actual Code), state.json, or conflicts change.
+Polls WATCH_FILES and conflicts dir.
 """
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
@@ -13,7 +11,7 @@ from manifest.core.logger import get_logger
 logger = get_logger(__name__)
 
 # Key files/dirs we watch (relative to manifest_dir)
-WATCH_FILES = ("tasks.json", "state.json", "blueprint_code.json", "blueprint.json", "architecture.json", "design_history.json")
+WATCH_FILES = ("tasks.json", "state.json", "blueprint_code.json", "blueprint_design.json", "blueprint_view.json", "architecture.json", "design_history.json")
 WATCH_DIR = "conflicts"
 
 

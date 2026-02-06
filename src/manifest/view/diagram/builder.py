@@ -60,6 +60,20 @@ def _component_label(comp: Dict[str, Any]) -> str:
     return (comp.get("name") or comp.get("id") or "?").strip()
 
 
+def _entity_label(ent: Dict[str, Any]) -> str:
+    """Label for entity: name, or intent.narrative.role, or reality.symbol, or id."""
+    name = (ent.get("name") or "").strip()
+    if name:
+        return name
+    role = ((ent.get("intent") or {}).get("narrative") or {}).get("role") or ""
+    if role:
+        return role.strip()
+    symbol = (ent.get("reality") or {}).get("symbol") or ""
+    if symbol:
+        return symbol.strip()
+    return (ent.get("id") or "?").strip()
+
+
 def _status_for(comp_status: Dict[str, str], comp_id: str) -> str:
     return comp_status.get(comp_id, "planned")
 
@@ -186,3 +200,51 @@ def build_diagram_spec_from_entities(
     """Build diagram spec from entity tree (root_id, children) and contracts. Uses FLOW ordering."""
     ordered = _entity_tree_order(entities, contracts, root_id, filter_app_only=filter_app_only)
     return build_flat_diagram_spec(ordered, comp_status, title=title or "ARCHITECTURE FLOW")
+
+
+def build_diagram_spec_layered(
+    entities: List[Dict[str, Any]],
+    comp_status: Dict[str, str],
+    root_id: str = "PROJECT_ROOT",
+    title: Optional[str] = "ARCHITECTURE FLOW",
+    filter_app_only: bool = True,
+) -> Dict[str, Any]:
+    """
+    Layer 1: direct children of root_id (structured). Layer 2: under each L1 node, a row of its children.
+    Returns spec with nodes[].row for sub-entities; each node has entity_id and full entity in _entity for selection.
+    """
+    id_to_ent = {e.get("id"): e for e in entities if e.get("id")}
+    root = id_to_ent.get(root_id)
+    if not root:
+        return {"title": title or "ARCHITECTURE FLOW", "root_id": root_id, "nodes": []}
+    child_ids = [cid for cid in (root.get("children") or []) if cid in id_to_ent]
+    if filter_app_only:
+        child_ids = [cid for cid in child_ids if is_app_component(id_to_ent[cid])]
+    nodes: List[Dict[str, Any]] = []
+    for cid in child_ids:
+        ent = id_to_ent[cid]
+        row_entities = [id_to_ent[tid] for tid in (ent.get("children") or []) if tid in id_to_ent]
+        if filter_app_only:
+            row_entities = [e for e in row_entities if is_app_component(e)]
+        row = [
+            {
+                "label": _entity_label(e),
+                "status": _status_for(comp_status, e.get("id") or ""),
+                "entity_id": e.get("id") or "",
+                "_entity": e,
+            }
+            for e in row_entities
+        ]
+        nodes.append({
+            "type": "module",
+            "label": _entity_label(ent),
+            "status": _status_for(comp_status, cid),
+            "entity_id": cid,
+            "_entity": ent,
+            "row": row,
+        })
+    return {
+        "title": title or "ARCHITECTURE FLOW",
+        "root_id": root_id,
+        "nodes": nodes,
+    }

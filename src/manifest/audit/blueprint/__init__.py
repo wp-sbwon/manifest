@@ -8,13 +8,18 @@ This package contains modules for managing blueprints:
 - BlueprintSynchronizer: Handles blueprint conflict resolution
 - design_identity: Validates/aligns design component id and name with code blueprint
 """
+from .manifest_filenames import BLUEPRINT_DESIGN_FILE, BLUEPRINT_CODE_FILE, BLUEPRINT_VIEW_FILE
 from .blueprint_loader import BlueprintLoader
 from .blueprint_metadata import load_blueprint_with_metadata, save_blueprint_with_metadata
 from .blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
 from .blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
 from .design_identity import validate_and_align_design_identity
+from .view_schema import build_view_schema, write_view_schema, load_view_schema
 
 __all__ = [
+    "BLUEPRINT_DESIGN_FILE",
+    "BLUEPRINT_CODE_FILE",
+    "BLUEPRINT_VIEW_FILE",
     "BlueprintLoader",
     "load_blueprint_with_metadata",
     "save_blueprint_with_metadata",
@@ -24,4 +29,7 @@ __all__ = [
     "BlueprintSynchronizer",
     "ConflictReport",
     "validate_and_align_design_identity",
+    "build_view_schema",
+    "write_view_schema",
+    "load_view_schema",
 ]

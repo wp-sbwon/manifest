@@ -66,7 +66,8 @@ class CodeWatcher:
             extractor = CodeExtractor(self.project_root)
             blueprint = extractor.extract_project_structure(self.project_root)
             self.manifest_dir.mkdir(parents=True, exist_ok=True)
-            blueprint_file = self.manifest_dir / "blueprint_code.json"
+            from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_CODE_FILE
+            blueprint_file = self.manifest_dir / BLUEPRINT_CODE_FILE
             extractor.save_blueprint(blueprint, blueprint_file)
             logger.info("Updated %s from code changes", blueprint_file)
             return True

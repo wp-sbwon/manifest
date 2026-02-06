@@ -59,11 +59,12 @@ def render_diagram(spec: Dict[str, Any], config: Dict[str, Any]) -> str:
         label = node.get("label") or "?"
         status = node.get("status") or "planned"
         methods = node.get("methods")
+        row = node.get("row")
 
-        if not methods:
+        if not methods and not row:
             color = gateway_color if node_type == "gateway" else module_color
             box_one(label, status, color)
-        else:
+        elif methods:
             mw = max(10, min(14, max(len(m.get("label") or "?") for m in methods) + 6))
             total_w = mw * len(methods) + max(0, len(methods) - 1) * 2
             st_color = _status_color(status, config)
@@ -84,6 +85,27 @@ def render_diagram(spec: Dict[str, Any], config: Dict[str, Any]) -> str:
             lines.append(f"  [{module_color}]│ [/]" + " ".join(parts_mid) + f" [{module_color}]│[/]")
             lines.append(f"  [{module_color}]│ [/]" + " ".join(parts_bot) + f" [{module_color}]│[/]")
             lines.append(f"  [{module_color}]└{'─' * (total_w + 2)}┘[/]")
+        else:
+            color = gateway_color if node_type == "gateway" else module_color
+            box_one(label, status, color)
+
+        if row:
+            arrow_down()
+            tw = max(8, min(12, max(len(t.get("label") or "?") for t in row) + 4))
+            parts_top = []
+            parts_mid = []
+            parts_bot = []
+            for t in row:
+                tl = (t.get("label") or "?")[:tw-4]
+                ts = t.get("status") or "planned"
+                tst = _status_color(ts, config)
+                parts_top.append(f"[{method_color}]┌{'─' * (tw-2)}┐[/]")
+                parts_mid.append(f"[{method_color}]│[/][{tst}]{S}[/] [{method_color}]{tl:<{tw-4}}│[/]")
+                parts_bot.append(f"[{method_color}]└{'─' * (tw-2)}┘[/]")
+            lines.append("  " + " ".join(parts_top))
+            lines.append("  " + " ".join(parts_mid))
+            lines.append("  " + " ".join(parts_bot))
+            arrow_down()
 
         if i < len(nodes) - 1:
             arrow_down()

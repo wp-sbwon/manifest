@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
 
+from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE, BLUEPRINT_CODE_FILE
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -80,7 +81,7 @@ def load_blueprint_with_metadata(blueprint_file: Path, default_source: str = "ll
             blueprint = json.load(f)
 
         # Ensure metadata
-        if blueprint_file.name == "blueprint_code.json":
+        if blueprint_file.name == BLUEPRINT_CODE_FILE:
             blueprint = ensure_blueprint_metadata(blueprint, "code_extraction", True, "ast_parsing")
         else:
             blueprint = ensure_blueprint_metadata(blueprint, default_source, default_ground_truth)
@@ -108,9 +109,8 @@ def save_blueprint_with_metadata(blueprint: Dict[str, Any], blueprint_file: Path
     """
     Save blueprint file with metadata.
 
-    When saving design blueprint (blueprint.json), validates and optionally
-    aligns component identity (id/name) against blueprint_code.json so
-    top-down and bottom-up docs are comparable for deviation calculation.
+    When saving design blueprint (blueprint_design.json), validates and optionally
+    aligns component identity (id/name) against blueprint_code.json.
 
     Args:
         blueprint: Blueprint dictionary
@@ -123,19 +123,13 @@ def save_blueprint_with_metadata(blueprint: Dict[str, Any], blueprint_file: Path
         True if successful, False otherwise
     """
     try:
-        # Migrate legacy (components) to new format (entities) before save
-        from manifest.audit.entity_validation import is_legacy_format
-        from manifest.audit.blueprint_migrate import migrate_blueprint_data
         from manifest.audit.entity_validation import validate_blueprint_data
-
-        if is_legacy_format(blueprint):
-            blueprint = migrate_blueprint_data(blueprint, is_plan=(blueprint_file.name == "blueprint.json"))
 
         blueprint = ensure_blueprint_metadata(blueprint, source, ground_truth, extraction_method)
         blueprint["last_updated"] = datetime.utcnow().isoformat()
 
         # Align design blueprint identity with code blueprint when saving design
-        if blueprint_file.name == "blueprint.json" and source in (
+        if blueprint_file.name == BLUEPRINT_DESIGN_FILE and source in (
             "llm_design", "llm_architecture", "spec_first_management", "automatic_update"
         ):
             from manifest.audit.blueprint.design_identity import validate_and_align_design_identity
@@ -151,21 +145,34 @@ def save_blueprint_with_metadata(blueprint: Dict[str, Any], blueprint_file: Path
             logger.error("Blueprint validation failed before save: %s", errors)
             return False
 
-        # Persist only new-format keys; strip compat-only keys (components, zones)
-        out = {k: v for k, v in blueprint.items() if k not in ("components", "zones")}
-        # Normalize contracts to use "from"/"to" (JSON schema) not from_id/to_id
-        contracts = out.get("contracts") or []
-        normalized_contracts = []
-        for c in contracts:
-            if not isinstance(c, dict):
-                continue
-            nc = dict(c)
-            if "from" not in nc and "from_id" in nc:
-                nc["from"] = nc.get("from_id") or ""
-            if "to" not in nc and "to_id" in nc:
-                nc["to"] = nc.get("to_id") or ""
-            normalized_contracts.append(nc)
-        out["contracts"] = normalized_contracts
+        entities = list(blueprint.get("entities") or [])
+        contracts = blueprint.get("contracts") or []
+        from manifest.audit.entity_schema import empty_outgoing_contracts
+        if contracts:
+            from_id_to_ocs: Dict[str, list] = {}
+            for c in contracts:
+                if not isinstance(c, dict):
+                    continue
+                from_id = c.get("from") or c.get("from_id") or ""
+                to_id = c.get("to") or c.get("to_id") or ""
+                if not from_id or not to_id:
+                    continue
+                from_id_to_ocs.setdefault(from_id, []).append({
+                    "to": to_id,
+                    "type": c.get("type", "dependency"),
+                    "file": c.get("file", ""),
+                    "symbols": list(c.get("symbols") or []),
+                })
+            for ent in entities:
+                eid = ent.get("id") or ""
+                ent["outgoing_contracts"] = from_id_to_ocs.get(eid, [])
+        else:
+            for ent in entities:
+                if "outgoing_contracts" not in ent or not isinstance(ent.get("outgoing_contracts"), list):
+                    ent["outgoing_contracts"] = empty_outgoing_contracts()
+
+        out = {k: v for k, v in blueprint.items() if k not in ("contracts", "components", "zones")}
+        out["entities"] = entities
 
         blueprint_file.parent.mkdir(parents=True, exist_ok=True)
         with open(blueprint_file, "w", encoding="utf-8") as f:

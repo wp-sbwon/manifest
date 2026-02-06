@@ -4,6 +4,7 @@
 
 ## 버전 관리
 
+- **pre-reorg-2026/**: 2026 문서 재구성 이전의 활성 문서 (VIEW_DATA_FORMAT, BLUEPRINT_ALIGNMENT, PROJECT_STRUCTURE, VIEW_APP_AND_BACKENDS 등). 재구성 후 docs는 앱 화면 구조(Header, Diagram, Sidebar, Inspector) 기준으로 정리됨.
 - **superseded-2026/**: 2026 이전 계획·가이드·상태 문서 (API, ARCHITECTURE, CONTRIBUTING, FINAL_PLAN, PLAN_ADDENDUM 등)
 - **v1.0/**: 2026-01-24 이전 문서들 (초기 구현 및 리뷰 문서)
 

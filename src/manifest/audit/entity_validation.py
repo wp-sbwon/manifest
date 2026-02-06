@@ -1,13 +1,12 @@
 """
-Mechanical validation for recursive entity schema (Option B).
+Mechanical validation for recursive entity schema.
 
-Validate blueprint.json and blueprint_code.json (new format: entities array).
-Normalize null to ""/[]/{} on read. Used before every write and on every read.
+Normalize null to ""/[]/{}; ensure required keys. Use on read and before write.
 """
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-from manifest.audit.entity_schema import empty_intent, empty_reality
+from manifest.audit.entity_schema import empty_intent, empty_reality, empty_outgoing_contracts
 
 
 def _normalize_value(value: Any) -> Any:
@@ -35,8 +34,6 @@ def normalize_for_schema(data: Dict[str, Any]) -> Dict[str, Any]:
         data["version"] = "1.0"
     if "entities" not in data:
         data["entities"] = []
-    if "contracts" not in data:
-        data["contracts"] = []
     if "root_id" not in data:
         data["root_id"] = ""
 
@@ -61,24 +58,39 @@ def normalize_for_schema(data: Dict[str, Any]) -> Dict[str, Any]:
             ent["reality"] = empty_reality()
         else:
             ent["reality"] = _normalize_value(ent["reality"])
+        if "outgoing_contracts" not in ent or not isinstance(ent.get("outgoing_contracts"), list):
+            ent["outgoing_contracts"] = empty_outgoing_contracts()
+        else:
+            oc = []
+            for c in ent["outgoing_contracts"]:
+                if not isinstance(c, dict):
+                    continue
+                c = _normalize_value(c)
+                oc.append({
+                    "to": c.get("to") or "",
+                    "type": c.get("type") or "dependency",
+                    "file": c.get("file") or "",
+                    "symbols": list(c.get("symbols") or []),
+                })
+            ent["outgoing_contracts"] = oc
         normalized_entities.append(ent)
     data["entities"] = normalized_entities
 
-    # Normalize contracts
-    contracts = data.get("contracts") or []
-    normalized_contracts = []
-    for c in contracts:
-        if not isinstance(c, dict):
-            continue
-        c = _normalize_value(c)
-        if "from" not in c:
-            c["from"] = ""
-        if "to" not in c:
-            c["to"] = ""
-        if "type" not in c:
-            c["type"] = "dependency"
-        normalized_contracts.append(c)
-    data["contracts"] = normalized_contracts
+    contracts = data.get("contracts")
+    if contracts is not None and isinstance(contracts, list):
+        normalized_contracts = []
+        for c in contracts:
+            if not isinstance(c, dict):
+                continue
+            c = _normalize_value(c)
+            normalized_contracts.append({
+                "from": c.get("from") or c.get("from_id") or "",
+                "to": c.get("to") or c.get("to_id") or "",
+                "type": c.get("type") or "dependency",
+                "file": c.get("file") or "",
+                "symbols": list(c.get("symbols") or []),
+            })
+        data["contracts"] = normalized_contracts
 
     return data
 
@@ -107,8 +119,19 @@ def _validate_entity(data: Any, path: str) -> List[str]:
         errors.append(f"{path}: missing 'reality'")
     elif not isinstance(data["reality"], dict):
         errors.append(f"{path}: 'reality' must be an object")
+    if "outgoing_contracts" not in data:
+        errors.append(f"{path}: missing 'outgoing_contracts'")
+    elif not isinstance(data["outgoing_contracts"], list):
+        errors.append(f"{path}: 'outgoing_contracts' must be an array")
+    else:
+        for i, oc in enumerate(data.get("outgoing_contracts") or []):
+            if isinstance(oc, dict):
+                if "to" not in oc:
+                    errors.append(f"{path}.outgoing_contracts[{i}]: missing 'to'")
+                if "type" not in oc:
+                    errors.append(f"{path}.outgoing_contracts[{i}]: missing 'type'")
     # No nulls
-    for key in ("id", "children", "dependencies", "intent", "reality"):
+    for key in ("id", "children", "dependencies", "intent", "reality", "outgoing_contracts"):
         if key in data and data[key] is None:
             errors.append(f"{path}: '{key}' must not be null")
     return errors
@@ -124,7 +147,7 @@ def validate_entity(data: Dict[str, Any]) -> Tuple[bool, List[str]]:
 
 
 def _validate_blueprint_root(data: Dict[str, Any]) -> List[str]:
-    """Validate root and all entities; return list of errors."""
+    """Validate root and all entities. Top-level contracts optional."""
     errors: List[str] = []
     if not isinstance(data, dict):
         return ["root must be an object"]
@@ -134,22 +157,10 @@ def _validate_blueprint_root(data: Dict[str, Any]) -> List[str]:
         errors.append("missing 'entities'")
     elif not isinstance(data["entities"], list):
         errors.append("'entities' must be an array")
-    if "contracts" not in data:
-        errors.append("missing 'contracts'")
-    elif not isinstance(data["contracts"], list):
-        errors.append("'contracts' must be an array")
     for i, ent in enumerate(data.get("entities") or []):
         errors.extend(_validate_entity(ent, f"entities[{i}]"))
-    for i, c in enumerate(data.get("contracts") or []):
-        if not isinstance(c, dict):
-            errors.append(f"contracts[{i}]: must be an object")
-        else:
-            if "from" not in c:
-                errors.append(f"contracts[{i}]: missing 'from'")
-            if "to" not in c:
-                errors.append(f"contracts[{i}]: missing 'to'")
-            if "type" not in c:
-                errors.append(f"contracts[{i}]: missing 'type'")
+    if "contracts" in data and not isinstance(data["contracts"], list):
+        errors.append("'contracts' must be an array when present")
     return errors
 
 
@@ -188,10 +199,3 @@ def validate_blueprint_code_file(path: Path) -> Tuple[bool, List[str]]:
     Returns (valid, list of error messages).
     """
     return validate_blueprint_file(path)
-
-
-def is_legacy_format(data: Dict[str, Any]) -> bool:
-    """Return True if data looks like old format (components instead of entities)."""
-    if not isinstance(data, dict):
-        return True
-    return "components" in data and "entities" not in data

@@ -17,6 +17,7 @@ from manifest.audit.entity_schema import (
     PROJECT_ROOT_ID,
     empty_intent,
     empty_reality,
+    empty_outgoing_contracts,
 )
 from manifest.audit.monitoring.file_watcher import FileWatcher
 from manifest.core.logger import get_logger
@@ -82,8 +83,9 @@ class StructureManager:
         self.file_watcher = FileWatcher(project_root)
 
         # File paths
-        self.blueprint_file = self.manifest_dir / "blueprint.json"
-        self.blueprint_code_file = self.manifest_dir / "blueprint_code.json"
+        from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE, BLUEPRINT_CODE_FILE
+        self.blueprint_file = self.manifest_dir / BLUEPRINT_DESIGN_FILE
+        self.blueprint_code_file = self.manifest_dir / BLUEPRINT_CODE_FILE
         self.architecture_file = self.manifest_dir / "architecture.json"
 
         # Pending changes
@@ -645,7 +647,6 @@ class StructureManager:
 
             existing = self._find_component_in_blueprint(suggestion.component.id, blueprint)
             if not existing:
-                # New-format entity: id, children, dependencies, intent, reality
                 intent = empty_intent()
                 intent.setdefault("narrative", {})["role"] = suggestion.component.name
                 intent.setdefault("narrative", {})["mission"] = ""
@@ -655,6 +656,7 @@ class StructureManager:
                     "dependencies": [],
                     "intent": intent,
                     "reality": empty_reality(),
+                    "outgoing_contracts": empty_outgoing_contracts(),
                     "name": suggestion.component.name,
                     "file": suggestion.component.file or "",
                     "methods": suggestion.component.methods or [],
@@ -702,25 +704,27 @@ class StructureManager:
         elif suggestion.suggestion_type == "add_contract" and suggestion.contract:
             if "contracts" not in blueprint:
                 blueprint["contracts"] = []
-
-            contract_dict = {
-                "from": suggestion.contract.from_id,
-                "to": suggestion.contract.to_id,
-                "type": suggestion.contract.type,
-                "symbols": list(suggestion.contract.symbols or []),
+            from_id = suggestion.contract.from_id or ""
+            to_id = suggestion.contract.to_id or ""
+            oc = {
+                "to": to_id,
+                "type": suggestion.contract.type or "dependency",
                 "file": suggestion.contract.file or "",
+                "symbols": list(suggestion.contract.symbols or []),
             }
-
+            contract_dict = {"from": from_id, "to": to_id, **oc}
             existing_contract = next(
                 (c for c in blueprint.get("contracts", [])
-                 if (c.get("from") == contract_dict["from"] and c.get("to") == contract_dict["to"]
-                     and c.get("type") == contract_dict["type"]) or
-                 (c.get("from_id") == contract_dict["from"] and c.get("to_id") == contract_dict["to"]
-                     and c.get("type") == contract_dict["type"])),
-                None
+                 if (c.get("from") == from_id and c.get("to") == to_id and c.get("type") == contract_dict["type"])
+                 or (c.get("from_id") == from_id and c.get("to_id") == to_id and c.get("type") == contract_dict["type"])),
+                None,
             )
             if not existing_contract:
                 blueprint["contracts"].append(contract_dict)
+                for ent in blueprint.get("entities") or []:
+                    if (ent.get("id") or "") == from_id:
+                        ent.setdefault("outgoing_contracts", []).append(oc)
+                        break
 
         return save_blueprint_with_metadata(
             blueprint,

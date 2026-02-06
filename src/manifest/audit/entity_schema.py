@@ -1,9 +1,8 @@
 """
-Canonical schema for recursive universal entities (Option B).
+Canonical schema for recursive universal entities.
 
-Blueprint.json and blueprint_code.json share this shape. No nulls;
-use "" for strings, [] for lists, {} for objects. Used by writers
-(agents, CodeExtractor) and readers (BlueprintLoader, view).
+Persisted shape: version, root_id, entities. Each entity: id, children,
+dependencies, intent, reality, outgoing_contracts. No nulls; use "" or []/{}.
 """
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -110,7 +109,7 @@ class Reality:
 
 @dataclass
 class Entity:
-    """Recursive universal entity: id, children, dependencies, intent, reality."""
+    """Recursive entity: id, children, dependencies, intent, reality, outgoing_contracts."""
     id: str = ""
     children: List[str] = field(default_factory=list)
     dependencies: List[str] = field(default_factory=list)
@@ -130,6 +129,7 @@ class Entity:
         "topology_actual": {"type": "", "map": []},
         "preview": "",
     })
+    outgoing_contracts: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -144,13 +144,13 @@ class Contract:
 
 @dataclass
 class Validation:
-    """Per-entity validation (output only; not stored in plan/actual files)."""
-    status: str = "planned"  # healthy | deviation | planned | partial
+    """Per-entity validation result."""
+    status: str = "planned"
     deviations: List[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
-# Root shape for blueprint.json and blueprint_code.json
+# Root shape for blueprint_design.json and blueprint_code.json
 # ---------------------------------------------------------------------------
 
 
@@ -164,7 +164,7 @@ def default_contracts() -> List[Dict[str, Any]]:
 
 @dataclass
 class BlueprintRoot:
-    """Top-level shape for blueprint.json and blueprint_code.json."""
+    """Top-level shape for blueprint_design.json and blueprint_code.json."""
     version: str = "1.0"
     root_id: str = ""
     entities: List[Dict[str, Any]] = field(default_factory=default_entities)
@@ -201,6 +201,11 @@ def empty_reality() -> Dict[str, Any]:
     }
 
 
+def empty_outgoing_contracts() -> List[Dict[str, Any]]:
+    """Returns an empty list."""
+    return []
+
+
 def empty_entity(id: str = "") -> Dict[str, Any]:
     return {
         "id": id,
@@ -208,15 +213,16 @@ def empty_entity(id: str = "") -> Dict[str, Any]:
         "dependencies": [],
         "intent": empty_intent(),
         "reality": empty_reality(),
+        "outgoing_contracts": empty_outgoing_contracts(),
     }
 
 
 def empty_blueprint_root() -> Dict[str, Any]:
+    """Root shape: version, root_id, entities."""
     return {
         "version": "1.0",
         "root_id": "",
         "entities": [],
-        "contracts": [],
     }
 
 
@@ -230,12 +236,24 @@ def entity_json_schema() -> Dict[str, Any]:
     return {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
-        "required": ["id", "children", "dependencies", "intent", "reality"],
+        "required": ["id", "children", "dependencies", "intent", "reality", "outgoing_contracts"],
         "additionalProperties": True,
         "properties": {
             "id": {"type": "string"},
             "children": {"type": "array", "items": {"type": "string"}},
             "dependencies": {"type": "array", "items": {"type": "string"}},
+            "outgoing_contracts": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "to": {"type": "string"},
+                        "type": {"type": "string"},
+                        "file": {"type": "string"},
+                        "symbols": {"type": "array", "items": {"type": "string"}},
+                    },
+                },
+            },
             "intent": {
                 "type": "object",
                 "required": ["narrative", "blueprint", "protocol", "profile", "governance"],
@@ -293,7 +311,7 @@ def blueprint_root_json_schema() -> Dict[str, Any]:
     return {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",
-        "required": ["version", "entities", "contracts"],
+        "required": ["version", "entities"],
         "additionalProperties": True,
         "properties": {
             "version": {"type": "string"},
