@@ -61,7 +61,7 @@ Task Description: {task_description}
 
 ### Task Scope:
 Allowed Files: {allowed_files}
-Allowed Components: {allowed_components}
+Allowed Entities: {allowed_entities}
 
 ## YOUR TASK
 
@@ -161,15 +161,13 @@ class TestAgent:
             agent_id: Unique identifier for this agent.
             executor: Executor instance for LLM API calls.
             state_manager: State manager for saving test results.
-            terminal_router: Optional terminal router (kept for backward compatibility,
-                but command execution should use tool_executor instead).
+            terminal_router: Optional; tool_executor preferred for commands.
             tool_executor: Optional tool executor for executing tool calls.
                 This is the primary way to execute commands and file operations.
         """
         self.agent_id = agent_id
         self.executor = executor
         self.state_manager = state_manager
-        # terminal_router kept for backward compatibility, but tool_executor is preferred
         self.terminal_router = terminal_router
         self.tool_executor = tool_executor
         self.message_history: List[Dict[str, str]] = []
@@ -529,7 +527,7 @@ class TestAgent:
         # Get task scope
         task_scope = context.get("task_scope", {})
         allowed_files = ", ".join(task_scope.get("allowed_files", []))
-        allowed_components = ", ".join([c.get("name", c.get("id", "")) for c in task_scope.get("components", [])])
+        allowed_entities = ", ".join([e.get("name", e.get("id", "")) for e in task_scope.get("entities", [])])
 
         return TDD_TEST_PROMPT_TEMPLATE.format(
             TEST_AGENT_IDENTITY=TEST_AGENT_IDENTITY,
@@ -538,7 +536,7 @@ class TestAgent:
             task_description=task_description,
             planner_plan=planner_plan or "No plan available",
             allowed_files=allowed_files or "All files",
-            allowed_components=allowed_components or "All components"
+            allowed_entities=allowed_entities or "All entities"
         )
 
     def _generate_test_execution_prompt(self, task_id: str, context: Dict[str, Any]) -> str:

@@ -220,7 +220,7 @@ class AgentCoordinator:
 
         # Validate scope
         task_scope = context.get("task_scope", {})
-        if not task_scope.get("components") and not task_scope.get("allowed_files"):
+        if not task_scope.get("entities") and not task_scope.get("allowed_files"):
             # No scope defined - warn but continue
             logger.warning(f"Task {task_id} has no defined scope")
 

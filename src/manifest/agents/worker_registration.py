@@ -51,7 +51,7 @@ class WorkerRegistration:
             task["agent"]["container_id"] = container_id
 
         task["scope"] = {
-            "components": task_scope.get("components", []),
+            "entities": task_scope.get("entities", []),
             "files": task_scope.get("allowed_files", []),
             "allowed_modifications": task_scope.get("allowed_modifications", []),
         }

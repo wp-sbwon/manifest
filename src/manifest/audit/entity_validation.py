@@ -29,7 +29,7 @@ def normalize_for_schema(data: Dict[str, Any]) -> Dict[str, Any]:
         return {}
     data = _normalize_value(data)
 
-    # Top-level required keys for blueprint root
+    # Ensure required root keys
     if "version" not in data:
         data["version"] = "1.0"
     if "entities" not in data:
@@ -75,22 +75,6 @@ def normalize_for_schema(data: Dict[str, Any]) -> Dict[str, Any]:
             ent["outgoing_contracts"] = oc
         normalized_entities.append(ent)
     data["entities"] = normalized_entities
-
-    contracts = data.get("contracts")
-    if contracts is not None and isinstance(contracts, list):
-        normalized_contracts = []
-        for c in contracts:
-            if not isinstance(c, dict):
-                continue
-            c = _normalize_value(c)
-            normalized_contracts.append({
-                "from": c.get("from") or c.get("from_id") or "",
-                "to": c.get("to") or c.get("to_id") or "",
-                "type": c.get("type") or "dependency",
-                "file": c.get("file") or "",
-                "symbols": list(c.get("symbols") or []),
-            })
-        data["contracts"] = normalized_contracts
 
     return data
 
@@ -147,7 +131,7 @@ def validate_entity(data: Dict[str, Any]) -> Tuple[bool, List[str]]:
 
 
 def _validate_blueprint_root(data: Dict[str, Any]) -> List[str]:
-    """Validate root and all entities. Top-level contracts optional."""
+    """Validate root and all entities."""
     errors: List[str] = []
     if not isinstance(data, dict):
         return ["root must be an object"]
@@ -159,8 +143,6 @@ def _validate_blueprint_root(data: Dict[str, Any]) -> List[str]:
         errors.append("'entities' must be an array")
     for i, ent in enumerate(data.get("entities") or []):
         errors.extend(_validate_entity(ent, f"entities[{i}]"))
-    if "contracts" in data and not isinstance(data["contracts"], list):
-        errors.append("'contracts' must be an array when present")
     return errors
 
 

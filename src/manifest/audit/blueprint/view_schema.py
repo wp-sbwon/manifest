@@ -87,9 +87,9 @@ def build_view_schema(
         }
         deviations = [
             c.message for c in conflicts
-            if getattr(c, "component_id", None) == eid
-            or (getattr(c, "top_down_component") or {}).get("id") == eid
-            or (getattr(c, "bottom_up_component") or {}).get("id") == eid
+            if getattr(c, "node_id", None) == eid
+            or (getattr(c, "top_down_node") or {}).get("id") == eid
+            or (getattr(c, "bottom_up_node") or {}).get("id") == eid
         ]
         status = comp_status.get(eid, "planned") if eid != root_id else "planned"
         view_entities.append({

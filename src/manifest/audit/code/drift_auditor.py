@@ -1,4 +1,4 @@
-"""Backward compatibility: use DeviationAuditor and DeviationConflict."""
+"""Alias: DeviationAuditor, DeviationConflict."""
 from .deviation_auditor import (
     Severity,
     DeviationConflict,

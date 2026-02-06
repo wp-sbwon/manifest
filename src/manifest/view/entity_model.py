@@ -14,7 +14,7 @@ from manifest.audit.entity_schema import PROJECT_ROOT_ID
 def get_entities_for_view(manifest_dir: Path) -> Dict[str, Any]:
     """
     Load design and code, compare, attach validation. Returns dict with blueprint,
-    code_blueprint, comp_status, validation_by_id, architecture, conflicts, view_schema.
+    code_blueprint, comp_status, validation_by_id, conflicts, view_schema. New schema only.
     """
     manifest_dir = Path(manifest_dir)
     blueprint = BlueprintLoader.load_blueprint(
@@ -22,16 +22,9 @@ def get_entities_for_view(manifest_dir: Path) -> Dict[str, Any]:
     )
     code_blueprint = BlueprintLoader.load_code_blueprint(manifest_dir)
 
-    arch_file = manifest_dir / "architecture.json"
-    if arch_file.exists():
-        from manifest.audit.metadata.architecture_metadata import load_architecture_with_metadata
-        architecture = load_architecture_with_metadata(arch_file)
-    else:
-        architecture = {}
-
     sync = BlueprintSynchronizer()
-    status_info = sync.calculate_implementation_status(blueprint, code_blueprint, architecture)
-    comp_status: Dict[str, str] = status_info.get("component_statuses", {}) or {}
+    status_info = sync.calculate_implementation_status(blueprint, code_blueprint)
+    comp_status: Dict[str, str] = status_info.get("node_statuses", {}) or {}
 
     comparator = BlueprintComparator()
     conflicts: List[Any] = comparator.compare_blueprints(blueprint, code_blueprint)
@@ -51,9 +44,9 @@ def get_entities_for_view(manifest_dir: Path) -> Dict[str, Any]:
         status = comp_status.get(eid, "planned")
         deviations = [
             c.message for c in conflicts
-            if getattr(c, "component_id", None) == eid
-            or (getattr(c, "top_down_component") or {}).get("id") == eid
-            or (getattr(c, "bottom_up_component") or {}).get("id") == eid
+            if getattr(c, "node_id", None) == eid
+            or (getattr(c, "top_down_node") or {}).get("id") == eid
+            or (getattr(c, "bottom_up_node") or {}).get("id") == eid
         ]
         validation_by_id[eid] = {"status": status, "deviations": deviations}
 
@@ -62,7 +55,6 @@ def get_entities_for_view(manifest_dir: Path) -> Dict[str, Any]:
         "code_blueprint": code_blueprint,
         "comp_status": comp_status,
         "validation_by_id": validation_by_id,
-        "architecture": architecture,
         "conflicts": conflicts,
         "view_schema": view_schema,
     }

@@ -623,7 +623,7 @@ class AgentBridge:
 BLUEPRINT CONFLICT REVIEW
 
 Conflict Type: {conflict_issue.get('type', 'unknown')}
-Component: {conflict_issue.get('component_id', 'unknown')}
+Node: {conflict_issue.get('node_id', 'unknown')}
 Severity: {conflict_issue.get('severity', 'unknown')}
 File: {conflict_issue.get('file_path', 'unknown')}
 
@@ -800,7 +800,7 @@ Review Question: {review_request.get('question', 'Is this change necessary or a 
             }
 
         # Generate task ID if not provided
-        review_task_id = task_id or f"planner-review-{planner_request.get('conflict_issue', {}).get('component_id', 'unknown')}"
+        review_task_id = task_id or f"planner-review-{planner_request.get('conflict_issue', {}).get('node_id', 'unknown')}"
 
         # Extract conflict information
         conflict_issue = planner_request.get("conflict_issue", {})
@@ -808,7 +808,7 @@ Review Question: {review_request.get('question', 'Is this change necessary or a 
 
         # Create conflict review task description
         conflict_type = conflict_issue.get("type", "unknown")
-        component_id = conflict_issue.get("component_id", "unknown")
+        node_id = conflict_issue.get("node_id", "unknown")
         severity = conflict_issue.get("severity", "unknown")
         message = conflict_issue.get("message", "")
         file_path = conflict_issue.get("file_path", "")
@@ -817,7 +817,7 @@ Review Question: {review_request.get('question', 'Is this change necessary or a 
 BLUEPRINT CONFLICT REVIEW REQUEST
 
 Conflict Type: {conflict_type}
-Component ID: {component_id}
+Node ID: {node_id}
 Severity: {severity}
 File: {file_path}
 

@@ -33,10 +33,6 @@ class StateManager:
         state_file: Path to the main state.json file
         _state: Internal state dictionary (loaded from disk on initialization)
 
-    Note:
-        Task and PRD operations are delegated to TaskManager and PRDManager
-        respectively, but convenience methods are provided here for backward
-        compatibility.
     """
 
     def __init__(self, manifest_dir: Path = None):
@@ -309,10 +305,7 @@ class StateManager:
         return self.manifest_dir / "prd.json"
 
     def save_prd(self, prd_data: Dict[str, Any]) -> bool:
-        """Save PRD data to file.
-
-        This method delegates to PRDManager for the actual implementation.
-        Provided here for backward compatibility.
+        """Save PRD data to file. Delegates to PRDManager.
 
         Args:
             prd_data: Dictionary containing PRD data to save.
@@ -325,10 +318,7 @@ class StateManager:
         return prd_manager.save_prd(prd_data)
 
     async def save_prd_async(self, prd_data: Dict[str, Any]) -> bool:
-        """Save PRD data to file asynchronously.
-
-        This method delegates to PRDManager for the actual implementation.
-        Provided here for backward compatibility.
+        """Save PRD data to file asynchronously. Delegates to PRDManager.
 
         Args:
             prd_data: Dictionary containing PRD data to save.
@@ -341,10 +331,7 @@ class StateManager:
         return await prd_manager.save_prd_async(prd_data)
 
     def load_prd(self) -> Optional[Dict[str, Any]]:
-        """Load PRD data from file.
-
-        This method delegates to PRDManager for the actual implementation.
-        Provided here for backward compatibility.
+        """Load PRD data from file. Delegates to PRDManager.
 
         Returns:
             Dictionary containing PRD data if file exists, None otherwise.
@@ -354,10 +341,7 @@ class StateManager:
         return prd_manager.load_prd()
 
     async def load_prd_async(self) -> Optional[Dict[str, Any]]:
-        """Load PRD data from file asynchronously.
-
-        This method delegates to PRDManager for the actual implementation.
-        Provided here for backward compatibility.
+        """Load PRD data from file asynchronously. Delegates to PRDManager.
 
         Returns:
             Dictionary containing PRD data if file exists, None otherwise.
@@ -450,18 +434,14 @@ class StateManager:
         try:
             with open(sprint_file, "r", encoding="utf-8") as f:
                 sprint_data = json.load(f)
-                # Normalize structure for backward compatibility with older files
+                # Normalize sprint structure
                 return self._ensure_sprint_test_structure(sprint_data)
         except Exception as e:
             logger.error(f"Error loading Sprint: {e}", exc_info=True)
             return None
 
     def _ensure_sprint_test_structure(self, sprint_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Ensure sprint data has the required test structure.
-
-        Normalizes sprint data to include integration_tests and e2e_tests
-        sections with all required fields. This ensures backward compatibility
-        with older sprint files that might be missing these structures.
+        """Ensure sprint data has required test structure (integration_tests, e2e_tests).
 
         Args:
             sprint_data: Sprint data dictionary to normalize.
@@ -551,10 +531,7 @@ class StateManager:
         sprint_id: Optional[str] = None,
         dependencies: Optional[List[str]] = None
     ) -> str:
-        """Create a new task.
-
-        Delegates to TaskManager for implementation. Provided here for
-        backward compatibility.
+        """Create a new task. Delegates to TaskManager.
 
         Args:
             name: Name of the task.

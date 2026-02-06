@@ -159,10 +159,10 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                     "agent_name": {"type": "string", "description": "Agent to assign (e.g. manifest-coder)"},
                     "percentage": {"type": "number", "description": "Progress 0-100"},
                     "sprint_id": {"type": "string", "description": "Sprint ID (for create_task or filter list_tasks)"},
-                    "blueprint_component_ids": {
+                    "blueprint_entity_ids": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "Blueprint component IDs for this task"
+                        "description": "Blueprint entity IDs for this task"
                     },
                     "mission_id": {"type": "string", "description": "Mission ID (optional)"}
                 },

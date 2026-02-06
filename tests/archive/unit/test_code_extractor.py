@@ -75,7 +75,6 @@ def test_extract_inheritance(sample_code_file, temp_dir):
     extractor = CodeExtractor(temp_dir)
     blueprint = extractor.extract_project_structure(temp_dir)
 
-    # Check for inheritance contract
     inheritance_contracts = [
         c for c in blueprint["contracts"]
         if c.get("type") == "inheritance"
@@ -99,7 +98,6 @@ class TestClass:
     extractor = CodeExtractor(temp_dir)
     blueprint = extractor.extract_project_structure(temp_dir)
 
-    # Check for dependency contracts
     dependency_contracts = [
         c for c in blueprint["contracts"]
         if c.get("type") == "dependency"

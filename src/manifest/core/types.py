@@ -158,7 +158,7 @@ class BlueprintComponentDict(TypedDict, total=False):
 
 class DeviationConflictDict(TypedDict, total=False):
     """Deviation (design plan vs actual code) conflict dictionary."""
-    component_id: str
+    node_id: str
     component_name: str
     conflict_type: str
     severity: str  # "ERROR", "WARNING", "INFO"
@@ -167,4 +167,4 @@ class DeviationConflictDict(TypedDict, total=False):
     line_number: Optional[int]
 
 
-DriftConflictDict = DeviationConflictDict  # backward compatibility
+DriftConflictDict = DeviationConflictDict  # alias

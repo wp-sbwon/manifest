@@ -54,7 +54,7 @@ class TaskManagementTool:
         self,
         name: str,
         sprint_id: Optional[str] = None,
-        blueprint_component_ids: Optional[List[str]] = None,
+        blueprint_entity_ids: Optional[List[str]] = None,
         mission_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Create a new task. Updates .manifest/tasks.json; View can watch for changes."""
@@ -71,7 +71,7 @@ class TaskManagementTool:
             "assigned_agent": None,
             "sprint_id": sprint_id,
             "mission_id": mission_id,
-            "blueprint_component_ids": blueprint_component_ids or [],
+            "blueprint_entity_ids": blueprint_entity_ids or [],
             "created_at": now,
             "updated_at": now,
             "progress": {"percentage": 0, "last_update": now},

@@ -1,7 +1,7 @@
 """
 Design–code blueprint identity alignment.
 
-Design and code components must share the same id/name for deviation calculation.
+Design and code entities must share the same id/name for deviation calculation.
 """
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
@@ -12,11 +12,8 @@ from manifest.core.logger import get_logger
 logger = get_logger(__name__)
 
 
-def _get_components_list(blueprint: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Return list of component/entity dicts, excluding root."""
-    components = blueprint.get("components")
-    if components is not None:
-        return components
+def _get_nodes_list(blueprint: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return list of node dicts (non-root)."""
     entities = blueprint.get("entities") or []
     return [e for e in entities if (e.get("id") or "") != PROJECT_ROOT_ID]
 
@@ -42,10 +39,10 @@ def validate_and_align_design_identity(
         return design_blueprint, warnings
 
     code_by_id: Dict[str, Dict[str, Any]] = {
-        c["id"]: c for c in _get_components_list(code_blueprint) if c.get("id")
+        c["id"]: c for c in _get_nodes_list(code_blueprint) if c.get("id")
     }
-    design_components = _get_components_list(design_blueprint)
-    for comp in design_components:
+    design_nodes = _get_nodes_list(design_blueprint)
+    for comp in design_nodes:
         comp_id = comp.get("id")
         if not comp_id or comp_id not in code_by_id:
             continue

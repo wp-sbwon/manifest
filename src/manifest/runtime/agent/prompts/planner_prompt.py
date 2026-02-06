@@ -142,7 +142,7 @@ def _get_conflict_review_prompt(task_description: str, context: Dict[str, Any]) 
     review_request = conflict_review.get("review_request", {})
 
     conflict_type = conflict_issue.get("type", "unknown")
-    component_id = conflict_issue.get("component_id", "unknown")
+    node_id = conflict_issue.get("node_id", "unknown")
     severity = conflict_issue.get("severity", "unknown")
     message = conflict_issue.get("message", "")
     file_path = conflict_issue.get("file_path", "")
@@ -157,7 +157,7 @@ You are reviewing a blueprint conflict where code has drifted from the intended 
 ### CONFLICT INFORMATION
 
 **Conflict Type**: {conflict_type}
-**Component ID**: {component_id}
+**Node ID**: {node_id}
 **Severity**: {severity}
 **File Path**: {file_path}
 

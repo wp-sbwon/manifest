@@ -139,10 +139,15 @@ class DeviationAuditor:
 
     def compare_with_blueprint(self, code_structure: Dict[str, Any]) -> List[DeviationConflict]:
         """Compare code structure against design plan and return conflicts."""
-        conflicts = []
-        components = self.blueprint.get("components", [])
+        from manifest.audit.entity_schema import non_root_entities, entity_display_name
 
-        blueprint_classes = {comp.get("name"): comp for comp in components if comp.get("type") == "class"}
+        conflicts = []
+        entities = non_root_entities(self.blueprint)
+        reality_type = lambda e: (e.get("reality") or {}).get("type", e.get("type", ""))
+        reality_methods = lambda e: (e.get("reality") or {}).get("methods", e.get("methods", []))
+        blueprint_classes = {
+            entity_display_name(e): e for e in entities if reality_type(e) == "class"
+        }
         code_classes = {cls["name"]: cls for cls in code_structure.get("classes", [])}
 
         for class_name, blueprint_comp in blueprint_classes.items():
@@ -154,7 +159,7 @@ class DeviationAuditor:
                     file_path=code_structure.get("file_path")
                 ))
             else:
-                blueprint_methods = set(blueprint_comp.get("methods", []))
+                blueprint_methods = set(reality_methods(blueprint_comp))
                 code_methods = set(code_classes[class_name].get("methods", []))
                 missing_methods = blueprint_methods - code_methods
                 extra_methods = code_methods - blueprint_methods

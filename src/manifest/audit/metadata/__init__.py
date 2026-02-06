@@ -1,12 +1,10 @@
 """
-Metadata management for architecture and blueprints.
+Metadata: blueprint loading from manifest dir.
 
-This package contains modules for managing metadata:
-- ArchitectureMetadata: Architecture metadata loading and saving
+No architecture dict or architecture.json. Use blueprint + entity_schema helpers.
 """
-from .architecture_metadata import load_architecture_with_metadata, save_architecture_with_metadata
+from .architecture_metadata import load_blueprint
 
 __all__ = [
-    "load_architecture_with_metadata",
-    "save_architecture_with_metadata",
+    "load_blueprint",
 ]

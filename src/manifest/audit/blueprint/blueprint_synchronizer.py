@@ -17,6 +17,7 @@ from dataclasses import dataclass, field, asdict
 
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
 from manifest.audit.code.deviation_auditor import Severity
+from manifest.audit.entity_schema import PROJECT_ROOT_ID, top_layer_entities
 from manifest.audit import doc_set
 from manifest.audit.doc_comparator import compare_intent, compare_architecture, DocDiff
 
@@ -239,10 +240,10 @@ class BlueprintSynchronizer:
                     severity=Severity(c_dict["severity"]),
                     type=conflict_type,
                     message=c_dict["message"],
-                    top_down_component=c_dict.get("top_down_component"),
-                    bottom_up_component=c_dict.get("bottom_up_component"),
+                    top_down_node=c_dict.get("top_down_node"),
+                    bottom_up_node=c_dict.get("bottom_up_node"),
                     file_path=c_dict.get("file_path"),
-                    component_id=c_dict.get("component_id")
+                    node_id=c_dict.get("node_id")
                 )
                 conflicts.append(conflict)
 
@@ -369,12 +370,10 @@ class BlueprintSynchronizer:
             return {"success": True, "workflow_triggered": False}
 
         elif mode == "merge":
-            # Auto-merge compatible changes (future enhancement)
-            # For now, just return conflicts
             conflicts = self.comparator.compare_blueprints(top_down, bottom_up)
             return {
                 "success": True,
-                "merged": False,  # Not implemented yet
+                "merged": False,
                 "conflicts": len(conflicts)
             }
 
@@ -384,154 +383,120 @@ class BlueprintSynchronizer:
         self,
         top_down: Dict[str, Any],
         bottom_up: Dict[str, Any],
-        architecture: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Calculate implementation status for components (planned/deviation/healthy/extra).
-        Also calculates completion percentage for features.
-
-        Args:
-            top_down: Top-down blueprint (design)
-            bottom_up: Bottom-up blueprint (code)
-            architecture: Architecture data (optional, for feature-level completion)
-
-        Returns:
-            Dict with component statuses and feature completion percentages
+        Feature completion derived from top_down (root's children = features). New schema only.
         """
-        from manifest.audit.blueprint.blueprint_metadata import load_blueprint_with_metadata
+        def _by_id_and_name(entities: List[Dict[str, Any]]):
+            by_id: Dict[str, Dict[str, Any]] = {}
+            by_name: Dict[str, Dict[str, Any]] = {}
+            for ent in entities:
+                if (ent.get("id") or "") == PROJECT_ROOT_ID:
+                    continue
+                eid = ent.get("id", "")
+                name = self.comparator._entity_display_name(ent)
+                if eid:
+                    by_id[eid] = ent
+                if name:
+                    by_name[name] = ent
+            return by_id, by_name
 
-        # Build component lookup
-        td_components_by_id: Dict[str, Dict[str, Any]] = {}
-        td_components_by_name: Dict[str, Dict[str, Any]] = {}
-        for comp in top_down.get("components", []):
-            comp_id = comp.get("id", "")
-            comp_name = comp.get("name", "")
-            if comp_id:
-                td_components_by_id[comp_id] = comp
-            if comp_name:
-                td_components_by_name[comp_name] = comp
+        td_entities = top_down.get("entities") or []
+        bu_entities = bottom_up.get("entities") or []
+        td_components_by_id, td_components_by_name = _by_id_and_name(td_entities)
+        bu_components_by_id, bu_components_by_name = _by_id_and_name(bu_entities)
 
-        bu_components_by_id: Dict[str, Dict[str, Any]] = {}
-        bu_components_by_name: Dict[str, Dict[str, Any]] = {}
-        for comp in bottom_up.get("components", []):
-            comp_id = comp.get("id", "")
-            comp_name = comp.get("name", "")
-            if comp_id:
-                bu_components_by_id[comp_id] = comp
-            if comp_name:
-                bu_components_by_name[comp_name] = comp
-
-        # Calculate status for each top-down component (internal names: healthy, planned, deviation, extra)
-        component_statuses: Dict[str, str] = {}
-        component_deviations: Dict[str, List[str]] = {}
+        node_statuses: Dict[str, str] = {}
+        node_deviations: Dict[str, List[str]] = {}
 
         for comp_id, td_comp in td_components_by_id.items():
-            comp_name = td_comp.get("name", "")
+            comp_name = self.comparator._entity_display_name(td_comp)
 
-            # Try to find in bottom-up by ID first, then by name
             bu_comp = bu_components_by_id.get(comp_id)
             if not bu_comp and comp_name:
                 bu_comp = bu_components_by_name.get(comp_name)
 
             if not bu_comp:
-                # In design plan but not in actual code
-                component_statuses[comp_id] = "planned"
+                node_statuses[comp_id] = "planned"
             else:
-                # Exists in both - check for deviation
-                conflicts = self.comparator.compare_components([td_comp], [bu_comp])
+                conflicts = self.comparator.compare_entities([td_comp], [bu_comp])
                 significant_conflicts = [
                     c for c in conflicts
                     if c.severity in [Severity.ERROR, Severity.WARNING]
                 ]
 
                 if significant_conflicts:
-                    component_statuses[comp_id] = "deviation"
-                    component_deviations[comp_id] = [c.message for c in significant_conflicts]
+                    node_statuses[comp_id] = "deviation"
+                    node_deviations[comp_id] = [c.message for c in significant_conflicts]
                 else:
-                    component_statuses[comp_id] = "healthy"
+                    node_statuses[comp_id] = "healthy"
 
-        # Mark extra components (in actual code but not in design plan)
         for comp_id, bu_comp in bu_components_by_id.items():
-            comp_name = bu_comp.get("name", "")
+            comp_name = self.comparator._entity_display_name(bu_comp)
             if comp_id not in td_components_by_id:
                 if comp_name not in td_components_by_name:
-                    component_statuses[comp_id] = "extra"
+                    node_statuses[comp_id] = "extra"
 
-        # Feature completion percentages
+        # Feature completion from top-down blueprint (top-layer entities = features)
         feature_completions: Dict[str, float] = {}
-        if architecture:
-            features = architecture.get("features", [])
-            for feature in features:
-                feature_id = feature.get("id", "")
-                feature_components = feature.get("components", [])
+        for entity in top_layer_entities(top_down):
+            feature_id = entity.get("id", "")
+            feature_entity_ids = list(entity.get("children") or [])
 
-                if not feature_components:
-                    feature_completions[feature_id] = 0.0
-                    continue
+            if not feature_entity_ids:
+                feature_completions[feature_id] = 0.0
+                continue
 
-                healthy_count = 0
-                total_count = len(feature_components)
-                for comp_id in feature_components:
-                    status = component_statuses.get(comp_id, "planned")
-                    if status == "healthy":
-                        healthy_count += 1
-                    elif status == "deviation":
-                        healthy_count += 0.5
+            healthy_count = 0
+            total_count = len(feature_entity_ids)
+            for ent_id in feature_entity_ids:
+                status = node_statuses.get(ent_id, "planned")
+                if status == "healthy":
+                    healthy_count += 1
+                elif status == "deviation":
+                    healthy_count += 0.5
 
-                if total_count > 0:
-                    completion = (healthy_count / total_count) * 100
-                    feature_completions[feature_id] = round(completion, 1)
-                else:
-                    feature_completions[feature_id] = 0.0
+            if total_count > 0:
+                completion = (healthy_count / total_count) * 100
+                feature_completions[feature_id] = round(completion, 1)
+            else:
+                feature_completions[feature_id] = 0.0
 
         return {
-            "component_statuses": component_statuses,
-            "component_deviations": component_deviations,
+            "node_statuses": node_statuses,
+            "node_deviations": node_deviations,
             "feature_completions": feature_completions
         }
 
-    def update_architecture_with_status(
+    def update_blueprint_with_status(
         self,
-        architecture: Dict[str, Any],
+        blueprint: Dict[str, Any],
         status_info: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """
-        Update architecture.json with implementation status and completion percentages.
-
-        Args:
-            architecture: Architecture dictionary
-            status_info: Status information from calculate_implementation_status
-
-        Returns:
-            Updated architecture dictionary
-        """
-        component_statuses = status_info.get("component_statuses", {})
-        component_deviations = status_info.get("component_deviations", {})
+        """Update blueprint entities with implementation status and feature completion. New schema only."""
+        component_statuses = status_info.get("node_statuses", {})
+        component_deviations = status_info.get("node_deviations", {})
         feature_completions = status_info.get("feature_completions", {})
 
-        if "components" not in architecture:
-            architecture["components"] = []
+        entities_list = blueprint.get("entities") or []
+        for ent in entities_list:
+            ent_id = ent.get("id", "")
+            if ent_id in component_statuses:
+                ent["status"] = component_statuses[ent_id]
+                if ent_id in component_deviations:
+                    ent["deviation_details"] = component_deviations[ent_id]
 
-        for comp in architecture.get("components", []):
-            comp_id = comp.get("id", "")
-            if comp_id in component_statuses:
-                comp["status"] = component_statuses[comp_id]
-                if comp_id in component_deviations:
-                    comp["deviation_details"] = component_deviations[comp_id]
-
-        # Update feature completion percentages
-        for feature in architecture.get("features", []):
-            feature_id = feature.get("id", "")
+        for entity in top_layer_entities(blueprint):
+            feature_id = entity.get("id", "")
             if feature_id in feature_completions:
-                feature["completion_percentage"] = feature_completions[feature_id]
-
-            # Update status based on completion
-            completion = feature.get("completion_percentage", 0)
+                entity["completion_percentage"] = feature_completions[feature_id]
+            completion = entity.get("completion_percentage", 0)
             if completion == 100:
-                feature["status"] = "done"
+                entity["status"] = "done"
             elif completion > 0:
-                feature["status"] = "wip"
+                entity["status"] = "wip"
             else:
-                feature["status"] = "pending"
+                entity["status"] = "pending"
 
-        return architecture
+        return blueprint

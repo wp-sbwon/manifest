@@ -9,12 +9,13 @@ from dataclasses import dataclass
 from enum import Enum
 
 from manifest.audit.code.deviation_auditor import Severity
+from manifest.audit.entity_schema import PROJECT_ROOT_ID, contracts_from_entities
 
 
 class ConflictType(Enum):
     """Types of blueprint conflicts."""
-    MISSING_COMPONENT = "missing_component"
-    EXTRA_COMPONENT = "extra_component"
+    MISSING_ENTITY = "missing_entity"
+    EXTRA_ENTITY = "extra_entity"
     METHOD_MISMATCH = "method_mismatch"
     CONTRACT_MISMATCH = "contract_mismatch"
     ZONE_MISMATCH = "zone_mismatch"
@@ -27,10 +28,10 @@ class BlueprintConflict:
     severity: Severity
     type: ConflictType
     message: str
-    top_down_component: Optional[Dict[str, Any]] = None
-    bottom_up_component: Optional[Dict[str, Any]] = None
+    top_down_node: Optional[Dict[str, Any]] = None
+    bottom_up_node: Optional[Dict[str, Any]] = None
     file_path: Optional[str] = None
-    component_id: Optional[str] = None
+    node_id: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -38,10 +39,10 @@ class BlueprintConflict:
             "severity": self.severity.value,
             "type": self.type.value,
             "message": self.message,
-            "top_down_component": self.top_down_component,
-            "bottom_up_component": self.bottom_up_component,
+            "top_down_node": self.top_down_node,
+            "bottom_up_node": self.bottom_up_node,
             "file_path": self.file_path,
-            "component_id": self.component_id
+            "node_id": self.node_id
         }
 
 
@@ -53,95 +54,88 @@ class BlueprintComparator:
         top_down: Dict[str, Any],
         bottom_up: Dict[str, Any]
     ) -> List[BlueprintConflict]:
-        """Compare two blueprints and return all conflicts."""
+        """Compare two blueprints; return all conflicts."""
         conflicts = []
 
-        # Compare components
-        component_conflicts = self.compare_components(
-            top_down.get("components", []),
-            bottom_up.get("components", [])
+        entity_conflicts = self.compare_entities(
+            top_down.get("entities", []),
+            bottom_up.get("entities", [])
         )
-        conflicts.extend(component_conflicts)
+        conflicts.extend(entity_conflicts)
 
-        # Compare contracts
-        contract_conflicts = self.compare_contracts(
-            top_down.get("contracts", []),
-            bottom_up.get("contracts", [])
-        )
+        td_contracts = contracts_from_entities(top_down.get("entities", []))
+        bu_contracts = contracts_from_entities(bottom_up.get("entities", []))
+        contract_conflicts = self.compare_contracts(td_contracts, bu_contracts)
         conflicts.extend(contract_conflicts)
-
-        # Compare zones
-        zone_conflicts = self.compare_zones(
-            top_down.get("zones", {}),
-            bottom_up.get("zones", {})
-        )
-        conflicts.extend(zone_conflicts)
 
         return conflicts
 
-    def compare_components(
-        self,
-        top_down_components: List[Dict[str, Any]],
-        bottom_up_components: List[Dict[str, Any]]
-    ) -> List[BlueprintConflict]:
-        """Compare components between blueprints."""
-        conflicts = []
+    @staticmethod
+    def _entity_display_name(ent: Dict[str, Any]) -> str:
+        """Display name for matching: role, symbol, name, or id."""
+        if not ent:
+            return ""
+        n = (ent.get("intent") or {}).get("narrative") or {}
+        if isinstance(n, dict):
+            role = n.get("role") or ""
+        else:
+            role = ""
+        if role:
+            return role
+        reality = ent.get("reality") or {}
+        return reality.get("symbol") or ent.get("name") or ent.get("id") or ""
 
-        # Build lookup dictionaries
+    def compare_entities(
+        self,
+        top_down_entities: List[Dict[str, Any]],
+        bottom_up_entities: List[Dict[str, Any]]
+    ) -> List[BlueprintConflict]:
+        """Compare entities between blueprints."""
+        conflicts = []
+        td_list = [e for e in (top_down_entities or []) if (e.get("id") or "") != PROJECT_ROOT_ID]
+        bu_list = [e for e in (bottom_up_entities or []) if (e.get("id") or "") != PROJECT_ROOT_ID]
+
         top_down_by_name: Dict[str, Dict[str, Any]] = {}
         bottom_up_by_name: Dict[str, Dict[str, Any]] = {}
 
-        for comp in top_down_components:
-            name = comp.get("name")
+        for ent in td_list:
+            name = self._entity_display_name(ent)
             if name:
-                top_down_by_name[name] = comp
+                top_down_by_name[name] = ent
 
-        for comp in bottom_up_components:
-            name = comp.get("name")
+        for ent in bu_list:
+            name = self._entity_display_name(ent)
             if name:
-                bottom_up_by_name[name] = comp
+                bottom_up_by_name[name] = ent
 
-        # Check for missing components (in top-down but not in bottom-up) = implementation in progress
-        for name, td_comp in top_down_by_name.items():
+        for name, td_ent in top_down_by_name.items():
             if name not in bottom_up_by_name:
+                file_path = (td_ent.get("reality") or {}).get("symbol") or td_ent.get("file")
                 conflicts.append(BlueprintConflict(
                     severity=Severity.IN_PROGRESS,
-                    type=ConflictType.MISSING_COMPONENT,
-                    message=f"Component '{name}' specified in design but not found in code (implementation in progress)",
-                    top_down_component=td_comp,
-                    component_id=td_comp.get("id"),
-                    file_path=td_comp.get("file")
+                    type=ConflictType.MISSING_ENTITY,
+                    message=f"Entity '{name}' specified in design but not found in code (implementation in progress)",
+                    top_down_node=td_ent,
+                    node_id=td_ent.get("id"),
+                    file_path=file_path
                 ))
             else:
-                # Component exists, check Actual Code (code-extracted) fields (strict comparison)
-                bu_comp = bottom_up_by_name[name]
+                bu_ent = bottom_up_by_name[name]
+                conflicts.extend(self._compare_methods(td_ent, bu_ent))
+                conflicts.extend(self._compare_attributes(td_ent, bu_ent))
+                conflicts.extend(self._compare_structural_fields(td_ent, bu_ent))
+                conflicts.extend(self._compare_metadata_fields(td_ent, bu_ent))
 
-                # Actual Code fields: methods, attributes (strict comparison)
-                method_conflicts = self._compare_methods(td_comp, bu_comp)
-                conflicts.extend(method_conflicts)
-
-                attr_conflicts = self._compare_attributes(td_comp, bu_comp)
-                conflicts.extend(attr_conflicts)
-
-                # Actual Code structural fields (id, name, type, file, line)
-                structural_conflicts = self._compare_structural_fields(td_comp, bu_comp)
-                conflicts.extend(structural_conflicts)
-
-                # Metadata fields (algorithm, design_pattern, complexity) — compared with tolerance
-                # These are compared with tolerance for LLM inference differences
-                metadata_conflicts = self._compare_metadata_fields(td_comp, bu_comp)
-                conflicts.extend(metadata_conflicts)
-
-        # Check for extra components (in bottom-up but not in top-down)
-        for name, bu_comp in bottom_up_by_name.items():
+        for name, bu_ent in bottom_up_by_name.items():
             if name not in top_down_by_name:
+                file_path = (bu_ent.get("reality") or {}).get("symbol") or bu_ent.get("file")
                 conflicts.append(BlueprintConflict(
                     severity=Severity.WARNING,
-                    type=ConflictType.EXTRA_COMPONENT,
-                    message=f"Component '{name}' exists in code but not in design blueprint",
-                    bottom_up_component=bu_comp,
-                    component_id=bu_comp.get("id"),
-                    file_path=bu_comp.get("file")
+                    type=ConflictType.EXTRA_ENTITY,
+                    message=f"Entity '{name}' exists in code but not in design blueprint",
+                    bottom_up_node=bu_ent,
+                    node_id=bu_ent.get("id"),
+                    file_path=file_path
                 ))
 
         return conflicts
@@ -151,36 +145,37 @@ class BlueprintComparator:
         top_down: Dict[str, Any],
         bottom_up: Dict[str, Any]
     ) -> List[BlueprintConflict]:
-        """Compare methods between two components."""
+        """Compare methods between two nodes."""
         conflicts = []
+        td_methods = set((top_down.get("reality") or {}).get("methods", top_down.get("methods", [])))
+        bu_methods = set((bottom_up.get("reality") or {}).get("methods", bottom_up.get("methods", [])))
 
-        td_methods = set(top_down.get("methods", []))
-        bu_methods = set(bottom_up.get("methods", []))
+        td_name = self._entity_display_name(top_down)
+        bu_name = self._entity_display_name(bottom_up)
+        bu_file = (bottom_up.get("reality") or {}).get("symbol", bottom_up.get("file"))
 
-        # Missing methods = implementation in progress (design has it, code doesn't yet)
         missing = td_methods - bu_methods
         for method in missing:
             conflicts.append(BlueprintConflict(
                 severity=Severity.IN_PROGRESS,
                 type=ConflictType.METHOD_MISMATCH,
-                message=f"Method '{method}' in component '{top_down.get('name')}' specified in design but not in code (in progress)",
-                top_down_component=top_down,
-                bottom_up_component=bottom_up,
-                component_id=top_down.get("id"),
-                file_path=bottom_up.get("file")
+                message=f"Method '{method}' in entity '{td_name}' specified in design but not in code (in progress)",
+                top_down_node=top_down,
+                bottom_up_node=bottom_up,
+                node_id=top_down.get("id"),
+                file_path=bu_file
             ))
 
-        # Extra methods (informational)
         extra = bu_methods - td_methods
         for method in extra:
             conflicts.append(BlueprintConflict(
                 severity=Severity.INFO,
                 type=ConflictType.METHOD_MISMATCH,
-                message=f"Method '{method}' in component '{bottom_up.get('name')}' exists in code but not in design",
-                top_down_component=top_down,
-                bottom_up_component=bottom_up,
-                component_id=bottom_up.get("id"),
-                file_path=bottom_up.get("file")
+                message=f"Method '{method}' in entity '{bu_name}' exists in code but not in design",
+                top_down_node=top_down,
+                bottom_up_node=bottom_up,
+                node_id=bottom_up.get("id"),
+                file_path=bu_file
             ))
 
         return conflicts
@@ -190,23 +185,24 @@ class BlueprintComparator:
         top_down: Dict[str, Any],
         bottom_up: Dict[str, Any]
     ) -> List[BlueprintConflict]:
-        """Compare attributes between two components."""
+        """Compare attributes between two nodes."""
         conflicts = []
+        td_attrs = set((top_down.get("reality") or {}).get("attributes", top_down.get("attributes", [])))
+        bu_attrs = set((bottom_up.get("reality") or {}).get("attributes", bottom_up.get("attributes", [])))
 
-        td_attrs = set(top_down.get("attributes", []))
-        bu_attrs = set(bottom_up.get("attributes", []))
+        td_name = self._entity_display_name(top_down)
+        bu_file = (bottom_up.get("reality") or {}).get("symbol", bottom_up.get("file"))
 
-        # Missing attributes = implementation in progress
         missing = td_attrs - bu_attrs
         for attr in missing:
             conflicts.append(BlueprintConflict(
                 severity=Severity.IN_PROGRESS,
                 type=ConflictType.ATTRIBUTE_MISMATCH,
-                message=f"Attribute '{attr}' in component '{top_down.get('name')}' specified in design but not in code (in progress)",
-                top_down_component=top_down,
-                bottom_up_component=bottom_up,
-                component_id=top_down.get("id"),
-                file_path=bottom_up.get("file")
+                message=f"Attribute '{attr}' in entity '{td_name}' specified in design but not in code (in progress)",
+                top_down_node=top_down,
+                bottom_up_node=bottom_up,
+                node_id=top_down.get("id"),
+                file_path=bu_file
             ))
 
         return conflicts
@@ -230,7 +226,7 @@ class BlueprintComparator:
                 severity=Severity.WARNING,
                 type=ConflictType.CONTRACT_MISMATCH,
                 message=f"Contract '{contract_key}' specified in design but not found in code",
-                component_id=contract_key
+                node_id=contract_key
             ))
 
         # Extra contracts (informational)
@@ -240,7 +236,7 @@ class BlueprintComparator:
                 severity=Severity.INFO,
                 type=ConflictType.CONTRACT_MISMATCH,
                 message=f"Contract '{contract_key}' exists in code but not in design",
-                component_id=contract_key
+                node_id=contract_key
             ))
 
         return conflicts
@@ -255,31 +251,6 @@ class BlueprintComparator:
             key = f"{from_id}->{to_id}:{contract_type}"
             normalized.add(key)
         return normalized
-
-    def compare_zones(
-        self,
-        top_down_zones: Dict[str, List[str]],
-        bottom_up_zones: Dict[str, List[str]]
-    ) -> List[BlueprintConflict]:
-        """Compare zone assignments between blueprints."""
-        conflicts = []
-
-        # Compare each zone
-        for zone_name in ["client", "server", "data"]:
-            td_components = set(top_down_zones.get(zone_name, []))
-            bu_components = set(bottom_up_zones.get(zone_name, []))
-
-            # Components in top-down but not in bottom-up for this zone
-            missing = td_components - bu_components
-            for comp_id in missing:
-                conflicts.append(BlueprintConflict(
-                    severity=Severity.INFO,
-                    type=ConflictType.ZONE_MISMATCH,
-                    message=f"Component '{comp_id}' assigned to '{zone_name}' zone in design but not in code",
-                    component_id=comp_id
-                ))
-
-        return conflicts
 
     def get_conflicts_by_severity(
         self,
@@ -321,73 +292,65 @@ class BlueprintComparator:
         top_down: Dict[str, Any],
         bottom_up: Dict[str, Any]
     ) -> List[BlueprintConflict]:
-        """
-        Compare Actual Code structural fields (strict comparison).
-        Fields: id, name, type, file, line
-        """
+        """Compare structural fields (id, name, type, file) between nodes."""
         conflicts = []
+        td_name = self._entity_display_name(top_down)
+        bu_name = self._entity_display_name(bottom_up)
+        td_file = (top_down.get("reality") or {}).get("symbol", top_down.get("file", ""))
+        bu_file = (bottom_up.get("reality") or {}).get("symbol", bottom_up.get("file", ""))
 
-        # Check name (should match for comparison to work)
-        td_name = top_down.get("name")
-        bu_name = bottom_up.get("name")
         if td_name != bu_name:
             conflicts.append(BlueprintConflict(
                 severity=Severity.ERROR,
-                type=ConflictType.METHOD_MISMATCH,  # Reuse type
-                message=f"Component name mismatch: design has '{td_name}', code has '{bu_name}'",
-                top_down_component=top_down,
-                bottom_up_component=bottom_up,
-                component_id=top_down.get("id"),
-                file_path=bottom_up.get("file")
+                type=ConflictType.METHOD_MISMATCH,
+                message=f"Entity name mismatch: design has '{td_name}', code has '{bu_name}'",
+                top_down_node=top_down,
+                bottom_up_node=bottom_up,
+                node_id=top_down.get("id"),
+                file_path=bu_file
             ))
 
-        # Check type (only when both design and code specify a type and they differ)
-        td_type = top_down.get("type")
-        bu_type = bottom_up.get("type")
+        td_type = (top_down.get("reality") or {}).get("type", top_down.get("type"))
+        bu_type = (bottom_up.get("reality") or {}).get("type", bottom_up.get("type"))
         if td_type and bu_type and td_type != bu_type:
             conflicts.append(BlueprintConflict(
                 severity=Severity.WARNING,
                 type=ConflictType.METHOD_MISMATCH,
-                message=f"Component type mismatch: design has '{td_type}', code has '{bu_type}'",
-                top_down_component=top_down,
-                bottom_up_component=bottom_up,
-                component_id=top_down.get("id"),
-                file_path=bottom_up.get("file")
+                message=f"Entity type mismatch: design has '{td_type}', code has '{bu_type}'",
+                top_down_node=top_down,
+                bottom_up_node=bottom_up,
+                node_id=top_down.get("id"),
+                file_path=bu_file
             ))
 
-        # Check file path (should match or be similar)
-        td_file = top_down.get("file", "")
-        bu_file = bottom_up.get("file", "")
         if td_file and bu_file and td_file != bu_file:
-            # Allow some flexibility (relative vs absolute paths)
             if not (td_file.endswith(bu_file) or bu_file.endswith(td_file)):
                 conflicts.append(BlueprintConflict(
                     severity=Severity.INFO,
                     type=ConflictType.METHOD_MISMATCH,
-                    message=f"Component file path differs: design has '{td_file}', code has '{bu_file}'",
-                    top_down_component=top_down,
-                    bottom_up_component=bottom_up,
-                    component_id=top_down.get("id"),
-                    file_path=bottom_up.get("file")
+                    message=f"Entity file path differs: design has '{td_file}', code has '{bu_file}'",
+                    top_down_node=top_down,
+                    bottom_up_node=bottom_up,
+                    node_id=top_down.get("id"),
+                    file_path=bu_file
                 ))
 
         return conflicts
+
+    def _entity_get(self, ent: Dict[str, Any], key: str) -> Any:
+        """Get field: reality.key or top-level key."""
+        return (ent.get("reality") or {}).get(key, ent.get(key))
 
     def _compare_metadata_fields(
         self,
         top_down: Dict[str, Any],
         bottom_up: Dict[str, Any]
     ) -> List[BlueprintConflict]:
-        """
-        Compare metadata fields with tolerance (algorithm, design_pattern, etc.).
-        Fields: algorithm, design_pattern, complexity
-        Note: methodology is excluded as it's a development methodology, not product logic.
-        """
+        """Compare metadata fields (algorithm, design_pattern, complexity)."""
         conflicts = []
 
-        # Compare algorithm (if present in both)
-        td_algorithm = top_down.get("algorithm")
-        bu_algorithm = bottom_up.get("algorithm")
+        td_algorithm = self._entity_get(top_down, "algorithm")
+        bu_algorithm = self._entity_get(bottom_up, "algorithm")
         if td_algorithm and bu_algorithm:
             # Allow case-insensitive comparison and partial matches
             if td_algorithm.lower() != bu_algorithm.lower():
@@ -395,9 +358,9 @@ class BlueprintComparator:
                     severity=Severity.INFO,  # INFO level - LLM inference differences are acceptable
                     type=ConflictType.METHOD_MISMATCH,
                     message=f"Algorithm differs: design has '{td_algorithm}', code has '{bu_algorithm}' (LLM inference difference acceptable)",
-                    top_down_component=top_down,
-                    bottom_up_component=bottom_up,
-                    component_id=top_down.get("id"),
+                    top_down_node=top_down,
+                    bottom_up_node=bottom_up,
+                    node_id=top_down.get("id"),
                     file_path=bottom_up.get("file")
                 ))
         elif td_algorithm and not bu_algorithm:
@@ -406,24 +369,23 @@ class BlueprintComparator:
                 severity=Severity.INFO,
                 type=ConflictType.METHOD_MISMATCH,
                 message=f"Algorithm '{td_algorithm}' specified in design but not detected in code",
-                top_down_component=top_down,
-                bottom_up_component=bottom_up,
-                component_id=top_down.get("id"),
+                top_down_node=top_down,
+                bottom_up_node=bottom_up,
+                node_id=top_down.get("id"),
                 file_path=bottom_up.get("file")
             ))
 
-        # Compare design_pattern (if present in both)
-        td_pattern = top_down.get("design_pattern")
-        bu_pattern = bottom_up.get("design_pattern")
+        td_pattern = self._entity_get(top_down, "design_pattern")
+        bu_pattern = self._entity_get(bottom_up, "design_pattern")
         if td_pattern and bu_pattern:
             if td_pattern.lower() != bu_pattern.lower():
                 conflicts.append(BlueprintConflict(
                     severity=Severity.INFO,
                     type=ConflictType.METHOD_MISMATCH,
                     message=f"Design pattern differs: design has '{td_pattern}', code has '{bu_pattern}' (LLM inference difference acceptable)",
-                    top_down_component=top_down,
-                    bottom_up_component=bottom_up,
-                    component_id=top_down.get("id"),
+                    top_down_node=top_down,
+                    bottom_up_node=bottom_up,
+                    node_id=top_down.get("id"),
                     file_path=bottom_up.get("file")
                 ))
         elif td_pattern and not bu_pattern:
@@ -431,24 +393,23 @@ class BlueprintComparator:
                 severity=Severity.INFO,
                 type=ConflictType.METHOD_MISMATCH,
                 message=f"Design pattern '{td_pattern}' specified in design but not detected in code",
-                top_down_component=top_down,
-                bottom_up_component=bottom_up,
-                component_id=top_down.get("id"),
+                top_down_node=top_down,
+                bottom_up_node=bottom_up,
+                node_id=top_down.get("id"),
                 file_path=bottom_up.get("file")
             ))
 
-        # Compare complexity (if present in both)
-        td_complexity = top_down.get("complexity")
-        bu_complexity = bottom_up.get("complexity")
+        td_complexity = self._entity_get(top_down, "complexity")
+        bu_complexity = self._entity_get(bottom_up, "complexity")
         if td_complexity and bu_complexity:
             if td_complexity.lower() != bu_complexity.lower():
                 conflicts.append(BlueprintConflict(
                     severity=Severity.INFO,
                     type=ConflictType.METHOD_MISMATCH,
                     message=f"Complexity differs: design has '{td_complexity}', code has '{bu_complexity}' (LLM inference difference acceptable)",
-                    top_down_component=top_down,
-                    bottom_up_component=bottom_up,
-                    component_id=top_down.get("id"),
+                    top_down_node=top_down,
+                    bottom_up_node=bottom_up,
+                    node_id=top_down.get("id"),
                     file_path=bottom_up.get("file")
                 ))
         elif td_complexity and not bu_complexity:
@@ -456,9 +417,9 @@ class BlueprintComparator:
                 severity=Severity.INFO,
                 type=ConflictType.METHOD_MISMATCH,
                 message=f"Complexity '{td_complexity}' specified in design but not detected in code",
-                top_down_component=top_down,
-                bottom_up_component=bottom_up,
-                component_id=top_down.get("id"),
+                top_down_node=top_down,
+                bottom_up_node=bottom_up,
+                node_id=top_down.get("id"),
                 file_path=bottom_up.get("file")
             ))
 

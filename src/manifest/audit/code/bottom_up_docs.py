@@ -52,9 +52,17 @@ Output: intent JSON, then "---", then architecture JSON.
 
 def _truncate_blueprint(blueprint: Dict[str, Any], max_components: int = 80) -> str:
     """Short summary of blueprint for prompt."""
-    components = blueprint.get("components", [])[:max_components]
-    lines = [f"- {c.get('name', c.get('id', '?'))} ({c.get('type', '?')}) @ {c.get('file', '')}" for c in components]
-    return "\n".join(lines) if lines else "(no components)"
+    from manifest.audit.entity_schema import non_root_entities, entity_display_name
+
+    entities = non_root_entities(blueprint)[:max_components]
+    lines = []
+    for e in entities:
+        name = entity_display_name(e)
+        r = e.get("reality") or {}
+        typ = r.get("type", e.get("type", "?"))
+        file_path = r.get("symbol", e.get("file", ""))
+        lines.append(f"- {name or e.get('id', '?')} ({typ}) @ {file_path}")
+    return "\n".join(lines) if lines else "(no nodes)"
 
 
 def _read_file_sample(path: Path, max_chars: int = 4000) -> str:

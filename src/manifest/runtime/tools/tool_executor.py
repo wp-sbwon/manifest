@@ -742,7 +742,7 @@ class ToolExecutor:
                 out = tool.create_task(
                     name=tool_input.get("name", ""),
                     sprint_id=tool_input.get("sprint_id"),
-                    blueprint_component_ids=tool_input.get("blueprint_component_ids"),
+                    blueprint_entity_ids=tool_input.get("blueprint_entity_ids"),
                     mission_id=tool_input.get("mission_id"),
                 )
             elif action == "update_task_status":

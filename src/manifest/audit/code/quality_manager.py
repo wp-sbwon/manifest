@@ -67,7 +67,7 @@ class CodeQualityManager:
             logger.debug(f"Security check failed or bandit not available: {e}")
             return {"success": False, "error": str(e)}
 
-    def check_architecture_compliance(self, file_path: str, component_id: str) -> Dict[str, Any]:
+    def check_architecture_compliance(self, file_path: str, node_id: str) -> Dict[str, Any]:
         """Check if code matches blueprint specification."""
         from manifest.audit.code.code_extractor import CodeExtractor
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
@@ -80,21 +80,19 @@ class CodeQualityManager:
 
             # Extract from code
             code_components = extractor.extract_file_structure(Path(file_path))
-            code_comp = next((c for c in code_components if c.id == component_id), None)
+            code_comp = next((c for c in code_components if c.id == node_id), None)
 
             if not code_comp:
-                return {"success": False, "error": f"Component {component_id} not found in {file_path}"}
+                return {"success": False, "error": f"Node {node_id} not found in {file_path}"}
 
             # Load from blueprint
             manifest_dir = self.project_root / ".manifest"
             blueprint = loader.load_blueprint(manifest_dir)
-            blueprint_comp = next((c for c in blueprint.get("components", []) if c.get("id") == component_id), None)
+            blueprint_comp = next((e for e in blueprint.get("entities", []) if e.get("id") == node_id), None)
 
             if not blueprint_comp:
-                return {"success": False, "error": f"Component {component_id} not found in blueprint"}
+                return {"success": False, "error": f"Entity {node_id} not found in blueprint"}
 
-            # Compare
-            # Convert Component object to dict for comparison
             code_comp_dict = {
                 "id": code_comp.id,
                 "name": code_comp.name,
@@ -102,7 +100,7 @@ class CodeQualityManager:
                 "attributes": code_comp.attributes
             }
 
-            conflicts = comparator.compare_components([blueprint_comp], [code_comp_dict])
+            conflicts = comparator.compare_entities([blueprint_comp], [code_comp_dict])
 
             return {
                 "success": len(conflicts) == 0,

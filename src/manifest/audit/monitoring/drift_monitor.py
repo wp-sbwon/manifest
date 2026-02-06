@@ -1,4 +1,4 @@
-"""Backward compatibility: use DeviationMonitor (design plan vs actual code)."""
+"""Alias: DeviationMonitor."""
 from .deviation_monitor import DeviationMonitor
 
 __all__ = ["DriftMonitor"]

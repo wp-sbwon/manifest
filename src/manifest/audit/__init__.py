@@ -10,7 +10,7 @@ from .code.code_extractor import CodeExtractor, Component, Contract
 from .blueprint.blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
 from .blueprint.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
 
-# Backward compatibility
+# Alias
 DriftAuditor = DeviationAuditor
 
 __all__ = [
