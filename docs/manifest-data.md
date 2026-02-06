@@ -20,33 +20,23 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 
 ---
 
-## blueprint.json (plan)
+## Three blueprint docs (design, code, view)
 
-**Used for:** Diagram (entity list, ordering via root_id/children/contracts), Inspector design (intent), Diff view “Planned” column.
+| File | Role | Created by |
+|------|------|------------|
+| **blueprint_design.json** | Design (top-down). Intent filled, reality empty. | Architect / design agents |
+| **blueprint_code.json** | Code (bottom-up). Reality filled, intent empty. | CodeExtractor |
+| **blueprint_view.json** | Comparison output: plan/actual pairs + validation. | `build_view_schema` on refresh |
 
-**Format (new entity schema):** Top-level `version`, `root_id` (e.g. `PROJECT_ROOT`), `entities`, `contracts`. No null; use empty string/list/object.
+**Design and code:** Same shape: `version`, `root_id`, `entities`; per entity: `id`, `children`, `dependencies`, `intent`, `reality`, `outgoing_contracts`.
 
-**Per entity:** `id`, `children` (list of child entity IDs), `dependencies` (list of entity IDs), `intent` (narrative, blueprint, protocol, profile, governance), `reality` (empty defaults for plan). Plan file: intent filled, reality empty.
-
-**Contracts:** Array of `{ "from", "to", "type", "file?", "symbols?" }` (same keys in both files).
-
-**Created by:** Top-down (Architect / design agents). All writers must emit this format; validation runs before save. Legacy format (components instead of entities) is migrated on load or via `python -m manifest.audit.blueprint_migrate --manifest-dir .manifest`.
-
----
-
-## blueprint_code.json (actual)
-
-**Used for:** Diagram/header status (via sync comparison), Inspector “Actual Code” and Diff view “Code” column.
-
-**Format:** Same top-level shape as blueprint.json (key symmetry). Per entity: `reality` filled (symbol, protocol, traits, dependencies), `intent` empty defaults (Phase 1).
-
-**Created by:** Bottom-up only (CodeExtractor / run_bottom_up_docs.py). Do not hand-write. Validated before save.
+**View schema:** `view_schema.build_view_schema` → `blueprint_view.json`.
 
 ---
 
 ## state.json
 
-**Used for:** Sidebar “Project Health” (health_metrics), Inspector “Last Output” / “Shadow Trace” (shadow-* state).
+**Used for:** Sidebar "Project Health" (health_metrics), Inspector "Last Output" / "Shadow Trace" (shadow-* state).
 
 | Key | Purpose |
 |-----|---------|
@@ -59,7 +49,7 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 
 ## tasks.json
 
-**Used for:** Sidebar “Tasks”.
+**Used for:** Sidebar "Tasks".
 
 **Created by:** Core / task agents.
 
@@ -83,9 +73,8 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 
 ## Schema and validation
 
-- **Canonical schema:** `src/manifest/audit/entity_schema.py` (Entity, Intent, Reality, BlueprintRoot). No `null`; required keys enforced.
-- **Validation:** `entity_validation.py` — `validate_blueprint_data`, `validate_blueprint_file`, `normalize_for_schema` (null → defaults). Used before every write and on read.
-- **Migration:** One-time conversion from legacy (flat `components`, `zones`) to new format: `python -m manifest.audit.blueprint_migrate --manifest-dir .manifest`. Loader can run migration in place when legacy is detected.
+- **Canonical schema:** `src/manifest/audit/entity_schema.py` (Entity, Intent, Reality). Blueprint = version, root_id, entities only. No `null`; required keys enforced.
+- **Validation:** `entity_validation.py` — `validate_blueprint_data`, `validate_blueprint_file`, `normalize_for_schema`. Used before every write; writers must emit valid entity format or save fails.
 
 ---
 
@@ -94,8 +83,9 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 | File | Top-down | Bottom-up |
 |------|----------|------------|
 | architecture.json | ✓ Agents | (architecture_code.json is separate) |
-| blueprint.json | ✓ Agents | |
+| blueprint_design.json | ✓ Agents | |
 | blueprint_code.json | | ✓ CodeExtractor / run_bottom_up_docs.py |
+| blueprint_view.json | | (comparison output) |
 | state.json (health_metrics) | | ✓ Pipeline |
 | tasks.json | ✓ Core/agents | |
 | diagram_config.json | Config | |

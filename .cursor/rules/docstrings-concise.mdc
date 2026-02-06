@@ -1,0 +1,14 @@
+---
+description: Keep docstrings and comments concise; no "(entity format)", usage narrative, or task/implementation detail
+alwaysApply: true
+---
+
+# Docstrings and Comments: Concise Only
+
+- **Do not** add phrases like "(entity format)", "fed to the view", "used by X for Y", "written on load/refresh", or similar usage/implementation narrative in docstrings or comments.
+- **Do not** explain *who* uses the code or *where* the data goes; describe *what* the code or data is.
+- Keep module/class/function docstrings short: purpose and contract (args/return) only. Omit task names, file roles, and pipeline steps unless essential to the API.
+- Comments in code: state *what* the next block does, not which component consumes it or which task it serves.
+
+Good: "Validate blueprint data; normalize nulls. Used before every write."
+Bad: "Validate blueprint_design.json and blueprint_code.json (entity format). Used by loader before write and by view on read."

@@ -2,7 +2,7 @@
 Doc set: same formatted docs from top-down and bottom-up.
 
 Both processes produce the same set of docs; the synchronizer compares them mechanically.
-- Blueprint: top-down = blueprint.json, bottom-up = blueprint_code.json (mechanical extraction).
+- Blueprint: top-down = blueprint_design.json, bottom-up = blueprint_code.json (mechanical extraction).
 - Intent: top-down = intent.json, bottom-up = intent_code.json (bottom-up via LLM from code).
 - Architecture: top-down = architecture.json, bottom-up = architecture_code.json (bottom-up via LLM from code).
 """
@@ -26,7 +26,7 @@ BOTTOM_UP_FILES = {
 
 # Top-down filenames
 TOP_DOWN_FILES = {
-    "blueprint": "blueprint.json",
+    "blueprint": "blueprint_design.json",
     "intent": "intent.json",
     "architecture": "architecture.json",
 }

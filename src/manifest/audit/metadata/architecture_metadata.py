@@ -30,6 +30,8 @@ def ensure_architecture_metadata(architecture: Dict[str, Any]) -> Dict[str, Any]
 
     if "mission" not in architecture:
         architecture["mission"] = ""
+    if "interface" not in architecture:
+        architecture["interface"] = ""
     if "global_rules" not in architecture:
         architecture["global_rules"] = []
     if "architecture_style" not in architecture:

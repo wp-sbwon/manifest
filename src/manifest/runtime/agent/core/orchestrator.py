@@ -94,7 +94,7 @@ class Orchestrator:
                 return policy_path.read_text(encoding="utf-8")
         except Exception:
             pass
-        return "Blueprint-First Development: All code must align with blueprint.json"
+        return "Blueprint-First Development: All code must align with blueprint_design.json"
 
     def _get_tier_1_context(self, state: Dict[str, Any]) -> str:
         """Load Tier 1 context: Architecture and blueprint.

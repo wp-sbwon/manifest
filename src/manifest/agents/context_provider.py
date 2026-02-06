@@ -69,7 +69,8 @@ class ContextProvider:
         self.policy_file = Path(".rules/manifest-policy.md")
         self.intent_file = self.manifest_dir / "intent.json"
         self.architecture_file = self.manifest_dir / "architecture.json"
-        self.blueprint_file = self.manifest_dir / "blueprint.json"
+        from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE
+        self.blueprint_file = self.manifest_dir / BLUEPRINT_DESIGN_FILE
 
     def get_skills_context(self, agent_type: str, task_scope: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """Get skills context for a specific agent type.

@@ -1,7 +1,7 @@
 """
 Design history for PRD, architecture, and blueprint docs.
 
-Records a versioned history when design docs (prd.json, architecture.json, blueprint.json)
+Records a versioned history when design docs (prd.json, architecture.json, blueprint_design.json)
 are saved so the View can display it alongside Git history.
 """
 import json

@@ -19,7 +19,8 @@ class TaskScoper:
 
     def __init__(self, manifest_dir: Path = None):
         self.manifest_dir = manifest_dir or Path(".manifest")
-        self.blueprint_file = self.manifest_dir / "blueprint.json"
+        from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE
+        self.blueprint_file = self.manifest_dir / BLUEPRINT_DESIGN_FILE
         self.intent_file = self.manifest_dir / "intent.json"
         self._blueprint_data = {}
         self._intent_data = {}

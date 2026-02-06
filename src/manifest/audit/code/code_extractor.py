@@ -12,6 +12,7 @@ blueprint to detect architectural drift.
 import ast
 import json
 from pathlib import Path
+from collections import defaultdict
 from typing import Dict, Any, List, Optional, Set, Tuple
 from dataclasses import dataclass, field
 
@@ -701,7 +702,7 @@ class CodeExtractor:
         return sorted(effects)
 
     def _generate_blueprint(self) -> Dict[str, Any]:
-        """Generate blueprint in new entity format (version, root_id, entities, contracts)."""
+        """Generate blueprint dict: version, root_id, entities with outgoing_contracts."""
         from datetime import datetime
         from manifest.audit.entity_schema import empty_intent, empty_reality
         from manifest.audit.entity_schema import PROJECT_ROOT_ID as ROOT_ID
@@ -733,6 +734,16 @@ class CodeExtractor:
                 if d not in comp_deps.get(comp.id, []):
                     comp_deps.setdefault(comp.id, []).append(d)
 
+        # Outgoing contracts per entity (from_id -> list of {to, type, file, symbols})
+        by_from: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+        for contract in self.contracts:
+            by_from[contract.from_id].append({
+                "to": contract.to_id,
+                "type": contract.type,
+                "file": contract.file or "",
+                "symbols": list(contract.symbols or []),
+            })
+
         root_children: List[str] = []
         entities: List[Dict[str, Any]] = []
         for comp in self.components.values():
@@ -760,6 +771,7 @@ class CodeExtractor:
                 "dependencies": comp_deps.get(comp.id, []),
                 "intent": empty_intent(),
                 "reality": reality,
+                "outgoing_contracts": by_from.get(comp.id, []),
             }
             entity["name"] = comp.name
             entity["file"] = comp.file
@@ -775,24 +787,14 @@ class CodeExtractor:
             "dependencies": [],
             "intent": empty_intent(),
             "reality": empty_reality(),
+            "outgoing_contracts": [],
         }
         entities.insert(0, root_entity)
-
-        blueprint_contracts = []
-        for contract in self.contracts:
-            blueprint_contracts.append({
-                "from": contract.from_id,
-                "to": contract.to_id,
-                "type": contract.type,
-                "file": contract.file,
-                "symbols": list(contract.symbols or []),
-            })
 
         result = {
             "version": "1.0",
             "root_id": ROOT_ID,
             "entities": entities,
-            "contracts": blueprint_contracts,
             "source": "code_extraction",
             "from_actual_code": True,
             "ground_truth": True,

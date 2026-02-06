@@ -293,8 +293,9 @@ class PlannerAgent:
         """
         from manifest.audit.blueprint.blueprint_metadata import load_blueprint_with_metadata, save_blueprint_with_metadata
 
+        from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE
         manifest_dir = Path(".manifest")
-        blueprint_file = manifest_dir / "blueprint.json"
+        blueprint_file = manifest_dir / BLUEPRINT_DESIGN_FILE
 
         if not blueprint_file.exists():
             return
@@ -306,7 +307,6 @@ class PlannerAgent:
             from manifest.audit.entity_schema import PROJECT_ROOT_ID
 
             if "entities" in blueprint and blueprint["entities"]:
-                # New format: find first non-root entity and update its intent.governance.rules
                 for ent in blueprint["entities"]:
                     if (ent.get("id") or "") == PROJECT_ROOT_ID:
                         continue
@@ -323,19 +323,6 @@ class PlannerAgent:
                         intent["governance"] = {**governance, "rules": rules}
                         ent["intent"] = intent
                     break
-            elif "components" in blueprint and blueprint["components"]:
-                # Legacy: update first component
-                comp = blueprint["components"][0]
-                if "algorithm" in methodology_info:
-                    comp["algorithm"] = methodology_info["algorithm"]
-                    comp["algorithm_reasoning"] = methodology_info.get("algorithm_reasoning", "")
-                if "design_pattern" in methodology_info:
-                    comp["design_pattern"] = methodology_info["design_pattern"]
-                    comp["design_pattern_reasoning"] = methodology_info.get("design_pattern_reasoning", "")
-                if "complexity" in methodology_info:
-                    comp["complexity"] = methodology_info["complexity"]
-                    comp["complexity_reasoning"] = methodology_info.get("complexity_reasoning", "")
-
             save_blueprint_with_metadata(blueprint, blueprint_file, "llm_design", False, "llm_inference")
         except Exception as e:
             # Silently fail - blueprint update is optional

@@ -54,7 +54,7 @@ class DeviationAuditor:
 
     Attributes:
         manifest_dir: Path to .manifest directory.
-        blueprint_file: Path to blueprint.json (design plan).
+        blueprint_file: Path to blueprint_design.json (design plan).
         blueprint: Loaded design plan data dictionary.
     """
 
@@ -65,12 +65,13 @@ class DeviationAuditor:
             manifest_dir: Path to .manifest directory. Defaults to .manifest.
         """
         self.manifest_dir = manifest_dir or Path(".manifest")
-        self.blueprint_file = self.manifest_dir / "blueprint.json"
+        from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE
+        self.blueprint_file = self.manifest_dir / BLUEPRINT_DESIGN_FILE
         self.blueprint: Dict[str, Any] = {}
         self._load_blueprint()
 
     def _load_blueprint(self) -> None:
-        """Load blueprint.json (design plan) with metadata."""
+        """Load blueprint_design (design plan) with metadata."""
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         self.blueprint = BlueprintLoader.load_blueprint(
             self.manifest_dir, with_metadata=True
@@ -220,7 +221,8 @@ class DeviationAuditor:
         extractor = CodeExtractor(root)
         blueprint = extractor.extract_project_structure(root)
 
-        blueprint_file = self.manifest_dir / "blueprint_code.json"
+        from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_CODE_FILE
+        blueprint_file = self.manifest_dir / BLUEPRINT_CODE_FILE
         extractor.save_blueprint(blueprint, blueprint_file)
 
         return blueprint

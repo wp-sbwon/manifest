@@ -17,7 +17,6 @@ from manifest.audit.entity_validation import (
     validate_entity,
     validate_blueprint_data,
     validate_blueprint_file,
-    is_legacy_format,
 )
 
 
@@ -53,6 +52,7 @@ def test_empty_entity_has_required_keys():
     assert "dependencies" in ent and ent["dependencies"] == []
     assert "intent" in ent and isinstance(ent["intent"], dict)
     assert "reality" in ent and isinstance(ent["reality"], dict)
+    assert "outgoing_contracts" in ent and ent["outgoing_contracts"] == []
     assert None not in (ent.get("intent") or {}).values()
     assert None not in (ent.get("reality") or {}).values()
 
@@ -61,9 +61,9 @@ def test_empty_blueprint_root_has_required_keys():
     root = empty_blueprint_root()
     assert "version" in root
     assert "entities" in root and root["entities"] == []
-    assert "contracts" in root and root["contracts"] == []
     assert "root_id" in root
-    assert None not in [root.get("version"), root.get("entities"), root.get("contracts")]
+    assert "contracts" not in root
+    assert None not in [root.get("version"), root.get("entities")]
 
 
 # --- Validation: validate_entity ---
@@ -76,6 +76,7 @@ def test_validate_entity_valid():
         "dependencies": [],
         "intent": empty_intent(),
         "reality": empty_reality(),
+        "outgoing_contracts": [],
     }
     valid, errors = validate_entity(ent)
     assert valid is True
@@ -111,10 +112,9 @@ def test_validate_entity_null_children_invalid():
 
 
 def test_normalize_for_schema_coerces_null():
-    data = {"version": "1.0", "entities": None, "contracts": None, "root_id": None}
+    data = {"version": "1.0", "entities": None, "root_id": None}
     out = normalize_for_schema(data)
     assert out.get("entities") == []
-    assert out.get("contracts") == []
     assert out.get("root_id") == ""
 
 
@@ -123,7 +123,6 @@ def test_normalize_for_schema_adds_missing_keys():
     out = normalize_for_schema(data)
     assert "version" in out
     assert "entities" in out
-    assert "contracts" in out
     assert "root_id" in out
 
 
@@ -131,7 +130,6 @@ def test_normalize_for_schema_entity_intent_reality_defaults():
     data = {
         "version": "1.0",
         "entities": [{"id": "e1", "intent": None, "reality": None}],
-        "contracts": [],
         "root_id": "",
     }
     out = normalize_for_schema(data)
@@ -141,25 +139,7 @@ def test_normalize_for_schema_entity_intent_reality_defaults():
     assert isinstance(ent.get("reality"), dict)
     assert ent.get("children") == []
     assert ent.get("dependencies") == []
-
-
-# --- is_legacy_format ---
-
-
-def test_is_legacy_format_components_only():
-    assert is_legacy_format({"components": [], "contracts": []}) is True
-
-
-def test_is_legacy_format_entities_is_new():
-    assert is_legacy_format({"entities": [], "contracts": []}) is False
-
-
-def test_is_legacy_format_both_entities_wins():
-    assert is_legacy_format({"entities": [], "components": [], "contracts": []}) is False
-
-
-def test_is_legacy_format_not_dict():
-    assert is_legacy_format([]) is True
+    assert isinstance(ent.get("outgoing_contracts"), list)
 
 
 # --- validate_blueprint_data ---
@@ -176,6 +156,7 @@ def test_validate_blueprint_data_valid():
                 "dependencies": [],
                 "intent": empty_intent(),
                 "reality": empty_reality(),
+                "outgoing_contracts": [],
             },
             {
                 "id": "comp-a",
@@ -183,9 +164,9 @@ def test_validate_blueprint_data_valid():
                 "dependencies": [],
                 "intent": empty_intent(),
                 "reality": empty_reality(),
+                "outgoing_contracts": [{"to": "external-x", "type": "dependency"}],
             },
         ],
-        "contracts": [{"from": "comp-a", "to": "external-x", "type": "dependency"}],
     }
     valid, errors = validate_blueprint_data(data)
     assert valid is True, errors
@@ -197,8 +178,7 @@ def test_validate_blueprint_data_invalid_entity():
     data = {
         "version": "1.0",
         "root_id": "",
-        "entities": [{"id": "e1", "children": "not-a-list", "dependencies": [], "intent": {}, "reality": {}}],
-        "contracts": [],
+        "entities": [{"id": "e1", "children": "not-a-list", "dependencies": [], "intent": {}, "reality": {}, "outgoing_contracts": []}],
     }
     valid, errors = validate_blueprint_data(data)
     assert valid is False
@@ -218,11 +198,10 @@ def test_validate_blueprint_file_valid_new_format():
         "version": "1.0",
         "root_id": PROJECT_ROOT_ID,
         "entities": [
-            {"id": PROJECT_ROOT_ID, "children": [], "dependencies": [], "intent": empty_intent(), "reality": empty_reality()},
+            {"id": PROJECT_ROOT_ID, "children": [], "dependencies": [], "intent": empty_intent(), "reality": empty_reality(), "outgoing_contracts": []},
         ],
-        "contracts": [],
     }
-    path = Path(tempfile.mkdtemp()) / "blueprint.json"
+    path = Path(tempfile.mkdtemp()) / "blueprint_design.json"
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2)
     try:

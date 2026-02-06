@@ -1,9 +1,7 @@
 """
-Design–Code Blueprint Identity Alignment.
+Design–code blueprint identity alignment.
 
-Canonical identity rule: For accurate deviation calculation, each component in
-blueprint.json (design) must use the same `id` and `name` as in blueprint_code.json
-(code). Supports both legacy (components) and new entity format (entities).
+Design and code components must share the same id/name for deviation calculation.
 """
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
@@ -15,7 +13,7 @@ logger = get_logger(__name__)
 
 
 def _get_components_list(blueprint: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Return list of component/entity dicts (exclude root). Supports entities or components."""
+    """Return list of component/entity dicts, excluding root."""
     components = blueprint.get("components")
     if components is not None:
         return components
@@ -28,12 +26,10 @@ def validate_and_align_design_identity(
     design_blueprint: Dict[str, Any],
     auto_align_name: bool = True,
 ) -> Tuple[Dict[str, Any], List[str]]:
-    """
-    Validate design blueprint component identity against code blueprint and optionally align.
-    Works with both new format (entities) and legacy (components).
-    """
+    """Validate design identity against code blueprint; optionally align names."""
     warnings: List[str] = []
-    code_file = manifest_dir / "blueprint_code.json"
+    from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_CODE_FILE
+    code_file = manifest_dir / BLUEPRINT_CODE_FILE
     if not code_file.exists():
         return design_blueprint, warnings
 
