@@ -63,7 +63,8 @@ def _get_agent_name() -> str:
         cm = get_config_manager()
         cm.manifest_dir = _get_manifest_dir()
         return cm.get_setting("opencode.agent", DEFAULT_AGENT) or DEFAULT_AGENT
-    except Exception:
+    except Exception as e:
+        logger.debug("_get_agent_from_config failed: %s", e)
         return DEFAULT_AGENT
 
 
@@ -145,7 +146,8 @@ def _is_container_runtime_available() -> bool:
         client = docker.from_env()
         client.ping()
         return True
-    except Exception:
+    except Exception as e:
+        logger.debug("_is_container_runtime_available failed: %s", e)
         return False
     finally:
         if prev is None:

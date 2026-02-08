@@ -2,7 +2,7 @@
 Load design and code blueprints, compare, attach validation; write integrated view schema.
 """
 from pathlib import Path
-from typing import Dict, Any, List, Set
+from typing import Dict, Any, List, Set, Optional
 
 from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
 from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
@@ -11,16 +11,23 @@ from manifest.audit.blueprint.view_schema import build_view_schema, write_view_s
 from manifest.audit.entity_schema import PROJECT_ROOT_ID
 
 
-def get_entities_for_view(manifest_dir: Path) -> Dict[str, Any]:
+def get_entities_for_view(
+    manifest_dir: Path,
+    design_blueprint: Optional[Dict[str, Any]] = None,
+    code_blueprint: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """
-    Load design and code, compare, attach validation. Returns dict with blueprint,
+    Load design and code (or use provided), compare, attach validation. Returns dict with blueprint,
     code_blueprint, comp_status, validation_by_id, conflicts, view_schema. New schema only.
     """
     manifest_dir = Path(manifest_dir)
-    blueprint = BlueprintLoader.load_blueprint(
-        manifest_dir, with_metadata=True, default_source="llm_design"
-    )
-    code_blueprint = BlueprintLoader.load_code_blueprint(manifest_dir)
+    if design_blueprint is None:
+        design_blueprint = BlueprintLoader.load_blueprint(
+            manifest_dir, with_metadata=True, default_source="llm_design"
+        )
+    if code_blueprint is None:
+        code_blueprint = BlueprintLoader.load_code_blueprint(manifest_dir)
+    blueprint = design_blueprint
 
     sync = BlueprintSynchronizer()
     status_info = sync.calculate_implementation_status(blueprint, code_blueprint)

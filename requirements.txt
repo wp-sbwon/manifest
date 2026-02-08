@@ -14,5 +14,5 @@ fastapi>=0.104.0
 uvicorn>=0.24.0
 psutil>=5.9.0
 
-# Optional dependencies (install with: pip install manifest[opencode])
-# opencode>=1.0.0  # Uncomment to enable OpenCode integration
+# Optional: OpenCode integration (also in pyproject.toml as dependency)
+# pip install opencode-ai>=1.0.0  # Uncomment to enable

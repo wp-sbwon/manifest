@@ -453,8 +453,8 @@ class TaskManager:
                     return diff_staged_result.stdout
 
             return None
-        except Exception:
-            # Git not available or error
+        except Exception as e:
+            logger.debug("get_task_git_diff failed: %s", e)
             return None
 
     def save_task_git_diff(self, task_id: str) -> bool:

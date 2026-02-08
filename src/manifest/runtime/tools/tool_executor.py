@@ -89,7 +89,8 @@ class ToolExecutor:
             cm = ConfigManager(self.manifest_dir)
             if not cm.get_setting("tool_approval.ask_before_tool_run", False):
                 return None
-        except Exception:
+        except Exception as e:
+            logger.debug("_check_tool_approval config load failed: %s", e)
             return None
         if not self.approval_manager:
             return None
@@ -850,8 +851,8 @@ class ToolExecutor:
             try:
                 from manifest.core.config import ConfigManager
                 port = ConfigManager(self.manifest_dir).get_setting("container_api.port", port)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("ConfigManager container_api.port failed: %s", e)
             import httpx
             url = f"http://127.0.0.1:{port}/api/worker_squad/run"
             payload = {"task_id": task_id, "manifest_dir": str(self.manifest_dir)}

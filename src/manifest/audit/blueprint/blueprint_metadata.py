@@ -84,7 +84,8 @@ def load_blueprint_with_metadata(blueprint_file: Path, default_source: str = "ll
             blueprint = ensure_blueprint_metadata(blueprint, default_source, default_ground_truth)
 
         return blueprint
-    except Exception:
+    except Exception as e:
+        logger.debug("load_blueprint_with_metadata failed: %s", e)
         return {
             "version": "1.0",
             "root_id": "",
@@ -150,5 +151,6 @@ def save_blueprint_with_metadata(blueprint: Dict[str, Any], blueprint_file: Path
         with open(blueprint_file, "w", encoding="utf-8") as f:
             json.dump(blueprint, f, indent=2, ensure_ascii=False)
         return True
-    except Exception:
+    except Exception as e:
+        logger.debug("save_blueprint_with_metadata failed: %s", e)
         return False

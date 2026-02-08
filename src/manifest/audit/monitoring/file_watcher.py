@@ -38,7 +38,8 @@ class FileWatcher:
                 text=True
             )
             return result.returncode == 0
-        except Exception:
+        except Exception as e:
+            logger.debug("is_git_repo check failed: %s", e)
             return False
 
     def get_changed_files(
@@ -142,8 +143,8 @@ class FileWatcher:
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("get_current_branch failed: %s", e)
 
         return None
 
@@ -204,7 +205,7 @@ class FileWatcher:
             # Check if modified since last check
             if self._last_check is None or mtime > self._last_check:
                 return True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("check_blueprint_changes failed: %s", e)
 
         return False

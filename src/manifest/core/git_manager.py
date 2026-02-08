@@ -195,6 +195,6 @@ class GitManager:
             for commit in self.repo.iter_commits(max_count=50):
                 if f"({task_id})" in commit.message or f" {task_id}:" in commit.message:
                     return commit.hexsha
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("find_commit_with_task_id failed: %s", e)
         return None

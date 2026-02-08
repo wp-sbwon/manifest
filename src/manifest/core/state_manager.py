@@ -61,8 +61,8 @@ class StateManager:
             try:
                 with open(self.state_file, "r") as f:
                     self._state = json.load(f)
-            except Exception:
-                # If loading fails, start with clean state rather than crashing
+            except Exception as e:
+                logger.debug("state_manager load failed: %s", e)
                 self._state = self._default_state()
         else:
             self._state = self._default_state()
@@ -101,8 +101,8 @@ class StateManager:
                     content = await f.read()
                     self._state = json.loads(content)
                     return self._state
-            except Exception:
-                # Fall back to default state on any error
+            except Exception as e:
+                logger.debug("state_manager load_async failed: %s", e)
                 self._state = self._default_state()
                 return self._state
         else:

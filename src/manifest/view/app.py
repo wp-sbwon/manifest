@@ -25,6 +25,7 @@ from manifest.core.logger import get_logger
 from manifest.view.file_watcher import ViewFileWatcher
 from manifest.audit.monitoring.deviation_monitor import DeviationMonitor
 from manifest.view.entity_model import get_entities_for_view
+from manifest.core.paths import default_manifest_dir
 from manifest.view.diagram import (
     load_diagram_config,
     build_diagram_spec,
@@ -140,7 +141,7 @@ class ManifestViewApp(App[None]):
 
     def __init__(self, manifest_dir: Optional[Path] = None, **kwargs: Any):
         super().__init__(**kwargs)
-        self.manifest_dir = (manifest_dir or (Path.cwd() / ".manifest")).resolve()
+        self.manifest_dir = default_manifest_dir(manifest_dir)
         self.current_view = ViewType.DIAGRAM
         self.inspector_mode = InspectorMode.DESIGN
         self._right_panel_differences = False  # D toggles Design vs Differences
@@ -159,6 +160,16 @@ class ManifestViewApp(App[None]):
         self._blueprint_sync: Optional[BlueprintSynchronizer] = None
         self._git_manager: Optional[GitManager] = None
         self._blueprint_comparator: Optional[BlueprintComparator] = None
+        self._cached_design_blueprint: Optional[Dict[str, Any]] = None
+        self._cached_code_blueprint: Optional[Dict[str, Any]] = None
+
+    def _get_cached_design_blueprint(self) -> Dict[str, Any]:
+        """Design blueprint for current refresh cycle; empty dict if not yet loaded."""
+        return self._cached_design_blueprint if self._cached_design_blueprint is not None else {}
+
+    def _get_cached_code_blueprint(self) -> Dict[str, Any]:
+        """Code blueprint for current refresh cycle; empty dict if not yet loaded."""
+        return self._cached_code_blueprint if self._cached_code_blueprint is not None else {}
 
     def _get_state_manager(self) -> StateManager:
         if self._state_manager is None:
@@ -202,7 +213,11 @@ class ManifestViewApp(App[None]):
     def _ensure_diagram_components(self) -> None:
         """Populate diagram from get_entities_for_view; layered spec and selectable nodes."""
         try:
-            view_data = get_entities_for_view(self.manifest_dir)
+            view_data = get_entities_for_view(
+                self.manifest_dir,
+                self._cached_design_blueprint,
+                self._cached_code_blueprint,
+            )
             blueprint = view_data["blueprint"]
             code_blueprint = view_data["code_blueprint"]
             comp_status = view_data["comp_status"]
@@ -231,8 +246,7 @@ class ManifestViewApp(App[None]):
                         {"id": parent_id, "name": "↑ Up", "description": "Back to parent."},
                     ))
                 else:
-                    blueprint = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
-                    root_desc = mission_from_blueprint(blueprint, "Project root.")
+                    root_desc = mission_from_blueprint(self._get_cached_design_blueprint(), "Project root.")
                     selectable.append((
                         "root",
                         "PROJECT_ROOT",
@@ -253,8 +267,7 @@ class ManifestViewApp(App[None]):
             else:
                 self._diagram_layered_spec = None
                 self._diagram_component_list = []
-                blueprint = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
-                root_desc = mission_from_blueprint(blueprint, "Project root.")
+                root_desc = mission_from_blueprint(self._get_cached_design_blueprint(), "Project root.")
                 self._diagram_selectable_nodes = [
                     (
                         "root",
@@ -285,8 +298,7 @@ class ManifestViewApp(App[None]):
         )
         nodes: List[Tuple[str, str, Dict[str, Any]]] = []
         try:
-            blueprint = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
-            root_desc = mission_from_blueprint(blueprint, "Project root.")
+            root_desc = mission_from_blueprint(self._get_cached_design_blueprint(), "Project root.")
             nodes.append((
                 "root",
                 "PROJECT_ROOT",
@@ -310,10 +322,17 @@ class ManifestViewApp(App[None]):
         kind, nid, data = nodes[idx]
         if kind == "root":
             return False
-        top_down = BlueprintLoader.load_blueprint(
-            self.manifest_dir, with_metadata=True, default_source="llm_design"
-        )
-        bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+        top_down = self._get_cached_design_blueprint()
+        bottom_up = self._get_cached_code_blueprint()
+        if not top_down and not bottom_up:
+            try:
+                top_down = BlueprintLoader.load_blueprint(
+                    self.manifest_dir, with_metadata=True, default_source="llm_design"
+                )
+                bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+            except Exception as e:
+                logger.debug("_selected_node_is_deviating load failed: %s", e)
+                return False
         status_info = self._get_blueprint_sync().calculate_implementation_status(
             top_down, bottom_up
         )
@@ -397,8 +416,8 @@ class ManifestViewApp(App[None]):
                         comp["methods"] = r.get("methods", comp.get("methods"))
                         comp["type"] = r.get("type", comp.get("type"))
                         break
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Could not merge blueprint_code for node %s: %s", nid, e)
         lines = [
             f"Component: {comp.get('name') or nid}",
             f"  id: {nid}",
@@ -439,10 +458,8 @@ class ManifestViewApp(App[None]):
     def _load_files_view(self) -> Union[str, RenderableType]:
         """Source tree: root/ with dirs and files, dot by status."""
         try:
-            bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
-            top_down = BlueprintLoader.load_blueprint(
-                self.manifest_dir, with_metadata=True, default_source="llm_design"
-            )
+            bottom_up = self._get_cached_code_blueprint()
+            top_down = self._get_cached_design_blueprint()
             status_info = self._get_blueprint_sync().calculate_implementation_status(
                 top_down, bottom_up
             )
@@ -496,8 +513,8 @@ class ManifestViewApp(App[None]):
             if git_mgr.is_available():
                 try:
                     commits = git_mgr.get_latest_commits(limit=20)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Timeline: could not get git commits: %s", e)
             events: List[Tuple[str, str, str, str]] = []
             for e in design_entries[:20]:
                 ts = (e.get("timestamp") or "?")[:16].replace("T", " ")
@@ -546,11 +563,13 @@ class ManifestViewApp(App[None]):
             if git_mgr.is_available():
                 try:
                     branch = git_mgr.get_current_branch()
-                except Exception:
+                except Exception as e:
+                    logger.debug("History: could not get git branch: %s", e)
                     branch = "unknown"
                 try:
                     commits = git_mgr.get_latest_commits(limit=20)
-                except Exception:
+                except Exception as e:
+                    logger.debug("History: could not get git commits: %s", e)
                     commits = []
                 tbl = Table(show_header=True, header_style="bold green", box=None)
                 tbl.add_column("Hash", style="dim", width=8)
@@ -585,12 +604,8 @@ class ManifestViewApp(App[None]):
         lines = []
         try:
             if self.inspector_mode == InspectorMode.DEVIATION:
-                top_down = BlueprintLoader.load_blueprint(
-                    self.manifest_dir,
-                    with_metadata=True,
-                    default_source="llm_design",
-                )
-                bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+                top_down = self._get_cached_design_blueprint()
+                bottom_up = self._get_cached_code_blueprint()
                 comparator = self._get_blueprint_comparator()
                 conflicts = comparator.compare_blueprints(top_down, bottom_up)
                 lines.append(f"Deviation (mismatches): {len(conflicts)}")
@@ -602,12 +617,8 @@ class ManifestViewApp(App[None]):
                 if len(conflicts) > 20:
                     lines.append(f"  ... and {len(conflicts) - 20} more")
             elif self.inspector_mode == InspectorMode.VISUAL:
-                top_down = BlueprintLoader.load_blueprint(
-                    self.manifest_dir,
-                    with_metadata=True,
-                    default_source="llm_design",
-                )
-                bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+                top_down = self._get_cached_design_blueprint()
+                bottom_up = self._get_cached_code_blueprint()
                 status_info = self._get_blueprint_sync().calculate_implementation_status(
                     top_down, bottom_up
                 )
@@ -648,7 +659,7 @@ class ManifestViewApp(App[None]):
     def _load_mission_control_view(self) -> Union[str, RenderableType]:
         """Mission: goal cards (id, name, status, body)."""
         try:
-            blueprint = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
+            blueprint = self._get_cached_design_blueprint()
             goals = goals_from_blueprint(blueprint)
             cards: List[Tuple[str, str, str, str]] = []
             for i, g in enumerate(goals[:10]):
@@ -737,10 +748,8 @@ class ManifestViewApp(App[None]):
     def _get_sidebar_health(self) -> str:
         """Project Health: deviation % from blueprint sync; code quality/coverage/size from state (updated by bottom-up)."""
         try:
-            top_down = BlueprintLoader.load_blueprint(
-                self.manifest_dir, with_metadata=True, default_source="llm_design"
-            )
-            bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+            top_down = self._get_cached_design_blueprint()
+            bottom_up = self._get_cached_code_blueprint()
             status_info = self._get_blueprint_sync().calculate_implementation_status(
                 top_down, bottom_up
             )
@@ -756,8 +765,8 @@ class ManifestViewApp(App[None]):
                     with open(state_file, "r", encoding="utf-8") as f:
                         state = json.load(f)
                     metrics = state.get("health_metrics") or {}
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.debug("Could not load state.json health_metrics: %s", e)
             quality_str = metrics.get("code_quality") or "—"
             q = str(quality_str).lower()
             if q in ("excellent", "good", "ok"):
@@ -838,7 +847,7 @@ class ManifestViewApp(App[None]):
             if symbol:
                 return symbol.strip()
             return (data.get("name") or nid or "?").strip()
-        blueprint = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
+        blueprint = self._get_cached_design_blueprint()
         for e in top_layer_entities(blueprint):
             comp_ids = list(e.get("children") or [])
             if nid not in comp_ids:
@@ -850,10 +859,8 @@ class ManifestViewApp(App[None]):
 
     def _get_entities_by_id(self, nid: str) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
         """Resolve node by id from design and code blueprints."""
-        top = BlueprintLoader.load_blueprint(
-            self.manifest_dir, with_metadata=False, default_source="llm_design"
-        )
-        bottom = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+        top = self._get_cached_design_blueprint()
+        bottom = self._get_cached_code_blueprint()
         design_ent = next((e for e in (top.get("entities") or []) if isinstance(e, dict) and (e.get("id") or "") == nid), None)
         code_ent = next((e for e in (bottom.get("entities") or []) if isinstance(e, dict) and (e.get("id") or "") == nid), None)
         return design_ent, code_ent
@@ -916,7 +923,7 @@ class ManifestViewApp(App[None]):
 
     def _get_info_hub_root(self, header: str, deviating: bool) -> str:
         """Inspection for PROJECT_ROOT: sections from architecture (Goal Intent, Interface, Logic Style, Dependencies, Side Effects, Complexity, Output, Rules)."""
-        blueprint = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
+        blueprint = self._get_cached_design_blueprint()
         intent = root_intent(blueprint)
         narrative = intent.get("narrative") or {}
         profile = intent.get("profile") or {}
@@ -1071,10 +1078,7 @@ class ManifestViewApp(App[None]):
                 yield Static(f"Manifest app {APP_VERSION}", id="footer-version")
 
     def on_mount(self) -> None:
-        self._ensure_diagram_components()
-        self._refresh_sidebar()
-        self._refresh_main_content()
-        self._refresh_header_metrics()
+        self.refresh_view()
         self.set_interval(1, self._refresh_header_metrics)
         self._view_file_watcher = ViewFileWatcher(
             self.manifest_dir,
@@ -1195,13 +1199,22 @@ class ManifestViewApp(App[None]):
             try:
                 hub_w = self.query_one("#info-hub-content", Static)
                 hub_w.update(self._get_info_hub_content())
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Info hub refresh failed: %s", e)
         except Exception as e:
             logger.debug("Sidebar refresh failed: %s", e)
 
     def refresh_view(self) -> None:
-        """Refresh all."""
+        """Refresh all. Load design + code blueprints once per refresh and reuse in this cycle."""
+        try:
+            self._cached_design_blueprint = BlueprintLoader.load_blueprint(
+                self.manifest_dir, with_metadata=True, default_source="llm_design"
+            )
+            self._cached_code_blueprint = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+        except Exception as e:
+            logger.debug("refresh_view cache load failed: %s", e)
+            self._cached_design_blueprint = {}
+            self._cached_code_blueprint = {}
         self._ensure_diagram_components()
         self._refresh_sidebar()
         self._refresh_main_content()

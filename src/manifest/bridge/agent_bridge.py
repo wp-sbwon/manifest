@@ -81,8 +81,8 @@ class AgentBridge:
             docker_client = docker.from_env()
             docker_client.ping()  # Test connection
             self.resource_monitor = ResourceMonitor(docker_client)
-        except Exception:
-            # Container runtime not available - resource monitor will work without it
+        except Exception as e:
+            logger.debug("Container runtime not available, resource monitor without docker: %s", e)
             self.resource_monitor = ResourceMonitor(None)
 
         # Watchdog for monitoring

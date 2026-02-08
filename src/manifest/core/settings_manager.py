@@ -244,8 +244,8 @@ class SettingsManager:
             try:
                 with open(settings_file, "r") as f:
                     return json.load(f)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("get_spec_first_settings load failed: %s", e)
 
         # Default settings
         return {
@@ -277,8 +277,8 @@ class SettingsManager:
             try:
                 with open(settings_file, "r") as f:
                     return json.load(f)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("get_shadow_settings load failed: %s", e)
 
         # Default settings
         return {

@@ -134,8 +134,8 @@ class ConfigManager:
                 "openai": os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key") or stored_keys.get("openai")
             }
             return result
-        except Exception:
-            # If decryption fails, try environment variables
+        except Exception as e:
+            logger.debug("get_api_keys decryption failed, using env: %s", e)
             return {
                 "anthropic": os.getenv("ANTHROPIC_API_KEY") or os.getenv("anthropic_api_key"),
                 "google": os.getenv("GOOGLE_API_KEY") or os.getenv("google_api_key"),
@@ -199,7 +199,8 @@ class ConfigManager:
                     )
                     return response.status_code == 200
             return len(key) > 0
-        except Exception:
+        except Exception as e:
+            logger.debug("validate_key %s failed: %s", provider, e)
             return False
 
     async def validate_all_keys(self) -> Dict[str, bool]:
@@ -236,8 +237,8 @@ class ConfigManager:
             try:
                 with open(agent_config_file, "r") as f:
                     return json.load(f)
-            except Exception:
-                # If file is corrupted, use defaults
+            except Exception as e:
+                logger.debug("_load_agent_config failed, using defaults: %s", e)
                 return self._default_agent_config()
         return self._default_agent_config()
 
@@ -314,8 +315,8 @@ class ConfigManager:
                 # Decrypt the agent-specific key
                 try:
                     api_key = self._cipher.decrypt(api_key.encode()).decode()
-                except Exception:
-                    # If decryption fails, key is invalid
+                except Exception as e:
+                    logger.debug("Agent key decryption failed: %s", e)
                     api_key = None
 
         # model may be None: caller should use OpenCode default or opencode.model setting
@@ -441,7 +442,8 @@ class ConfigManager:
         try:
             with open(settings_file, "r") as f:
                 settings = json.load(f)
-        except Exception:
+        except Exception as e:
+            logger.debug("get_setting load failed: %s", e)
             return default
 
         # Support dot notation
@@ -478,7 +480,8 @@ class ConfigManager:
             try:
                 with open(settings_file, "r") as f:
                     settings = json.load(f)
-            except Exception:
+            except Exception as e:
+                logger.debug("set_setting load failed: %s", e)
                 settings = {}
 
         # Set nested value using dot notation

@@ -70,7 +70,8 @@ def _read_file_sample(path: Path, max_chars: int = 4000) -> str:
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as f:
             return f.read(max_chars)
-    except Exception:
+    except Exception as e:
+        logger.debug("_read_file_sample failed for %s: %s", path, e)
         return ""
 
 

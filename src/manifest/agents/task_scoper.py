@@ -13,6 +13,10 @@ import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Set
 
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class TaskScoper:
     """Manages task boundaries and context scoping."""
@@ -39,7 +43,8 @@ class TaskScoper:
             try:
                 with open(self.intent_file, "r") as f:
                     self._intent_data = json.load(f)
-            except Exception:
+            except Exception as e:
+                logger.debug("task_scoper load intent failed: %s", e)
                 self._intent_data = {"version": "1.0", "sprint": "", "features": []}
         else:
             self._intent_data = {"version": "1.0", "sprint": "", "features": []}
