@@ -86,7 +86,6 @@ class StructureManager:
         from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE, BLUEPRINT_CODE_FILE
         self.blueprint_file = self.manifest_dir / BLUEPRINT_DESIGN_FILE
         self.blueprint_code_file = self.manifest_dir / BLUEPRINT_CODE_FILE
-        self.architecture_file = self.manifest_dir / "architecture.json"
 
         # Pending changes
         self._pending_changes: List[str] = []

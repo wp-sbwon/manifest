@@ -8,6 +8,8 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 
 **Used for:** Diagram (top layer = features), Inspector root (Goal, Interface, Logic Style, Rules), Mission (goals). Load via `BlueprintLoader.load_blueprint(manifest_dir)`; use `entity_schema.get_root_entity`, `top_layer_entities`, `root_intent` for mission, goals, features. New schema, new logic only.
 
+**Entity layer depth / granularity:** No fixed max depth in code. How deep the tree goes is defined by the blueprint (designer or agent). Diagram can drill (Enter/Backspace) to any depth. Task-level granularity is separate (`.rules/task-granularity.md`).
+
 ---
 
 ## Three blueprint docs (design, code, view)

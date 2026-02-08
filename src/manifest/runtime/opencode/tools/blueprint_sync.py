@@ -5,7 +5,7 @@ Compare Design Plan vs Actual Code (top-down vs bottom-up), detect deviation
 (component status: healthy/planned/deviation/extra), and run sync workflow.
 """
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 
 from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
 from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
@@ -23,15 +23,22 @@ class BlueprintSyncTool:
         self._synchronizer = BlueprintSynchronizer(manifest_dir=self.manifest_dir)
         self._comparator = BlueprintComparator()
 
+    def _load_both_blueprints(
+        self, with_metadata: bool = True
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Load design and code blueprints. Single place for load options."""
+        top = BlueprintLoader.load_blueprint(
+            self.manifest_dir,
+            with_metadata=with_metadata,
+            default_source="llm_design",
+        )
+        bottom = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+        return top, bottom
+
     def compare_blueprints(self) -> Dict[str, Any]:
         """Compare top-down vs bottom-up blueprints; return conflict report."""
         try:
-            top_down = BlueprintLoader.load_blueprint(
-                self.manifest_dir,
-                with_metadata=True,
-                default_source="llm_design",
-            )
-            bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+            top_down, bottom_up = self._load_both_blueprints(with_metadata=True)
             conflicts = self._comparator.compare_blueprints(top_down, bottom_up)
             return {
                 "ok": True,
@@ -45,12 +52,7 @@ class BlueprintSyncTool:
     def detect_deviation(self) -> Dict[str, Any]:
         """Detect deviation (Design Plan vs Actual Code); return component statuses (healthy/planned/deviation/extra)."""
         try:
-            top_down = BlueprintLoader.load_blueprint(
-                self.manifest_dir,
-                with_metadata=True,
-                default_source="llm_design",
-            )
-            bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+            top_down, bottom_up = self._load_both_blueprints(with_metadata=True)
             status_info = self._synchronizer.calculate_implementation_status(
                 top_down, bottom_up
             )
@@ -70,11 +72,7 @@ class BlueprintSyncTool:
     def sync_blueprint(self, mode: str = "workflow") -> Dict[str, Any]:
         """Synchronize blueprints (strict | workflow | merge)."""
         try:
-            top_down = BlueprintLoader.load_blueprint(
-                self.manifest_dir,
-                with_metadata=False,
-            )
-            bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+            top_down, bottom_up = self._load_both_blueprints(with_metadata=False)
             result = self._synchronizer.sync_blueprints(
                 top_down, bottom_up, mode=mode
             )
