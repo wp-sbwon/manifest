@@ -22,7 +22,7 @@ VALID_ACTIONS = ("write_prd", "write_architecture", "write_intent", "ideate")
 class ArchitectTool:
     """Tool for writing top-down docs only: PRD, architecture, intent.
 
-    Writes only to .manifest/prd.json, .manifest/architecture.json, .manifest/intent.json.
+    Writes only to .manifest/prd.json, .manifest/blueprint_design.json, .manifest/intent.json.
     No other file writes. Use for Architect agent (ideation + top-down doc authoring).
     """
 

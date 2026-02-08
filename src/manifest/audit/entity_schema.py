@@ -232,6 +232,21 @@ def root_intent(blueprint: Dict[str, Any]) -> Dict[str, Any]:
     return root.get("intent") or {}
 
 
+def mission_from_blueprint(blueprint: Dict[str, Any], fallback: str = "") -> str:
+    """Root mission text for display. Returns stripped mission or fallback."""
+    raw = (root_intent(blueprint).get("narrative") or {}).get("mission") or ""
+    out = (raw or "").strip()
+    return out if out else (fallback or "")
+
+
+def goals_from_blueprint(blueprint: Dict[str, Any]) -> List[Any]:
+    """Root goals list for display. Returns list of goal dicts or strings; empty list if none."""
+    goals = root_intent(blueprint).get("goals")
+    if goals is None or not isinstance(goals, list):
+        return []
+    return goals
+
+
 # ---------------------------------------------------------------------------
 # Empty entity / intent / reality for defaults (no null)
 # ---------------------------------------------------------------------------

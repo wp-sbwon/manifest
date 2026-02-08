@@ -45,8 +45,7 @@ class ContextProvider:
         state_manager: StateManager instance for accessing state data.
         policy_file: Path to manifest-policy.md (Tier 0).
         intent_file: Path to intent.json (Tier 1).
-        architecture_file: Path to architecture.json (Tier 1).
-        blueprint_file: Path to blueprint.json (Tier 2).
+        blueprint_file: Path to blueprint_design.json (Tier 1).
     """
 
     def __init__(self, manifest_dir: Path = None, task_scoper: Optional[TaskScoper] = None, project_root: Path = None, state_manager: Optional[StateManager] = None):
@@ -69,7 +68,6 @@ class ContextProvider:
         self.state_manager = state_manager or StateManager(manifest_dir)
         self.policy_file = Path(".rules/manifest-policy.md")
         self.intent_file = self.manifest_dir / "intent.json"
-        self.architecture_file = self.manifest_dir / "architecture.json"
         from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE
         self.blueprint_file = self.manifest_dir / BLUEPRINT_DESIGN_FILE
 
@@ -215,7 +213,7 @@ class ContextProvider:
         }
 
     def _load_tier_1(self) -> Dict[str, Any]:
-        """Load Tier 1: The Intent (intent.json, architecture.json)."""
+        """Load Tier 1: intent.json and blueprint (blueprint_design.json)."""
         tier_1 = {}
 
         # Load intent.json

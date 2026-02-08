@@ -1,6 +1,6 @@
-"""Build diagram spec from tree (root_id, children) and comp_status."""
+"""Build diagram spec from tree (root_id, children), comp_status, and edges from outgoing_contracts."""
 
-from typing import Dict, Any, List, Optional, Set
+from typing import Dict, Any, List, Optional, Set, Tuple
 
 
 def is_app_component(node: Dict[str, Any]) -> bool:
@@ -93,6 +93,22 @@ def _flat_spec_from_tree(
     return build_flat_diagram_spec(ordered, comp_status, title=title or "ARCHITECTURE FLOW")
 
 
+def _edges_for_layer(entities: List[Dict[str, Any]], layer_ids: Set[str]) -> List[Dict[str, str]]:
+    """Edges (from, to) from entities' outgoing_contracts where both endpoints are in layer_ids."""
+    edges: List[Dict[str, str]] = []
+    for e in entities or []:
+        from_id = (e.get("id") or "").strip()
+        if from_id not in layer_ids:
+            continue
+        for oc in e.get("outgoing_contracts") or []:
+            if not isinstance(oc, dict):
+                continue
+            to_id = (oc.get("to") or "").strip()
+            if to_id in layer_ids and to_id != from_id:
+                edges.append({"from": from_id, "to": to_id})
+    return edges
+
+
 def build_diagram_spec(
     nodes: List[Dict[str, Any]],
     comp_status: Dict[str, str],
@@ -102,15 +118,17 @@ def build_diagram_spec(
 ) -> Dict[str, Any]:
     """
     Layer 1: direct children of root_id (structured). Layer 2: under each L1 node, a row of its children.
-    Returns spec with nodes[].row; each node has id and _data for selection.
+    Edges from outgoing_contracts (flow/dependency) between L1 nodes. Returns spec with nodes[].row, edges.
     """
     id_to_node = {n.get("id"): n for n in nodes if n.get("id")}
     root = id_to_node.get(root_id)
     if not root:
-        return {"title": title or "ARCHITECTURE FLOW", "root_id": root_id, "nodes": []}
+        return {"title": title or "ARCHITECTURE FLOW", "root_id": root_id, "nodes": [], "edges": []}
     child_ids = [cid for cid in (root.get("children") or []) if cid in id_to_node]
     if filter_app_only:
         child_ids = [cid for cid in child_ids if is_app_component(id_to_node[cid])]
+    layer_id_set: Set[str] = set(child_ids)
+    edges = _edges_for_layer(nodes, layer_id_set)
     out_nodes: List[Dict[str, Any]] = []
     for cid in child_ids:
         node = id_to_node[cid]
@@ -134,8 +152,24 @@ def build_diagram_spec(
             "_data": node,
             "row": row,
         })
+
+    layout_type = "STACK"
+    layout_topology: Dict[str, Any] = {}
+    root_intent = root.get("intent") or {}
+    root_blueprint = root_intent.get("blueprint") or {}
+    if isinstance(root_blueprint, dict):
+        layout_type = (root_blueprint.get("type") or "STACK").strip().upper()
+        if layout_type not in ("FLOW", "GRID", "STACK"):
+            layout_type = "STACK"
+        layout_topology = root_blueprint.get("topology") or {}
+        if not isinstance(layout_topology, dict):
+            layout_topology = {}
+
     return {
         "title": title or "ARCHITECTURE FLOW",
         "root_id": root_id,
         "nodes": out_nodes,
+        "edges": edges,
+        "layout_type": layout_type,
+        "layout_topology": layout_topology,
     }

@@ -2,9 +2,9 @@
 Doc set: same formatted docs from top-down and bottom-up.
 
 Both processes produce the same set of docs; the synchronizer compares them mechanically.
-- Blueprint: top-down = blueprint_design.json, bottom-up = blueprint_code.json (mechanical extraction).
-- Intent: top-down = intent.json, bottom-up = intent_code.json (bottom-up via LLM from code).
-- Architecture: top-down = architecture.json, bottom-up = architecture_code.json (bottom-up via LLM from code).
+- Blueprint: top-down = blueprint_design.json, bottom-up = blueprint_code.json.
+- Intent: top-down = intent.json, bottom-up = intent_code.json.
+- Architecture doc type: design blueprint (blueprint_design) vs code blueprint (blueprint_code); no architecture.json.
 """
 import json
 from pathlib import Path
@@ -17,18 +17,18 @@ logger = get_logger(__name__)
 # Doc types that both top-down and bottom-up produce (same schema)
 DOC_SET = ["blueprint", "intent", "architecture"]
 
-# Bottom-up filenames (same schema as top-down; compared mechanically)
+# Bottom-up filenames (architecture doc type = code blueprint)
 BOTTOM_UP_FILES = {
     "blueprint": "blueprint_code.json",
     "intent": "intent_code.json",
-    "architecture": "architecture_code.json",
+    "architecture": "blueprint_code.json",
 }
 
-# Top-down filenames
+# Top-down filenames (architecture doc type uses design blueprint)
 TOP_DOWN_FILES = {
     "blueprint": "blueprint_design.json",
     "intent": "intent.json",
-    "architecture": "architecture.json",
+    "architecture": "blueprint_design.json",
 }
 
 
