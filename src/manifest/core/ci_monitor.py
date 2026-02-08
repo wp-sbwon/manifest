@@ -41,8 +41,8 @@ def get_github_repo_info() -> Optional[Dict[str, str]]:
 
             if len(parts) >= 2:
                 return {"owner": parts[0], "repo": parts[1]}
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("get_github_repo_info failed: %s", e)
 
     return None
 
@@ -94,7 +94,6 @@ def check_imports() -> Dict[str, Any]:
         ("manifest.core.state_manager", "StateManager"),
         ("manifest.agents.agent_coordinator", "AgentCoordinator"),
         ("manifest.bridge.agent_bridge", "AgentBridge"),
-        ("manifest.runtime.agent.core.executor_factory", "ExecutorFactory"),
         ("manifest.runtime.agent.core", "ExecutorFactory"),
     ]
 

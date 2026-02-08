@@ -15,11 +15,14 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from dataclasses import dataclass, field, asdict
 
+from manifest.core.logger import get_logger
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
 from manifest.audit.code.deviation_auditor import Severity
 from manifest.audit.entity_schema import PROJECT_ROOT_ID, top_layer_entities
 from manifest.audit import doc_set
 from manifest.audit.doc_comparator import compare_intent, compare_architecture, DocDiff
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -260,7 +263,8 @@ class BlueprintSynchronizer:
             )
 
             return report
-        except Exception:
+        except Exception as e:
+            logger.debug("build_conflict_report failed: %s", e)
             return None
 
     def resend_to_worker_squad(

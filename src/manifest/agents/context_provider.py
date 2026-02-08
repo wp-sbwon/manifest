@@ -221,7 +221,8 @@ class ContextProvider:
             try:
                 with open(self.intent_file, "r") as f:
                     tier_1["intent"] = json.load(f)
-            except Exception:
+            except Exception as e:
+                logger.debug("context_provider load intent failed: %s", e)
                 tier_1["intent"] = {"version": "1.0", "sprint": "", "features": []}
         else:
             tier_1["intent"] = {"version": "1.0", "sprint": "", "features": []}

@@ -58,8 +58,8 @@ def record_design_save(manifest_dir: Path, doc: str, path_relative: str) -> None
         try:
             with open(history_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not load design history file: %s", e)
     entries = data.get("entries", [])
     entries.append({
         "doc": doc,

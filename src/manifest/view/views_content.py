@@ -20,7 +20,10 @@ from manifest.audit.entity_schema import (
     top_layer_entities,
     root_intent,
 )
+from manifest.core.logger import get_logger
 from manifest.core.task_constants import status_display_label
+
+logger = get_logger(__name__)
 
 # Re-export for app.py
 ACCENT_BLUE = "bright_blue"
@@ -67,7 +70,8 @@ def blueprint_component_names(manifest_dir: Path) -> Dict[str, str]:
             if cid:
                 out[cid] = name
         return out
-    except Exception:
+    except Exception as e:
+        logger.debug("blueprint_component_names failed: %s", e)
         return {}
 
 
@@ -346,7 +350,8 @@ def load_setup_md(manifest_dir: Path) -> str:
         if path.exists():
             try:
                 return path.read_text(encoding="utf-8").strip() or "(empty)"
-            except Exception:
+            except Exception as e:
+                logger.debug("load_setup_md read failed for %s: %s", path, e)
                 return "(read failed)"
     return "(Add .manifest/setup.md to describe setup and logic, e.g. OpenCode/Podman requirements.)"
 
@@ -360,7 +365,8 @@ def render_modules_and_methods(manifest_dir: Path, max_rows: int = 40) -> Union[
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-    except Exception:
+    except Exception as e:
+        logger.debug("render_modules_and_methods load failed: %s", e)
         return "(failed to load blueprint_code)"
     components = entities_for_display(data.get("entities", []))
     if not components:
@@ -423,7 +429,8 @@ def render_design_history_short(manifest_dir: Path, max_entries: int = 10) -> st
         if len(entries) > max_entries:
             lines.append(f"  ... and {len(entries) - max_entries} more")
         return "\n".join(lines)
-    except Exception:
+    except Exception as e:
+        logger.debug("render_design_history_short failed: %s", e)
         return "Design history: (unavailable)"
 
 

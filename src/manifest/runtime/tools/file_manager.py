@@ -10,6 +10,7 @@ import glob as pyglob
 from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from pathlib import Path
 from manifest.core.logger import get_logger
+from manifest.core.paths import resolve_path_under_base
 
 if TYPE_CHECKING:
     from manifest.runtime.permissions.permission_manager import PermissionManager
@@ -44,7 +45,7 @@ class FileManager:
             permission_manager: PermissionManager instance for access control.
             agent_type: Type of agent using this manager (for permission checks).
         """
-        self.working_dir = working_dir or Path.cwd()
+        self.working_dir = (working_dir or Path.cwd()).resolve()
         self.permission_manager = permission_manager
         self.agent_type = agent_type
 
@@ -64,16 +65,14 @@ class FileManager:
         return self.permission_manager.check_permission(permission_type, resource)
 
     def _resolve_path(self, file_path: str) -> Path:
-        """Resolve file path relative to working directory.
-
-        Args:
-            file_path: Path relative to working directory.
-
-        Returns:
-            Resolved absolute Path.
-        """
-        if Path(file_path).is_absolute():
-            return Path(file_path)
+        """Resolve file path relative to working directory. Validates path stays under working_dir (user/LLM paths)."""
+        raw = Path(file_path)
+        if raw.is_absolute():
+            resolved = raw.resolve()
+            safe = resolve_path_under_base(resolved, self.working_dir)
+            if safe is None:
+                raise ValueError(f"Path outside working directory: {file_path}")
+            return safe
         return (self.working_dir / file_path).resolve()
 
     def edit(
