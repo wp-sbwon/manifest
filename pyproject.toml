@@ -38,6 +38,7 @@ requires-python = ">=3.10"
 [project.scripts]
 manifest = "manifest.__main__:main"
 dependencies = [
+    "urllib3>=1.26.18,<2",
     "textual>=0.40.0",
     "aiofiles>=23.2.0",
     "cryptography>=41.0.0",

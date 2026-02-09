@@ -158,18 +158,16 @@ class TaskManager:
         return False
 
     def rollback_task(self, task_id: str) -> bool:
-        """Rollback a task to the previous stage in the workflow.
+        """Rollback to the previous stage in the workflow.
 
-        Moves the task back one stage (e.g., from "testing" to "implementation").
-        The status is reset to "pending". Note that this only updates the
-        state; actual code rollback would be handled by AgentCoordinator
-        using Git.
+        Status is set to pending. Updates state only; code rollback is
+        handled elsewhere.
 
         Args:
-            task_id: ID of the task to rollback.
+            task_id: ID to rollback.
 
         Returns:
-            True if task was found and rolled back, False otherwise.
+            True if found and rolled back, False otherwise.
         """
         tasks = self.state_manager.get_task_checklist()
         for task in tasks:

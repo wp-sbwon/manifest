@@ -117,7 +117,7 @@ class AgentBridge:
 
         self.is_connected = False
         self._message_id_counter = 0
-        self._active_agents: Dict[str, Dict[str, Any]] = {}  # task_id -> agent info
+        self._active_agents: Dict[str, Dict[str, Any]] = {}
 
     async def start(self) -> bool:
         """
@@ -465,7 +465,7 @@ class AgentBridge:
             channel: Channel name for this agent's output.
         """
         if not self.channel_manager:
-            # Fallback: if no channel_manager, save to state directly
+            # Save to state when channel_manager is not set
             chunk_type = chunk.get("type")
             if chunk_type == "chunk":
                 content = chunk.get("content", "")
@@ -492,16 +492,12 @@ class AgentBridge:
             # Save immediately for complete messages to ensure persistence
             await self.channel_manager.handle_agent_output(channel, content, "assistant", save_immediately=True)
 
-            # Mark agent as completed immediately when complete chunk is received
-            # Extract task_id from channel (format: "squad-{task_id}-{agent_type}" or "sprint-{sprint_id}-{agent_type}")
             task_id = None
             if channel.startswith("squad-"):
                 parts = channel.split("-")
                 if len(parts) >= 2:
                     task_id = parts[1]
             elif channel.startswith("sprint-"):
-                # For sprint channels, we might not have task_id in channel
-                # Try to find task_id from active_agents
                 for tid, agent_info in self._active_agents.items():
                     if agent_info.get("channel") == channel:
                         task_id = tid
@@ -516,11 +512,8 @@ class AgentBridge:
                 self._active_agents[task_id]["completed_at"] = time.time()
                 logger.debug(f"Agent {task_id} marked as completed (complete chunk received)")
 
-            # Extract tool execution summary if available (for next stage)
             tool_execution_summary = chunk.get("tool_execution_summary")
             if tool_execution_summary:
-                # Store tool execution summary in task state for next stage
-                # This will be used by test/debug agents to know what was modified
                 if not task_id:
                     task_id = channel.split("-")[1] if "-" in channel and len(channel.split("-")) >= 2 else None
                 if task_id:
@@ -683,7 +676,6 @@ Review Question: {review_request.get('question', 'Is this change necessary or a 
                             channel = f"sprint-{sprint_id}-e2e_test"
                             await self._handle_agent_chunk(chunk, channel)
                     elif task_id:
-                        # Fallback to task-level E2E test (existing behavior)
                         async for chunk in agent_instance.run_e2e_tests(task_id, context, model_config):
                             channel = f"squad-{task_id}-e2e_test"
                             await self._handle_agent_chunk(chunk, channel)

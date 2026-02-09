@@ -56,8 +56,8 @@ def test_view_app_load_views(temp_manifest_dir):
     assert isinstance(files_content, str) or hasattr(files_content, "render")
 
     app.current_view = ViewType.HISTORY
-    history_content = app._load_history_view()
-    assert isinstance(history_content, str) or hasattr(history_content, "render") or hasattr(history_content, "__rich_console__")
+    history_content = app._load_timeline_view()  # HISTORY uses same content as TIMELINE
+    assert isinstance(history_content, str)
 
     app.current_view = ViewType.TIMELINE
     timeline_content = app._load_timeline_view()

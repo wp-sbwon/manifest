@@ -1,10 +1,17 @@
 """Manifest View: Diagram, Files, Timeline, Mission. D=Differences, Tab=next, S=refresh."""
 import json
+import os
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Set, Union
 from enum import Enum
+
+# Use color when we have a TTY (same terminal as OpenCode can show color).
+if sys.stdout.isatty():
+    os.environ.pop("NO_COLOR", None)
+    os.environ.setdefault("TEXTUAL_COLOR_SYSTEM", "truecolor")
 
 from rich.console import Group, RenderableType
 from rich.panel import Panel
@@ -26,6 +33,7 @@ from manifest.view.file_watcher import ViewFileWatcher
 from manifest.audit.monitoring.deviation_monitor import DeviationMonitor
 from manifest.view.entity_model import get_entities_for_view
 from manifest.core.paths import default_manifest_dir
+from manifest.core.constants import STATE_FILE, TASKS_FILE
 from manifest.view.diagram import (
     load_diagram_config,
     build_diagram_spec,
@@ -45,22 +53,12 @@ from manifest.audit.entity_schema import (
 from manifest.view.views_content import (
     ACCENT_BLUE,
     blueprint_component_names as _blueprint_component_names,
-    blueprint_features_by_component as _blueprint_features_by_component,
-    box as _box,
     component_type_color as _component_type_color,
     entities_for_display as _entities_for_display,
     feature_status_from_entities as _feature_status_from_entities,
     item_display_name as _item_display_name,
-    load_setup_md as _load_setup_md,
     order_entities_by_flow as _order_entities_by_flow,
     progress_bar as _progress_bar,
-    render_blueprint_diagram as _render_blueprint_diagram,
-    render_design_history_short as _render_design_history_short,
-    render_deviation_summary as _render_deviation_summary,
-    render_features_summary_from_blueprint as _render_features_summary_from_blueprint,
-    render_intent_summary as _render_intent_summary,
-    render_modules_and_methods as _render_modules_and_methods,
-    render_prd_summary as _render_prd_summary,
     single_line_node as _single_line_node,
     status_color_tag as _status_color_tag,
     status_label as _status_label,
@@ -79,8 +77,6 @@ class ViewType(Enum):
     TIMELINE = "timeline"
     HISTORY = "history"  # alias: same content as TIMELINE (Design + Git timeline)
     MISSION_CONTROL = "mission_control"
-    ARCHITECT = "architect"
-    BLUEPRINT = "blueprint"
     INSPECTOR = "inspector"
 
 
@@ -94,15 +90,24 @@ class InspectorMode(Enum):
     DETAIL = "detail"
 
 
-# App version for footer; not bumped until release (effectively 0.0 during development).
-APP_VERSION = "0.0"
+def _app_version() -> str:
+    """Single source: pyproject.toml [project].version via package metadata."""
+    try:
+        import importlib.metadata
+        return importlib.metadata.version("manifest")
+    except Exception:
+        return "0.0"
+
+
+APP_VERSION = _app_version()
 
 
 class ManifestViewApp(App[None]):
     TITLE = "Manifest View"
     SUB_TITLE = ""
     CSS = """
-    Screen { background: #0d1117; color: #c9d1d9; }
+    /* Do not set color on Screen: widget color overrides content markup colors and forces grey everywhere. */
+    Screen { background: #0d1117; }
     #header-strip { height: auto; padding: 0 1; background: #161b22; border: solid #30363d; }
     #body-row { height: 1fr; }
     #sidebar { width: 1fr; min-width: 46; max-width: 52; border-right: solid #30363d; background: #0d1117; }
@@ -437,7 +442,7 @@ class ManifestViewApp(App[None]):
         return "\n".join(lines)
 
     def _load_diagram_view(self) -> Union[str, RenderableType]:
-        """Diagram: layered spec (L1 + L2 rows) or empty."""
+        """Diagram: layered spec (L1 + L2 rows) or empty. Return markup string so Static renders color."""
         try:
             if not self._diagram_blueprint:
                 return "  (no blueprint — run app or sync refresh)"
@@ -534,71 +539,6 @@ class ManifestViewApp(App[None]):
             logger.debug("Timeline load failed: %s", e)
             return f"(load failed: {e})"
 
-    def _load_history_view(
-        self, title_for_fallback: str = "History"
-    ) -> Union[str, RenderableType]:
-        """Design history and git commits as panels."""
-        panels: List[RenderableType] = []
-        try:
-            from manifest.core.design_history import get_design_history
-            design_entries = get_design_history(self.manifest_dir)
-            if design_entries:
-                tbl = Table(show_header=True, header_style="bold cyan", box=None)
-                tbl.add_column("Doc", style="dim", width=10)
-                tbl.add_column("Path", max_width=40)
-                tbl.add_column("Date", style="dim", width=10)
-                for entry in design_entries[:15]:
-                    tbl.add_row(
-                        entry.get("doc", "?"),
-                        entry.get("path", "?"),
-                        (entry.get("timestamp") or "?")[:10],
-                    )
-                if len(design_entries) > 15:
-                    tbl.add_row("...", f"+{len(design_entries) - 15} more", "")
-                panels.append(Panel(tbl, title=f"Design history ({len(design_entries)} entries)", border_style="cyan"))
-            else:
-                panels.append(Panel("(none)", title="Design history", border_style="dim"))
-
-            git_mgr = self._get_git_manager()
-            if git_mgr.is_available():
-                try:
-                    branch = git_mgr.get_current_branch()
-                except Exception as e:
-                    logger.debug("History: could not get git branch: %s", e)
-                    branch = "unknown"
-                try:
-                    commits = git_mgr.get_latest_commits(limit=20)
-                except Exception as e:
-                    logger.debug("History: could not get git commits: %s", e)
-                    commits = []
-                tbl = Table(show_header=True, header_style="bold green", box=None)
-                tbl.add_column("Hash", style="dim", width=8)
-                tbl.add_column("Author", width=16)
-                tbl.add_column("Date", style="dim", width=10)
-                tbl.add_column("Message", max_width=50)
-                for commit in commits:
-                    tbl.add_row(
-                        commit.get("short_hash", "?"),
-                        (commit.get("author", "?") or "?")[:16],
-                        (commit.get("timestamp", "?") or "?")[:10],
-                        (commit.get("message", "?") or "?").replace("\n", " ")[:50],
-                    )
-                body: RenderableType = Group(Text(f"Branch: {branch}"), tbl) if commits else Text(f"Branch: {branch}\n(no commits)")
-                panels.append(Panel(
-                    body,
-                    title=f"Git commits ({len(commits)})",
-                    border_style="green",
-                ))
-            else:
-                if not design_entries:
-                    panels.append(Panel("(Git not available)", title="Git", border_style="dim"))
-            if not panels:
-                return Panel("(no design history; Git not available)", title=title_for_fallback, border_style="dim")
-            return Group(*panels)
-        except Exception as e:
-            logger.debug("History view load failed: %s", e)
-            return Panel(f"(load failed: {e})", title=title_for_fallback, border_style="red")
-
     def _load_inspector_view(self) -> str:
         """Inspect: Deviation, Visual, Data, Detail."""
         lines = []
@@ -690,7 +630,10 @@ class ManifestViewApp(App[None]):
     def _get_current_view_content(self) -> Union[str, RenderableType]:
         """Content for current view. History = Timeline."""
         if self.current_view == ViewType.DIAGRAM:
-            return self._load_diagram_view()
+            raw = self._load_diagram_view()
+            if isinstance(raw, str):
+                return Text.from_markup(raw)
+            return raw
         elif self.current_view == ViewType.FILES:
             return self._load_files_view()
         elif self.current_view in (ViewType.TIMELINE, ViewType.HISTORY):
@@ -705,7 +648,7 @@ class ManifestViewApp(App[None]):
             tasks, sprints = self._get_tasks_and_sprints_from_manifest()
             if not tasks:
                 return "[bold cyan]Tasks[/]\n[dim]─────────────────────[/]\n[white](0)[/]"
-            # Old TUI style: each task shows status label and progress bar + %
+            # Each item shows status label and progress bar
             name_max = 36
             total_pct = 0.0
             for t in tasks:
@@ -759,7 +702,7 @@ class ManifestViewApp(App[None]):
             pct = int(100 * deviation_count / total)
             dev_color = "yellow" if pct > 0 else "green"
             metrics = {}
-            state_file = self.manifest_dir / "state.json"
+            state_file = self.manifest_dir / STATE_FILE
             if state_file.exists():
                 try:
                     with open(state_file, "r", encoding="utf-8") as f:
@@ -799,8 +742,7 @@ class ManifestViewApp(App[None]):
             ViewType.TIMELINE: "Timeline",
             ViewType.HISTORY: "Timeline",
             ViewType.MISSION_CONTROL: "Mission",
-            ViewType.ARCHITECT: "Architect",
-            ViewType.BLUEPRINT: "Blueprint",
+            ViewType.INSPECTOR: "Inspector",
         }.get(self.current_view, "—")
         return f"View: {name}"
 
@@ -893,11 +835,8 @@ class ManifestViewApp(App[None]):
         kind, nid, data = nodes[idx]
         display_name = self._get_diagram_label_for_node(kind, nid, data)
         deviating = self._selected_node_is_deviating()
-        header = (
-            "[bold cyan]Inspector[/]\n"
-            "[dim]────────────────────────────────────────[/]\n"
-            f"[white]{display_name}[/]"
-        )
+        entity_label = "System Core" if kind == "root" else display_name
+        header = f"[bold cyan]Inspector::[/] [bold #f0c674]{entity_label}[/]"
         if deviating:
             header += "  [red bold][D] DIFF[/]"
         header += "\n\n"
@@ -908,7 +847,10 @@ class ManifestViewApp(App[None]):
         if kind == "up":
             return header + "\n\n  [dim]Press Backspace to go back.[/]"
         if kind == "root":
-            return self._get_info_hub_root(header, deviating)
+            root_entity = self._get_root_entity_for_inspector()
+            validation = self._view_data.get("validation_by_id") or {}
+            validation = validation.get(PROJECT_ROOT_ID) or {}
+            return self._get_info_hub_node(header, PROJECT_ROOT_ID, root_entity, validation, deviating)
         if kind == "feature":
             return header + self._render_detail_content()
         entity = data if (data.get("intent") is not None and data.get("reality") is not None) else self._get_entity_for_inspector(nid, data)
@@ -921,42 +863,47 @@ class ManifestViewApp(App[None]):
         indented = "\n  ".join(body.split("\n"))
         return f"[bold #58a6ff]{title}[/]\n{rule}\n  {indented}\n"
 
-    def _get_info_hub_root(self, header: str, deviating: bool) -> str:
-        """Inspection for PROJECT_ROOT: sections from architecture (Goal Intent, Interface, Logic Style, Dependencies, Side Effects, Complexity, Output, Rules)."""
-        blueprint = self._get_cached_design_blueprint()
-        intent = root_intent(blueprint)
-        narrative = intent.get("narrative") or {}
-        profile = intent.get("profile") or {}
-        gov = intent.get("governance") or {}
-        goal = mission_from_blueprint(blueprint, "Project root.")
-        interface_plan = (narrative.get("role") or "").strip() or "—"
-        style = (profile.get("architecture_style") or "").strip() or "—"
-        rules = list(gov.get("rules") or [])
-        last_out, trace = self._get_shadow_results_for_node("PROJECT_ROOT")
-        rules_text = "\n  ".join(f"[white]» {str(r)[:72]}[/]" for r in (rules or [])[:6]) or "[white]—[/]"
-        parts = [
-            header,
-            self._inspection_section("Goal Intent", f"[white]{goal[:280] or '—'}[/]"),
-            self._inspection_section("Interface Contract", f"[white]{interface_plan}[/]"),
-            self._inspection_section("Logic Style", f"[white]{style}[/]"),
-            self._inspection_section("Dependencies", "[white]—[/]"),
-            self._inspection_section("Side Effects", "[white]—[/]"),
-            self._inspection_section("Complexity", "[white]—[/]"),
-            self._inspection_section("Last Output", f"[white]{last_out[:160] if last_out != '—' else '—'}[/]"),
-            self._inspection_section("Shadow Trace Output", f"[white]{trace[:240] if trace != '—' else '—'}[/]"),
-            self._inspection_section("Essential Rules", rules_text),
-        ]
-        if deviating:
-            parts.append(self._inspection_section("Deviation Alert", "[red]Plan and code mismatch. [D] DIFF to compare.[/]"))
-        return "\n".join(parts)
+    def _get_root_entity_for_inspector(self) -> Dict[str, Any]:
+        """Root (System Core) as entity: same shape as other entities. From blueprint root or synthetic from root_intent."""
+        design = self._get_cached_design_blueprint()
+        code = self._get_cached_code_blueprint()
+        root_design = get_root_entity(design) if design else None
+        root_code = get_root_entity(code) if code else None
+        if root_design:
+            out = dict(root_design)
+            out.setdefault("id", PROJECT_ROOT_ID)
+            out.setdefault("intent", root_intent(design or {}))
+            out.setdefault("reality", {})
+            out.setdefault("children", [])
+            out.setdefault("dependencies", [])
+            out.setdefault("outgoing_contracts", [])
+            if root_code and root_code.get("reality") is not None:
+                out["reality"] = root_code.get("reality") or {}
+            return out
+        intent = root_intent(design or {})
+        child_ids = [e.get("id") for e in top_layer_entities(design or {}) if e.get("id")]
+        return {
+            "id": PROJECT_ROOT_ID,
+            "intent": intent,
+            "reality": (root_code.get("reality") or {}) if root_code else {},
+            "children": child_ids,
+            "dependencies": [],
+            "outgoing_contracts": [],
+        }
 
     def _get_info_hub_node(self, header: str, nid: str, data: Dict[str, Any], validation: Dict[str, Any], deviating: bool) -> str:
-        """Inspector for node: id, children, dependencies, intent, reality, outgoing_contracts, validation."""
+        """Inspector for any entity (including root): Identity, Intent, Reality, Outgoing contracts, Validation."""
         def _fmt(val: Any, max_len: int = 200) -> str:
             if val is None or val == "":
                 return "—"
             s = str(val).strip()
             return (s[:max_len] + "…") if len(s) > max_len else s
+
+        def _cap(s: str) -> str:
+            """Capitalize label: 'io_model' -> 'Io model', 'input' -> 'Input'."""
+            if not s:
+                return s
+            return " ".join(w.capitalize() for w in s.replace("_", " ").strip().split())
 
         intent = data.get("intent") or {}
         reality = data.get("reality") or {}
@@ -966,8 +913,6 @@ class ManifestViewApp(App[None]):
         blueprint = intent.get("blueprint") or {}
         bp_type = _fmt(blueprint.get("type"), 20)
         protocol_i = intent.get("protocol") or {}
-        protocol_in = protocol_i.get("input") or []
-        protocol_out = protocol_i.get("output") or []
         profile_i = intent.get("profile") or {}
         gov = intent.get("governance") or {}
         symbol = _fmt(reality.get("symbol"), 120)
@@ -981,44 +926,51 @@ class ManifestViewApp(App[None]):
         status = _fmt(validation.get("status"), 20)
         deviations = validation.get("deviations") or []
 
-        lines = [
-            f"[white]id[/] {nid}",
-            f"[white]children[/] {', '.join(children_ids) or '—'}",
-            f"[white]dependencies[/] {', '.join(deps[:12]) or '—'}",
-            "",
-            "[bold]Intent[/]",
-            f"  role: {role}",
-            f"  mission: {mission}",
-            f"  blueprint.type: {bp_type}",
-            f"  protocol.input: {_fmt(protocol_in)}",
-            f"  protocol.output: {_fmt(protocol_out)}",
-            f"  profile: lang={profile_i.get('language') or '—'} platform={profile_i.get('platform') or '—'} io={profile_i.get('io_model') or '—'} state={profile_i.get('state_model') or '—'}",
-            f"  governance.rules: {_fmt(gov.get('rules'))}",
-            f"  governance.assertions: {_fmt(gov.get('assertions'))}",
-            "",
-            "[bold]Reality[/]",
-            f"  symbol: {symbol}",
-            f"  profile: lang={profile_r.get('language') or '—'} platform={profile_r.get('platform') or '—'}",
-            f"  dependencies: {', '.join(reality_deps[:12]) or '—'}",
-            f"  traits: {', '.join(traits[:10]) or '—'}",
-            f"  preview: {preview}",
-            "",
-            "[bold]Outgoing contracts[/]",
-        ]
-        for c in (contracts or [])[:10]:
-            to_id = c.get("to") or "—"
-            ctype = c.get("type") or "dependency"
-            file_ = c.get("file") or ""
-            syms = c.get("symbols") or []
-            lines.append(f"  → {to_id} [{ctype}] {file_} {', '.join(syms[:4])}")
-        if not contracts:
-            lines.append("  —")
-        lines.extend(["", "[bold]Validation[/]", f"  status: {status}"])
+        identity_body = "\n".join([
+            f"[white]{_cap('id')}[/]: {nid}",
+            f"[white]{_cap('children')}[/]: {', '.join(children_ids) or '—'}",
+            f"[white]{_cap('dependencies')}[/]: {', '.join(deps[:12]) or '—'}",
+        ])
+        intent_body = "\n".join([
+            f"{_cap('role')}: {role}",
+            f"{_cap('mission')}: {mission}",
+            f"{_cap('blueprint')}",
+            f"  — {_cap('type')}: {bp_type}",
+            f"{_cap('protocol')}",
+            f"  — {_cap('input')}: {_fmt(protocol_i.get('input'))}",
+            f"  — {_cap('output')}: {_fmt(protocol_i.get('output'))}",
+            f"{_cap('profile')}",
+            f"  — {_cap('language')}: {profile_i.get('language') or '—'}",
+            f"  — {_cap('platform')}: {profile_i.get('platform') or '—'}",
+            f"  — {_cap('io_model')}: {profile_i.get('io_model') or '—'}",
+            f"  — {_cap('state_model')}: {profile_i.get('state_model') or '—'}",
+            f"{_cap('governance')}",
+            f"  — {_cap('rules')}: {_fmt(gov.get('rules'))}",
+            f"  — {_cap('assertions')}: {_fmt(gov.get('assertions'))}",
+        ])
+        reality_body = "\n".join([
+            f"{_cap('symbol')}: {symbol}",
+            f"{_cap('profile')}",
+            f"  — {_cap('language')}: {profile_r.get('language') or '—'}",
+            f"  — {_cap('platform')}: {profile_r.get('platform') or '—'}",
+            f"{_cap('dependencies')}: {', '.join(reality_deps[:12]) or '—'}",
+            f"{_cap('traits')}: {', '.join(traits[:10]) or '—'}",
+            f"{_cap('preview')}: {preview}",
+        ])
+        contract_lines = [f"→ {c.get('to') or '—'} [{c.get('type') or 'dependency'}] {c.get('file') or ''} {', '.join((c.get('symbols') or [])[:4])}" for c in (contracts or [])[:10]]
+        contracts_body = "\n".join(contract_lines) if contract_lines else "—"
+        validation_body = f"{_cap('status')}: {status}"
         if deviations:
-            for d in deviations[:6]:
-                lines.append(f"  deviation: {_fmt(d, 120)}")
-        body = "\n".join(lines)
-        parts = [header, self._inspection_section("Node", body)]
+            validation_body += "\n" + "\n".join(f"{_cap('deviation')}: {_fmt(d, 120)}" for d in deviations[:6])
+
+        parts = [
+            header,
+            self._inspection_section("Identity", identity_body),
+            self._inspection_section("Intent", intent_body),
+            self._inspection_section("Reality", reality_body),
+            self._inspection_section("Outgoing contracts", contracts_body),
+            self._inspection_section("Validation", validation_body),
+        ]
         if deviating:
             parts.append(self._inspection_section("Deviation Alert", "[red]Plan and code mismatch. [D] DIFF to compare.[/]"))
         return "\n".join(parts)
@@ -1066,10 +1018,10 @@ class ManifestViewApp(App[None]):
             with Container(id="main"):
                 yield Static("", id="main-tab-bar")
                 with VerticalScroll(id="main-scroll"):
-                    yield Static("", id="main-content")
+                    yield Static("", id="main-content", markup=True)
             with Container(id="info-hub"):
                 with VerticalScroll(id="info-hub-scroll"):
-                    yield Static("[bold cyan]Inspector[/]\n[dim]────────────────────────────────────────[/]\n  (loading)", id="info-hub-content", classes="sidebar-section")
+                    yield Static("[bold cyan]Inspector:: (loading)[/]\n[dim]────────────────────────────────────────[/]\n  (loading)", id="info-hub-content", classes="sidebar-section")
                 yield Static("[dim][E] Edit Design  [S] Re-Sync Data[/]", id="info-hub-footer")
         yield Footer()
         with Container(id="app-version-strip"):
@@ -1103,7 +1055,7 @@ class ManifestViewApp(App[None]):
         if not changed_paths:
             return
         task_or_state = any(
-            p.name in ("tasks.json", "state.json") for p in changed_paths
+            p.name in (TASKS_FILE, STATE_FILE) for p in changed_paths
         )
         if task_or_state:
             try:
@@ -1228,8 +1180,7 @@ class ManifestViewApp(App[None]):
             "Timeline": ViewType.TIMELINE,
             "History": ViewType.HISTORY,
             "Mission": ViewType.MISSION_CONTROL,
-            "Architect": ViewType.ARCHITECT,
-            "Blueprint": ViewType.BLUEPRINT,
+            "Inspector": ViewType.INSPECTOR,
         }
         if view_name in view_map:
             self.current_view = view_map[view_name]

@@ -26,9 +26,8 @@ def _get_package_default_config() -> Dict[str, Any]:
             "title": "ARCHITECTURE FLOW",
             "box_width": 28,
             "colors": {
-                "gateway": "#e06c9f",
-                "module": "#58a6ff",
-                "method": "#7ee8fa",
+                "entity": "#58a6ff",
+                "child": "#7ee8fa",
                 "status": {
                     "healthy": "green",
                     "planned": "#8b949e",
@@ -41,13 +40,27 @@ def _get_package_default_config() -> Dict[str, Any]:
 
 
 def load_diagram_config(manifest_dir: Optional[Path] = None) -> Dict[str, Any]:
-    """Load diagram_config.json from manifest_dir if present, else package default."""
+    """Load diagram_config.json from manifest_dir if present, else package default. Always merge default colors so diagram never loses colors."""
+    default = _get_package_default_config()
     manifest_dir = manifest_dir or Path.cwd()
     config_path = Path(manifest_dir) / "diagram_config.json"
     if config_path.exists():
         try:
             with open(config_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                loaded = json.load(f)
+            colors = loaded.get("colors") or {}
+            if not colors or not isinstance(colors, dict):
+                loaded["colors"] = default.get("colors") or {}
+            else:
+                default_status = (default.get("colors") or {}).get("status") or {}
+                status = colors.get("status")
+                if not status and default_status:
+                    colors = {**colors, "status": default_status}
+                for k in ("entity", "child"):
+                    if not colors.get(k) and (default.get("colors") or {}).get(k):
+                        colors[k] = (default.get("colors") or {})[k]
+                loaded["colors"] = colors
+            return loaded
         except Exception as e:
             logger.debug("Could not load diagram config from %s: %s", config_path, e)
-    return _get_package_default_config().copy()
+    return default.copy()

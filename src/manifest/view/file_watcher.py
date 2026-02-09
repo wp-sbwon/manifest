@@ -6,12 +6,21 @@ Polls WATCH_FILES and conflicts dir.
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
+from manifest.audit.blueprint.manifest_filenames import (
+    BLUEPRINT_CODE_FILE,
+    BLUEPRINT_DESIGN_FILE,
+    BLUEPRINT_VIEW_FILE,
+)
 from manifest.core.logger import get_logger
+from manifest.core.constants import (
+    STATE_FILE,
+    TASKS_FILE,
+    DESIGN_HISTORY_FILE,
+)
 
 logger = get_logger(__name__)
 
-# Key files/dirs we watch (relative to manifest_dir)
-WATCH_FILES = ("tasks.json", "state.json", "blueprint_code.json", "blueprint_design.json", "blueprint_view.json", "design_history.json")
+WATCH_FILES = (TASKS_FILE, STATE_FILE, BLUEPRINT_CODE_FILE, BLUEPRINT_DESIGN_FILE, BLUEPRINT_VIEW_FILE, DESIGN_HISTORY_FILE)
 WATCH_DIR = "conflicts"
 
 

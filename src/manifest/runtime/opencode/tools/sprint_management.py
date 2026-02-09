@@ -10,10 +10,9 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from manifest.core.logger import get_logger
+from manifest.core.constants import TASKS_FILE
 
 logger = get_logger(__name__)
-
-TASKS_FILE = "tasks.json"
 
 
 def _default_data() -> Dict[str, Any]:

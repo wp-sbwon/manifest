@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, TYPE_CHECKING, Callable, Awaitable
 from manifest.runtime.tools.file_manager import FileManager
 from manifest.core.logger import get_logger
+from manifest.core.constants import CONTAINER_API_PORT
 
 if TYPE_CHECKING:
     from manifest.runtime.router.terminal_router import TerminalRouter
@@ -23,10 +24,6 @@ STATE_CHANGING_TOOLS = frozenset({
     "task_management", "sprint_management", "worker_squad_spawn", "blueprint_sync",
     "architect",
 })
-
-# Container API port for run_squad fallback when worker_squad_runner is not set.
-CONTAINER_API_PORT = 4097
-
 
 class ToolExecutor:
     """Executes tool calls from LLMs.
@@ -850,7 +847,7 @@ class ToolExecutor:
             port = CONTAINER_API_PORT
             try:
                 from manifest.core.config import ConfigManager
-                port = ConfigManager(self.manifest_dir).get_setting("container_api.port", port)
+                port = ConfigManager(self.manifest_dir).get_setting("container_api.port", CONTAINER_API_PORT) or CONTAINER_API_PORT
             except Exception as e:
                 logger.debug("ConfigManager container_api.port failed: %s", e)
             import httpx

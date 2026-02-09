@@ -13,7 +13,7 @@ TASK_STATUSES = frozenset({
     "paused",      # Temporarily halted; can be resumed
     "blocked",     # Cannot proceed (dependency or external)
     "completed",   # Work finished successfully
-    "cancelled",   # No longer required; will not be done
+    "cancelled",   # Work cancelled; will not be done
 })
 
 # --- Stage (workflow phase) ---

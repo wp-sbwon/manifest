@@ -431,7 +431,6 @@ class CodeExtractor:
             if entity.module_path == module_path:
                 if entity.type == "class":
                     return entity
-        # Fallback to module-level entity
         for entity in entities:
             if entity.module_path == module_path and entity.type == "function":
                 return entity

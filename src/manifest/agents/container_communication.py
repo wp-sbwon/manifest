@@ -82,7 +82,6 @@ class ContainerMessageBus:
             return response.status_code == 200
         except Exception as e:
             logger.error(f"Error sending message: {e}")
-            # Fallback: store locally
             self.message_queue.append(payload)
             return False
 
