@@ -68,8 +68,7 @@ def test_app_smoke():
             ViewType.TIMELINE: "Timeline",
             ViewType.HISTORY: "History",
             ViewType.MISSION_CONTROL: "Mission",
-            ViewType.ARCHITECT: "Architect",
-            ViewType.BLUEPRINT: "Blueprint",
+            ViewType.INSPECTOR: "Inspector",
         }
         for view_type, view_name in view_map.items():
             app.action_switch_view(view_name)

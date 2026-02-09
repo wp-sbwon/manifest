@@ -5,12 +5,8 @@ Pure functions that take manifest_dir, blueprint, or other data and return
 strings or Rich renderables. Used by app.py for Diagram, Files, Mission,
 Inspector, and sidebar content. Keeps app.py focused on lifecycle and state.
 """
-import json
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Set, Union
-
-from rich.table import Table
-from rich.console import RenderableType
 
 from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
 from manifest.audit.entity_schema import (
@@ -18,7 +14,6 @@ from manifest.audit.entity_schema import (
     entity_display_name,
     contracts_from_entities,
     top_layer_entities,
-    root_intent,
 )
 from manifest.core.logger import get_logger
 from manifest.core.task_constants import status_display_label
@@ -222,43 +217,6 @@ def order_entities_by_flow(
     return ordered[:12]
 
 
-def render_blueprint_diagram(
-    blueprint: Dict[str, Any],
-    title: str = "Design",
-    comp_status: Optional[Dict[str, str]] = None,
-) -> str:
-    """One line of entity nodes with arrows between."""
-    lines: List[str] = []
-    entities_display = entities_for_display(blueprint.get("entities", []))
-    contracts = contracts_from_entities(blueprint.get("entities", []))
-    if not entities_display and not contracts:
-        return ""
-    id_to_name: Dict[str, str] = {}
-    name_len = 24
-    for e in entities_display:
-        eid = e.get("id")
-        name = (e.get("name") or eid or "?")[:name_len]
-        if eid:
-            id_to_name[eid] = name
-    entity_list = order_entities_by_flow(entities_display, contracts) if contracts else entities_display[:12]
-    if not entity_list:
-        lines.append(title)
-        lines.append("  (no nodes)")
-        return "\n".join(lines)
-    arrow = " ──► "
-    node_parts: List[str] = []
-    for e in entity_list:
-        cid = e.get("id")
-        name = id_to_name.get(cid, (e.get("name") or cid or "?")[:name_len])
-        w = max(len(name), 2)
-        st = (comp_status or {}).get(cid or "", "?")
-        tag = status_color_tag(st)
-        node_parts.append(f"[{tag}]{single_line_node(name, w)}[/]")
-    lines.append(title)
-    lines.append("  " + arrow.join(node_parts))
-    return "\n".join(lines).strip()
-
-
 def component_type_color(comp: Dict[str, Any], name: str) -> str:
     """Color by type: blue=module, cyan=method, magenta=gateway."""
     nm = (name or "").upper()
@@ -277,184 +235,3 @@ def item_display_name(item: Any, max_len: int = 60) -> str:
     if isinstance(item, dict):
         return (item.get("name") or item.get("id") or str(item))[:max_len]
     return str(item)[:max_len]
-
-
-def render_features_summary_from_blueprint(
-    blueprint: Dict[str, Any],
-    comp_names: Optional[Dict[str, str]] = None,
-) -> str:
-    """Features summary from blueprint (top-layer entities). Blueprint-only; no intent.json features."""
-    lines: List[str] = []
-    intent = root_intent(blueprint)
-    sprint = (intent.get("sprint") or "").strip()
-    lines.append(f"Sprint: {sprint[:50] if sprint else '(none)'}")
-    features = top_layer_entities(blueprint)
-    comp_names = comp_names or {}
-    if not features:
-        lines.append("Features: (none)")
-        return "\n".join(lines)
-    lines.append("Features")
-    for i, e in enumerate(features[:20], 1):
-        name = (entity_display_name(e) or e.get("name") or e.get("id") or "?")[:35]
-        child_ids = list(e.get("children") or [])
-        if child_ids and comp_names:
-            names = [comp_names.get(cid, cid)[:12] for cid in child_ids[:5]]
-            comp_str = ", ".join(names)
-            if len(child_ids) > 5:
-                comp_str += f" +{len(child_ids) - 5}"
-            lines.append(f"  {i}. {name} → {comp_str}")
-        else:
-            lines.append(f"  {i}. {name}")
-    if len(features) > 20:
-        lines.append(f"  ... and {len(features) - 20} more")
-    return "\n".join(lines)
-
-
-def render_intent_summary(
-    intent: Dict[str, Any],
-    comp_names: Optional[Dict[str, str]] = None,
-) -> str:
-    """Sprint and features from intent.json shape (legacy). Prefer render_features_summary_from_blueprint."""
-    lines: List[str] = []
-    sprint = (intent.get("sprint") or "").strip()
-    lines.append(f"Sprint: {sprint[:50] if sprint else '(none)'}")
-    features = intent.get("features", []) or []
-    comp_names = comp_names or {}
-    if not features:
-        lines.append("Features: (none)")
-        return "\n".join(lines)
-    lines.append("Features")
-    for i, f in enumerate(features[:20], 1):
-        if isinstance(f, dict):
-            name = (f.get("name") or f.get("id") or "?")[:35]
-            comp_ids = f.get("entity_ids", []) or []
-            if comp_ids and comp_names:
-                names = [comp_names.get(cid, cid)[:12] for cid in comp_ids[:5]]
-                comp_str = ", ".join(names)
-                if len(comp_ids) > 5:
-                    comp_str += f" +{len(comp_ids) - 5}"
-                lines.append(f"  {i}. {name} → {comp_str}")
-            else:
-                lines.append(f"  {i}. {name}")
-        else:
-            lines.append(f"  {i}. {str(f)[:40]}")
-    if len(features) > 20:
-        lines.append(f"  ... and {len(features) - 20} more")
-    return "\n".join(lines)
-
-
-def load_setup_md(manifest_dir: Path) -> str:
-    """Load .manifest/setup.md or say how to add it."""
-    for name in ("setup.md", "logic.md", "how_it_works.md"):
-        path = manifest_dir / name
-        if path.exists():
-            try:
-                return path.read_text(encoding="utf-8").strip() or "(empty)"
-            except Exception as e:
-                logger.debug("load_setup_md read failed for %s: %s", path, e)
-                return "(read failed)"
-    return "(Add .manifest/setup.md to describe setup and logic, e.g. OpenCode/Podman requirements.)"
-
-
-def render_modules_and_methods(manifest_dir: Path, max_rows: int = 40) -> Union[str, RenderableType]:
-    """Table of modules and methods from blueprint_code."""
-    from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_CODE_FILE
-    path = manifest_dir / BLUEPRINT_CODE_FILE
-    if not path.exists():
-        return "(no blueprint_code — run app or sync refresh)"
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception as e:
-        logger.debug("render_modules_and_methods load failed: %s", e)
-        return "(failed to load blueprint_code)"
-    components = entities_for_display(data.get("entities", []))
-    if not components:
-        return "(no entities in blueprint_code)"
-    tbl = Table(show_header=True, header_style="bold cyan", box=None)
-    tbl.add_column("Module", style="dim", max_width=36)
-    tbl.add_column("Name", max_width=28)
-    tbl.add_column("Type", width=8)
-    tbl.add_column("Methods", max_width=32)
-    for comp in components[:max_rows]:
-        if not isinstance(comp, dict):
-            continue
-        mod = (comp.get("module_path") or comp.get("id", "").replace("comp-", "").rsplit("-", 1)[0])[:36]
-        name = (comp.get("name") or "?")[:28]
-        typ = (comp.get("type") or "?")[:8]
-        methods = comp.get("methods") or []
-        meth_str = ", ".join(methods[:4]) if methods else "—"
-        if len(methods) > 4:
-            meth_str += f" +{len(methods) - 4}"
-        tbl.add_row(mod, name, typ, meth_str[:32])
-    if len(components) > max_rows:
-        tbl.add_row("...", f"+{len(components) - max_rows} more", "", "")
-    return tbl
-
-
-def render_deviation_summary(
-    comp_status: Dict[str, str],
-    conflict_count: int = 0,
-) -> str:
-    """Status: Healthy, Partial, Deviation, Planned."""
-    healthy_n = sum(1 for s in comp_status.values() if s == "healthy")
-    planned_n = sum(1 for s in comp_status.values() if s == "planned")
-    partial_n = sum(1 for s in comp_status.values() if s == "partial")
-    deviation_n = sum(1 for s in comp_status.values() if s == "deviation")
-    lines = [
-        "Status",
-        f"  {status_label_markup('healthy', f'Healthy: {healthy_n}')}",
-        f"  {status_label_markup('planned', f'Planned: {planned_n}')}",
-        f"  {status_label_markup('partial', f'Partial: {partial_n}')}",
-        f"  {status_label_markup('deviation', f'Deviation: {deviation_n}')}",
-    ]
-    if conflict_count > 0:
-        lines.append(f"  Mismatches: {conflict_count}")
-    return "\n".join(lines)
-
-
-def render_design_history_short(manifest_dir: Path, max_entries: int = 10) -> str:
-    """Short design history list."""
-    try:
-        from manifest.core.design_history import get_design_history
-        entries = get_design_history(manifest_dir)
-        if not entries:
-            return "Design history: (none)"
-        lines = [f"Design history ({len(entries)} entries)"]
-        for entry in entries[:max_entries]:
-            doc = entry.get("doc", "?")
-            path = entry.get("path", "?")
-            ts = (entry.get("timestamp") or "?")[:10]
-            lines.append(f"  [{doc}] {path} | {ts}")
-        if len(entries) > max_entries:
-            lines.append(f"  ... and {len(entries) - max_entries} more")
-        return "\n".join(lines)
-    except Exception as e:
-        logger.debug("render_design_history_short failed: %s", e)
-        return "Design history: (unavailable)"
-
-
-def render_prd_summary(prd: Optional[Dict[str, Any]]) -> str:
-    """PRD: title + sections or requirements. Empty shows (none)."""
-    if not prd:
-        return "(no prd.json)"
-    lines: List[str] = []
-    title = prd.get("title") or prd.get("name") or "Product Requirements"
-    lines.append(title[:60])
-    sections = prd.get("sections", [])
-    if isinstance(sections, list) and sections:
-        for i, sec in enumerate(sections[:12], 1):
-            name = item_display_name(sec, 50) if isinstance(sec, dict) else str(sec)[:50]
-            lines.append(f"  {i}. {name}")
-        if len(sections) > 12:
-            lines.append(f"  ... and {len(sections) - 12} more")
-    else:
-        reqs = prd.get("requirements", [])
-        if isinstance(reqs, list) and reqs:
-            for i, r in enumerate(reqs[:12], 1):
-                lines.append(f"  {i}. {item_display_name(r, 50)}")
-            if len(reqs) > 12:
-                lines.append(f"  ... and {len(reqs) - 12} more")
-        else:
-            lines.append("  (no sections or requirements)")
-    return "\n".join(lines)

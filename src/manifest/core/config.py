@@ -5,9 +5,9 @@ This module handles all configuration needs including API key storage,
 encryption, validation, and agent model configuration. API keys are
 encrypted using Fernet symmetric encryption and stored securely on disk.
 
-The ConfigManager also supports loading API keys from environment variables
-as a fallback, and can validate API keys by making test requests to the
-respective providers.
+The ConfigManager loads API keys from the keys file or, when missing, from
+environment variables, and can validate keys by making test requests to
+the respective providers.
 """
 import json
 import os
@@ -20,10 +20,13 @@ from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+from manifest.core.constants import CONTAINER_API_PORT, AGENT_CONFIG_FILE
+
 # Default settings when .manifest/settings.json is missing.
 # tool_approval.ask_before_tool_run: when True, state-changing tools require user approval before execution.
 DEFAULT_SETTINGS = {
     "agent": {"execution_backend": "opencode"},
+    "container_api": {"port": CONTAINER_API_PORT},
     "opencode": {
         "server_host": "localhost",
         "server_port": 4096,
@@ -105,8 +108,8 @@ class ConfigManager:
         """Get all stored API keys in decrypted form.
 
         Attempts to load and decrypt the keys file. If the file doesn't exist
-        or decryption fails, returns a dictionary with None values for all
-        providers. Also checks environment variables as a fallback.
+        or decryption fails, returns keys from environment variables when
+        available; otherwise None for each provider.
 
         Returns:
             Dictionary mapping provider names to their API keys. Keys that
@@ -114,7 +117,6 @@ class ConfigManager:
             openai.
         """
         if not self.keys_file.exists():
-            # Check environment variables as fallback
             return {
                 "anthropic": os.getenv("ANTHROPIC_API_KEY") or os.getenv("anthropic_api_key"),
                 "google": os.getenv("GOOGLE_API_KEY") or os.getenv("google_api_key"),
@@ -232,7 +234,7 @@ class ConfigManager:
         Returns:
             Dictionary containing agent model configurations and defaults.
         """
-        agent_config_file = self.manifest_dir / "agent_config.json"
+        agent_config_file = self.manifest_dir / AGENT_CONFIG_FILE
         if agent_config_file.exists():
             try:
                 with open(agent_config_file, "r") as f:
@@ -269,10 +271,9 @@ class ConfigManager:
     def get_agent_model_config(self, agent_type: str) -> Dict[str, Any]:
         """Get the model configuration for a specific agent type.
 
-        Loads the configuration for the agent, falling back to defaults if
-        not specified. Resolves the API key from either the default keys
-        or agent-specific encrypted keys, with environment variables as a
-        final fallback.
+        Loads the configuration for the agent, using defaults when not
+        specified. Resolves the API key from stored keys or agent-specific
+        encrypted keys, or from environment variables when not stored.
 
         Args:
             agent_type: Type of agent (e.g., "orchestrator", "planner", "coder").
@@ -304,7 +305,6 @@ class ConfigManager:
             provider = config["provider"]
             api_key = keys.get(provider)
 
-            # Fallback to environment variable if not in stored keys
             if not api_key:
                 env_key = os.getenv(f"{provider.upper()}_API_KEY") or os.getenv(f"{provider}_api_key")
                 api_key = env_key
@@ -376,7 +376,7 @@ class ConfigManager:
         agent_config["agent_models"][agent_type] = config
 
         # Save to file
-        agent_config_file = self.manifest_dir / "agent_config.json"
+        agent_config_file = self.manifest_dir / AGENT_CONFIG_FILE
         try:
             self.manifest_dir.mkdir(parents=True, exist_ok=True)
             with open(agent_config_file, "w") as f:
@@ -532,7 +532,7 @@ class ConfigManager:
         agent_config["agent_permissions"]["agent"][agent_type] = permissions
 
         # Save to file
-        agent_config_file = self.manifest_dir / "agent_config.json"
+        agent_config_file = self.manifest_dir / AGENT_CONFIG_FILE
         try:
             self.manifest_dir.mkdir(parents=True, exist_ok=True)
             with open(agent_config_file, "w") as f:
@@ -570,7 +570,7 @@ class ConfigManager:
         agent_config["agent_permissions"]["global"] = permissions
 
         # Save to file
-        agent_config_file = self.manifest_dir / "agent_config.json"
+        agent_config_file = self.manifest_dir / AGENT_CONFIG_FILE
         try:
             self.manifest_dir.mkdir(parents=True, exist_ok=True)
             with open(agent_config_file, "w") as f:

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 from manifest.core.logger import get_logger
+from manifest.core.constants import STATE_FILE
 
 logger = get_logger(__name__)
 
@@ -46,7 +47,7 @@ class StateManager:
                 defaults to .manifest in the current directory.
         """
         self.manifest_dir = manifest_dir or Path(".manifest")
-        self.state_file = self.manifest_dir / "state.json"
+        self.state_file = self.manifest_dir / STATE_FILE
         self._state: Dict[str, Any] = {}
         self._load_state()
 
@@ -593,17 +594,7 @@ class StateManager:
         return task_manager.cancel_task(task_id)
 
     def rollback_task(self, task_id: str) -> bool:
-        """Rollback a task to the previous stage.
-
-        Moves the task back one stage in the workflow (e.g., from "testing"
-        back to "implementation"). Delegates to TaskManager for implementation.
-
-        Args:
-            task_id: ID of the task to rollback.
-
-        Returns:
-            True if task was found and rolled back, False otherwise.
-        """
+        """Rollback to the previous stage in the workflow. Delegates to TaskManager."""
         from manifest.core.task_manager import TaskManager
         task_manager = TaskManager(self)
         return task_manager.rollback_task(task_id)

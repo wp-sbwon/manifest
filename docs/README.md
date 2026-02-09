@@ -21,7 +21,8 @@ Docs are organized the same way the **Manifest view app** is: by what you see on
 
 ## Archive
 
-- [archive/](archive/) – Superseded and pre-reorg docs
+- [archive/](archive/) – Superseded and task-output docs
+  - **task-docs/** – Task-related outputs (checklist review, refactor review, diagram status, improvement suggestions)
   - **pre-reorg-2026/** – Previous active docs (VIEW_DATA_FORMAT, BLUEPRINT_ALIGNMENT, PROJECT_STRUCTURE, etc.) before this app-style reorg
   - **superseded-2026/** – Older plans and guides
   - **v1.0/** – Early implementation and review docs

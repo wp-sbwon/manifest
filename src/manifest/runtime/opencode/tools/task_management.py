@@ -10,11 +10,10 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from manifest.core.logger import get_logger
+from manifest.core.constants import TASKS_FILE
 from manifest.core.task_constants import TASK_STATUSES, TASK_STAGES
 
 logger = get_logger(__name__)
-
-TASKS_FILE = "tasks.json"
 VALID_STATUSES = TASK_STATUSES
 VALID_STAGES = TASK_STAGES
 

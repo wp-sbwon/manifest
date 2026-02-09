@@ -227,7 +227,7 @@ class ContextProvider:
         else:
             tier_1["intent"] = {"version": "1.0", "sprint": "", "features": []}
 
-        # Blueprint only (entity graph). No architecture.json, no conversion.
+        # Blueprint entity graph only.
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         tier_1["blueprint"] = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
 

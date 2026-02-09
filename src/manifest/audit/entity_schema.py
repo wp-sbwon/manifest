@@ -232,11 +232,11 @@ def root_intent(blueprint: Dict[str, Any]) -> Dict[str, Any]:
     return root.get("intent") or {}
 
 
-def mission_from_blueprint(blueprint: Dict[str, Any], fallback: str = "") -> str:
-    """Root mission text for display. Returns stripped mission or fallback."""
+def mission_from_blueprint(blueprint: Dict[str, Any], default: str = "") -> str:
+    """Root mission text for display. Returns stripped mission or default."""
     raw = (root_intent(blueprint).get("narrative") or {}).get("mission") or ""
     out = (raw or "").strip()
-    return out if out else (fallback or "")
+    return out if out else (default or "")
 
 
 def goals_from_blueprint(blueprint: Dict[str, Any]) -> List[Any]:

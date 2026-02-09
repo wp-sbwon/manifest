@@ -180,7 +180,7 @@ class PermissionManager:
         Checks permissions in this order:
         1. Agent-specific permissions (highest priority)
         2. Global permissions
-        3. Default permissions (fallback)
+        3. Default permissions
 
         For permission types that support patterns (like "bash"), the resource
         parameter is used for pattern matching. For example, if checking "bash"
@@ -275,7 +275,7 @@ class PermissionManager:
                 matched_patterns.sort(key=lambda x: self._pattern_specificity(x[0]))
                 return matched_patterns[-1][1]
 
-            # No pattern matched, check for "*" fallback
+            # No pattern matched, check for "*"
             return perm_config.get("*")
 
         return None

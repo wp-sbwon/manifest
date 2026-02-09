@@ -141,7 +141,6 @@ class SprintExecutor:
         if hasattr(self.coordinator, 'worker_squad_executor'):
             asyncio.create_task(self.coordinator.worker_squad_executor.execute(task_id))
         else:
-            # Fallback to old method if executor not available
             asyncio.create_task(self.coordinator.execute_worker_squad(task_id))
         return True
 

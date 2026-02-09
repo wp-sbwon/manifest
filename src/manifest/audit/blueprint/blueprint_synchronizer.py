@@ -231,10 +231,9 @@ class BlueprintSynchronizer:
                     try:
                         conflict_type = ConflictType(conflict_type_str)
                     except ValueError:
-                        # Fallback: try to find by value
                         conflict_type = next(
                             (ct for ct in ConflictType if ct.value == conflict_type_str),
-                            ConflictType.METHOD_MISMATCH  # Default fallback
+                            ConflictType.METHOD_MISMATCH
                         )
                 else:
                     conflict_type = conflict_type_str

@@ -92,7 +92,7 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
                 except Exception:
                     pass
 
-                # Try root endpoint as fallback
+                # Try root endpoint when model endpoint is not available
                 try:
                     response = await client.get(f"{self.base_url}/")
                     if response.status_code in [200, 404]:  # 404 is OK, means server is responding
@@ -495,7 +495,7 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
             Chunks in Manifest format.
         """
         provider = model_config.get("provider", "anthropic")
-        # Use agent model, then opencode.model setting; None means OpenCode default (no hardcoded fallback).
+        # Use agent model, then opencode.model setting; None means OpenCode default.
         model = model_config.get("model")
         if model is None:
             model = self.config_manager.get_setting("opencode.model")

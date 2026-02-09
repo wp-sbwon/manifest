@@ -124,7 +124,7 @@ class ContainerManager:
 
         try:
             if system == "Darwin":  # macOS
-                # Try to start Docker Desktop (fallback when not using Podman)
+                # Try to start Docker Desktop when Podman is not in use
                 docker_app_paths = [
                     "/Applications/Docker.app",
                     "/Applications/Docker Desktop.app"
@@ -195,7 +195,7 @@ class ContainerManager:
                     return False
 
             elif system == "Windows":
-                # Try to start Docker Desktop on Windows (fallback when not using Podman)
+                # Try to start Docker Desktop on Windows when Podman is not in use
                 docker_paths = [
                     "C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe",
                     "C:\\Program Files (x86)\\Docker\\Docker\\Docker Desktop.exe"

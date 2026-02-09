@@ -204,7 +204,6 @@ class WorkerSquadExecutor:
                 deps[stage.name] = stage.dependencies
             return deps
 
-        # Fallback to hardcoded dependencies
         return {
             "planner": [],  # No dependencies
             "tdd_test": ["planner"],  # Depends on planner
@@ -237,7 +236,6 @@ class WorkerSquadExecutor:
                 completed_stages, failed_stages, workflow_state
             )
 
-        # Fallback to hardcoded logic
         dependencies = self._get_stage_dependencies()
         ready = []
 
@@ -545,7 +543,6 @@ class WorkerSquadExecutor:
                 completed_stage, workflow_state, stage_data
             )
 
-        # Fallback when no workflow definition
         return self._determine_next_stage_fallback(
             completed_stage, workflow_state, stage_data
         )

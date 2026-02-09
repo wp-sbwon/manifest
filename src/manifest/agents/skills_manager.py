@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Set
 from manifest.core.logger import get_logger
+from manifest.core.constants import AGENT_CONFIG_FILE
 
 logger = get_logger(__name__)
 
@@ -49,7 +50,7 @@ class SkillsManager:
         """
         self.manifest_dir = manifest_dir or Path(".manifest")
         self.project_root = project_root or Path.cwd()
-        self.agent_config_file = self.manifest_dir / "agent_config.json"
+        self.agent_config_file = self.manifest_dir / AGENT_CONFIG_FILE
         self.agents_md_file = self.project_root / "AGENTS.md"
         self.rules_dir = self.project_root / ".rules"
 

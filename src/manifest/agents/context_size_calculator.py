@@ -12,8 +12,7 @@ from manifest.core.logger import get_logger
 logger = get_logger(__name__)
 
 
-# Model token limits (approximate, in tokens)
-# These are conservative estimates - actual limits may be slightly higher
+# Model token limits (approximate, in tokens). Update when adding new provider/model support.
 MODEL_TOKEN_LIMITS = {
     # Anthropic Claude models
     "claude-3-opus": 200000,

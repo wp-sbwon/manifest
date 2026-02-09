@@ -62,9 +62,7 @@ class TerminalRouter:
         """Execute a terminal command and return results.
 
         Checks permissions before execution if PermissionManager is configured.
-        Delegates to OpenCodeAdapter which handles OpenCode integration
-        and fallback. The command is registered with the watchdog if
-        available for monitoring.
+        The command is registered with the watchdog if available for monitoring.
 
         Args:
             command: Command name to execute (e.g., "git", "python").
@@ -373,6 +371,6 @@ class TerminalRouter:
         """Check if OpenCode is available and configured.
 
         Returns:
-            Always False (OpenCode terminal adapter removed).
+            False (terminal is handled by the configured backend).
         """
         return False

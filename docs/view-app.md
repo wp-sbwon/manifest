@@ -106,3 +106,26 @@ The view loads design and code blueprints, runs comparison, and attaches validat
 | Sidebar Tasks | List | tasks.json | Core/agents |
 
 Detailed file fields: [Manifest data](manifest-data.md). How to refresh: [Scripts and pipelines](scripts-and-pipelines.md).
+
+---
+
+## Diagram color: previous process, what changed, why it may not show
+
+**Previous process (when color worked):**
+
+1. **Config:** `diagram_config.json` (or package default) had `colors.gateway`, `colors.module`, `colors.method`, and `colors.status.*`. All diagram colors came from config (no hardcoded hex in renderer).
+2. **Renderer:** `render_diagram(spec, config)` in `src/manifest/view/diagram/renderer.py` produced a **single string** of lines. Each line used Rich/Textual markup tags, e.g. `[#58a6ff]...[/]`, `[green]■[/]`, `[#8b949e]...[/]`. The header used `[white]` for the top box.
+3. **App:** `_load_diagram_view()` returned that string. `_get_current_view_content()` returned it for the Diagram tab. `_refresh_main_content()` did `main_w.update(self._get_current_view_content())` where `main_w` is the `Static` with `id="main-content"`. The Static was created with `yield Static("", id="main-content")` (no `markup=False`), so **markup defaulted to True** and the string was parsed as markup and rendered with colors.
+
+**What changed:**
+
+- **Entity-based diagram (commit fc6f2d5 and later):** Node types switched from gateway/module/method to **entity** (L1) and **child** (L2). Config keys are now `colors.entity` and `colors.child`; `load_diagram_config()` merges defaults so `entity`/`child` get `#58a6ff` and `#7ee8fa` if missing. The header box now uses `node_color` (entity color) instead of `[white]`. The rest of the flow is unchanged: same `render_diagram()` → string with `[#hex]` / `[green]` etc. → `_load_diagram_view()` → `_get_current_view_content()` → `main_w.update(...)`.
+- **No code path was removed** that previously converted the diagram string to a Rich `Text` or `Content` before passing to Static; the app has always passed the raw string from `render_diagram()` to `Static.update()`.
+
+**Why it might show no color now (no assumptions):**
+
+- **Markup parsing:** Textual’s Static uses `markup=True` by default. If any **label or text from data** contains `]` or `[`, it can break tag boundaries (e.g. `[#58a6ff]label]rest[/]` closes the tag early). Escaping `[` and `]` in user-facing strings in the renderer would avoid that.
+- **Widget creation:** The main-content Static is never given `markup=False`; it is created once at compose. So update() should still interpret the string as markup unless the widget’s markup flag is changed elsewhere (not done in current code).
+- **CSS/theme (root cause):** The app had `Screen { background: #0d1117; color: #c9d1d9; }`. Textual merges the widget’s computed style (including `color`) with every content segment when rendering. That base style overrode markup colors, so the whole view showed only grey/white/black. **Fix:** do not set `color` on Screen; only set `background`. Content markup (diagram, sidebar, inspector) then keeps its colors.
+
+**Summary:** Removing `color` from the Screen rule fixes app-wide color. If colors still don’t show, the terminal may not support 256/true color (check TERM, COLORTERM) or the driver may be limiting the color system.

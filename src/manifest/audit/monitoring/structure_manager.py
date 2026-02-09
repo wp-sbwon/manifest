@@ -932,8 +932,7 @@ class StructureManager:
                 target_class_name = suggestion.action_data["class_name"]
                 method_names = suggestion.action_data.get("methods", [])
             else:
-                # Fallback: Parse action to extract method names and class name
-                # Format: "Add methods to ClassName: method1, method2" or "Add methods: method1, method2"
+                # Parse action when action_data is missing. Format: "Add methods to ClassName: method1, method2"
                 action = suggestion.action
                 class_match = re.search(r"to\s+(\w+)", action)
                 methods_match = re.search(r":\s*(.+)", action)

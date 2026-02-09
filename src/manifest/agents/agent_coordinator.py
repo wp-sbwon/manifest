@@ -215,7 +215,6 @@ class AgentCoordinator:
                 task_id, agent_type, stage, previous_stages or {}
             )
         else:
-            # Fallback to standard worker context
             context = self.context_provider.get_worker_context(task_id, agent_type)
 
         # Validate scope
@@ -287,8 +286,7 @@ class AgentCoordinator:
                 await self._persist_state()
                 return True
             else:
-                # Fall back to in-process execution if container fails
-                logger.warning("Failed to start container, falling back to in-process execution")
+                logger.warning("Container start failed; using in-process execution")
 
         # Start via agent bridge (in-process)
         success = await self.agent_bridge.start_agent_mission(
@@ -351,7 +349,7 @@ class AgentCoordinator:
         2. bridge._active_agents[task_id].completed or status in [completed, stopped, failed]
            (PRIMARY CHECK: bridge sets completed=True when it receives a type=complete chunk)
         3. executor.active_sessions[session_id].status == "completed" (if executor available)
-        4. get_agent_status() returning completed/stopped/failed (fallback status check)
+        4. get_agent_status() returning completed/stopped/failed when bridge/executor state unavailable
         5. Channel history completion markers (text-based indicators like "[complete]", "[done]")
         6. completed_at timestamp in bridge._active_agents (after 10s of no new messages)
 
@@ -434,17 +432,15 @@ class AgentCoordinator:
                 success = False
                 logger.debug(f"Agent {task_id} failed (bridge status: failed)")
             else:
-                # Fallback to agent_status check
                 agent_status = await self.get_agent_status(task_id)
                 status = agent_status.get("status", "unknown")
                 success = status == "completed"
                 logger.debug(f"Agent {task_id} status from get_agent_status: {status}")
         else:
-            # Fallback: check via get_agent_status
             agent_status = await self.get_agent_status(task_id)
             status = agent_status.get("status", "unknown")
             success = status == "completed"
-            logger.debug(f"Agent {task_id} status from get_agent_status (fallback): {status}")
+            logger.debug(f"Agent {task_id} status from get_agent_status: {status}")
 
         # Publish agent completion event
         if success:

@@ -230,7 +230,6 @@ class ToolExecutionAuditor:
         }
 
         if tool_name == "edit":
-            # For edit, we can track what was changed
             old_string = tool_input.get("old_string", "")
             new_string = tool_input.get("new_string", "")
             modification["change_type"] = "edit"
