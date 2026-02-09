@@ -217,6 +217,10 @@ class ManifestViewApp(App[None]):
 
     def _ensure_diagram_components(self) -> None:
         """Populate diagram from get_entities_for_view; layered spec and selectable nodes."""
+        # Clear diagram state first so we never serve stale data when cycling or refreshing.
+        self._diagram_selectable_nodes = []
+        self._diagram_layered_spec = None
+        self._diagram_component_list = []
         try:
             view_data = get_entities_for_view(
                 self.manifest_dir,
@@ -243,6 +247,10 @@ class ManifestViewApp(App[None]):
                 )
                 self._diagram_layered_spec = spec
                 selectable: List[Tuple[str, str, Dict[str, Any]]] = []
+                design = self._get_cached_design_blueprint()
+                root_entity = get_root_entity(design) if design else None
+                root_display_name = entity_display_name(root_entity) if root_entity else "System Core"
+                root_desc = mission_from_blueprint(design, "Project root.")
                 if self._diagram_root_id != root_id and self._diagram_root_stack:
                     parent_id = self._diagram_root_stack[-1]
                     selectable.append((
@@ -251,11 +259,10 @@ class ManifestViewApp(App[None]):
                         {"id": parent_id, "name": "↑ Up", "description": "Back to parent."},
                     ))
                 else:
-                    root_desc = mission_from_blueprint(self._get_cached_design_blueprint(), "Project root.")
                     selectable.append((
                         "root",
                         "PROJECT_ROOT",
-                        {"id": "PROJECT_ROOT", "name": "System Core", "description": root_desc},
+                        {"id": "PROJECT_ROOT", "name": root_display_name, "description": root_desc},
                     ))
                 for node in spec.get("nodes") or []:
                     data = node.get("_data")
@@ -272,12 +279,15 @@ class ManifestViewApp(App[None]):
             else:
                 self._diagram_layered_spec = None
                 self._diagram_component_list = []
-                root_desc = mission_from_blueprint(self._get_cached_design_blueprint(), "Project root.")
+                design = self._get_cached_design_blueprint()
+                root_entity = get_root_entity(design) if design else None
+                root_display_name = entity_display_name(root_entity) if root_entity else "System Core"
+                root_desc = mission_from_blueprint(design, "Project root.")
                 self._diagram_selectable_nodes = [
                     (
                         "root",
                         "PROJECT_ROOT",
-                        {"id": "PROJECT_ROOT", "name": "System Core", "description": root_desc},
+                        {"id": "PROJECT_ROOT", "name": root_display_name, "description": root_desc},
                     ),
                 ]
 
@@ -303,11 +313,14 @@ class ManifestViewApp(App[None]):
         )
         nodes: List[Tuple[str, str, Dict[str, Any]]] = []
         try:
-            root_desc = mission_from_blueprint(self._get_cached_design_blueprint(), "Project root.")
+            design = self._get_cached_design_blueprint()
+            root_entity = get_root_entity(design) if design else None
+            root_display_name = entity_display_name(root_entity) if root_entity else "System Core"
+            root_desc = mission_from_blueprint(design, "Project root.")
             nodes.append((
                 "root",
                 "PROJECT_ROOT",
-                {"id": "PROJECT_ROOT", "name": "System Core", "description": root_desc},
+                {"id": "PROJECT_ROOT", "name": root_display_name, "description": root_desc},
             ))
             for comp in self._diagram_component_list:
                 if isinstance(comp, dict) and comp.get("id"):
@@ -857,11 +870,23 @@ class ManifestViewApp(App[None]):
         validation = (self._view_data.get("validation_by_id") or {}).get(nid) or {}
         return self._get_info_hub_node(header, nid, entity, validation, deviating)
 
+    def _id_to_display_name_map(self) -> Dict[str, str]:
+        """Build map entity id -> display name (same as diagram labels) from current view data."""
+        out: Dict[str, str] = {}
+        for blueprint_key in ("blueprint", "code_blueprint"):
+            bp = (self._view_data or {}).get(blueprint_key) or {}
+            for e in bp.get("entities") or []:
+                eid = e.get("id")
+                if eid:
+                    name = entity_display_name(e) or e.get("name") or eid
+                    out[eid] = name.strip() or eid
+        return out
+
     def _inspection_section(self, title: str, body: str) -> str:
-        """One inspection section: title, rule, then content (indented). Sub-headers use #58a6ff (same as OpenCode/sidebar-title)."""
+        """One inspection section: title, rule, then content (indented). Clear visual separation."""
         rule = "[#58a6ff]" + "─" * 36 + "[/]"
         indented = "\n  ".join(body.split("\n"))
-        return f"[bold #58a6ff]{title}[/]\n{rule}\n  {indented}\n"
+        return f"\n[bold #58a6ff]{title}[/]\n{rule}\n  {indented}\n"
 
     def _get_root_entity_for_inspector(self) -> Dict[str, Any]:
         """Root (System Core) as entity: same shape as other entities. From blueprint root or synthetic from root_intent."""
@@ -922,13 +947,15 @@ class ManifestViewApp(App[None]):
         traits = reality.get("traits") or []
         preview = _fmt(reality.get("preview"), 160)
         children_ids = data.get("children") or []
+        id_to_name = self._id_to_display_name_map()
+        children_display = [id_to_name.get(cid, cid) for cid in children_ids]
         contracts = data.get("outgoing_contracts") or []
         status = _fmt(validation.get("status"), 20)
         deviations = validation.get("deviations") or []
 
         identity_body = "\n".join([
             f"[white]{_cap('id')}[/]: {nid}",
-            f"[white]{_cap('children')}[/]: {', '.join(children_ids) or '—'}",
+            f"[white]{_cap('children')}[/]: {', '.join(children_display) or '—'}",
             f"[white]{_cap('dependencies')}[/]: {', '.join(deps[:12]) or '—'}",
         ])
         intent_body = "\n".join([
@@ -963,8 +990,9 @@ class ManifestViewApp(App[None]):
         if deviations:
             validation_body += "\n" + "\n".join(f"{_cap('deviation')}: {_fmt(d, 120)}" for d in deviations[:6])
 
+        section_sep = "\n\n"
         parts = [
-            header,
+            header.strip(),
             self._inspection_section("Identity", identity_body),
             self._inspection_section("Intent", intent_body),
             self._inspection_section("Reality", reality_body),
@@ -973,7 +1001,7 @@ class ManifestViewApp(App[None]):
         ]
         if deviating:
             parts.append(self._inspection_section("Deviation Alert", "[red]Plan and code mismatch. [D] DIFF to compare.[/]"))
-        return "\n".join(parts)
+        return section_sep.join(parts)
 
     def _get_info_hub_diff_view(self, header: str, nid: str, data: Dict[str, Any], deviating: bool) -> str:
         """Differences view: Plan (design intent/reality) | Code (code intent/reality) from entities."""

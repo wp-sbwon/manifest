@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Create mock project data (blueprint_design.json, blueprint_code.json) using the actual
-manifest entity schema. Use so the View app shows non-blank Inspector and diagram.
+Create mock project data for the calculator app under tmp/: blueprint_design.json
+and blueprint_code.json using the manifest entity schema. The design describes
+intent (CLI, Arithmetic Engine, Output); the code blueprint reflects the actual
+code in tmp/ (main.py, cli/, engine/, output/) so the View can show drift.
 
 Usage:
   PYTHONPATH=src python scripts/create_mock_project_data.py [manifest_dir]
@@ -35,24 +37,32 @@ from manifest.audit.blueprint.manifest_filenames import (
 
 
 def _make_root_entity() -> dict:
-    """Root entity (System Core) with intent and reality filled for display."""
+    """Root entity: Calculator app (orchestrates CLI, engine, output)."""
     intent = empty_intent()
-    intent["narrative"] = {"role": "System Core", "mission": "Orchestrate the app and backend services."}
+    intent["narrative"] = {
+        "role": "Calculator",
+        "mission": "CLI calculator: parse args → compute → format → print.",
+    }
     intent["blueprint"] = {"type": "FLOW", "topology": {}}
-    intent["protocol"] = {"input": ["config", "env"], "output": ["lifecycle"]}
-    intent["profile"] = {"language": "python", "platform": "cli", "io_model": "request_response", "state_model": "stateless"}
-    intent["governance"] = {"rules": ["Single source of truth for blueprint"], "assertions": ["Root owns top-level features"]}
+    intent["protocol"] = {"input": ["argv"], "output": ["stdout"]}
+    intent["profile"] = {
+        "language": "python",
+        "platform": "cli",
+        "io_model": "request_response",
+        "state_model": "stateless",
+    }
+    intent["governance"] = {"rules": [], "assertions": []}
 
     reality = empty_reality()
-    reality["symbol"] = "manifest"
+    reality["symbol"] = "main"
     reality["profile"] = {"language": "python", "platform": "cli", "io_model": "", "state_model": ""}
     reality["dependencies"] = []
     reality["traits"] = ["orchestrator"]
-    reality["preview"] = "Manifest CLI and view."
+    reality["preview"] = "main.py: parse → engine → format_result → print."
 
     return {
         "id": PROJECT_ROOT_ID,
-        "children": ["feature_api", "feature_core"],
+        "children": ["cli", "arithmetic_engine", "output"],
         "dependencies": [],
         "intent": intent,
         "reality": reality,
@@ -60,18 +70,25 @@ def _make_root_entity() -> dict:
     }
 
 
-def _make_entity(eid: str, role: str, mission: str, symbol: str, children: list = None) -> dict:
+def _make_entity(
+    eid: str,
+    role: str,
+    mission: str,
+    symbol: str,
+    children: list = None,
+    contracts: list = None,
+) -> dict:
     """One entity with intent/reality for Inspector display."""
     intent = empty_intent()
     intent["narrative"] = {"role": role, "mission": mission}
     intent["blueprint"] = {"type": "FLOW", "topology": {}}
-    intent["protocol"] = {"input": ["request"], "output": ["response"]}
-    intent["profile"] = {"language": "python", "platform": "server", "io_model": "request_response", "state_model": "stateless"}
+    intent["protocol"] = {"input": ["args"], "output": ["result"]}
+    intent["profile"] = {"language": "python", "platform": "cli", "io_model": "request_response", "state_model": "stateless"}
     intent["governance"] = {"rules": [], "assertions": []}
 
     reality = empty_reality()
     reality["symbol"] = symbol
-    reality["profile"] = {"language": "python", "platform": "server", "io_model": "", "state_model": ""}
+    reality["profile"] = {"language": "python", "platform": "cli", "io_model": "", "state_model": ""}
     reality["dependencies"] = []
     reality["traits"] = []
     reality["preview"] = f"Module: {symbol}"
@@ -82,31 +99,56 @@ def _make_entity(eid: str, role: str, mission: str, symbol: str, children: list 
         "dependencies": [],
         "intent": intent,
         "reality": reality,
-        "outgoing_contracts": [],
+        "outgoing_contracts": contracts or [],
     }
 
 
 def build_design_blueprint() -> dict:
-    """Design blueprint (llm_design) with root + two features."""
+    """Design blueprint (intent): Calculator root + CLI, Arithmetic Engine, Output."""
     root = _make_root_entity()
-    api = _make_entity("feature_api", "API Layer", "Expose REST and internal APIs.", "src.app.api")
-    core = _make_entity("feature_core", "Core Logic", "Business logic and domain.", "src.app.core")
+    cli = _make_entity(
+        "cli",
+        "CLI",
+        "Parse terminal input into op and two numbers.",
+        "cli.parser",
+        children=[],
+    )
+    engine = _make_entity(
+        "arithmetic_engine",
+        "Arithmetic Engine",
+        "Pure arithmetic: add, sub, mul (side-effect free).",
+        "engine.calculator",
+        children=[],
+    )
+    output = _make_entity(
+        "output",
+        "Output",
+        "Format numeric result for console.",
+        "output.formatter",
+        children=[],
+    )
     data = {
         "version": "1.0",
         "root_id": PROJECT_ROOT_ID,
-        "entities": [root, api, core],
+        "entities": [root, cli, engine, output],
     }
     return normalize_for_schema(data)
 
 
 def build_code_blueprint() -> dict:
-    """Code blueprint (code_extraction) same shape for view comparison."""
+    """Code blueprint: same structure as design, reality from actual tmp/ code."""
     design = build_design_blueprint()
-    # Add metadata that ensure_blueprint_metadata adds when loading
+    # Code view: same ids/structure, reality reflects actual code
     design["source"] = "code_extraction"
     design["ground_truth"] = True
     design["from_actual_code"] = True
-    design["extraction_method"] = "ast_parsing"
+    design["extraction_method"] = "mock_from_tmp"
+    # Ensure root reality matches actual entrypoint
+    for e in design.get("entities") or []:
+        if e.get("id") == PROJECT_ROOT_ID:
+            e.setdefault("reality", {})["symbol"] = "main"
+            e.setdefault("reality", {})["preview"] = "main.py: parse → engine → format_result → print."
+            break
     return design
 
 
@@ -130,7 +172,7 @@ def main() -> int:
         json.dump(code, f, indent=2, ensure_ascii=False)
     print(f"Wrote {code_path}")
 
-    print("Mock project data ready. Run the view with this manifest dir to see Inspector/diagram data.")
+    print("Mock calculator project data ready. Run the view with this manifest dir to see Inspector/diagram.")
     return 0
 
 
