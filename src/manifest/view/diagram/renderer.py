@@ -19,8 +19,12 @@ def _entity_color(key: str, config: Dict[str, Any]) -> str:
     return colors.get(key) or "#58a6ff"
 
 
-def render_diagram(spec: Dict[str, Any], config: Dict[str, Any]) -> str:
-    """Render from spec { title, nodes, layout_type, layout_topology }."""
+def render_diagram(
+    spec: Dict[str, Any],
+    config: Dict[str, Any],
+    selected_node_id: Optional[str] = None,
+) -> str:
+    """Render from spec { title, nodes, layout_type, layout_topology }. Selected node box in magenta."""
     nodes: List[Dict[str, Any]] = spec.get("nodes") or []
     layout_type: str = (spec.get("layout_type") or "STACK").strip().upper()
     if layout_type not in ("FLOW", "GRID", "STACK"):
@@ -39,14 +43,40 @@ def render_diagram(spec: Dict[str, Any], config: Dict[str, Any]) -> str:
     child_color = _entity_color("child", config)
 
     lines: List[str] = []
+    # Legend (top-left): status meanings
+    leg_planned = _status_color("planned", config)
+    leg_healthy = _status_color("healthy", config)
+    leg_partial = _status_color("partial", config)
+    leg_deviation = _status_color("deviation", config)
+    legend = (
+        f"[dim]Status: [/]"
+        f"[{leg_planned}]{S}[/] Planned  "
+        f"[{leg_healthy}]{S}[/] Healthy  "
+        f"[{leg_partial}]{S}[/] Partial  "
+        f"[{leg_deviation}]{S}[/] Deviation"
+    )
+    lines.append(legend)
+    lines.append("")
     lines.append(f"[{node_color}]  ┌{'─' * (box_width + 2)}┐[/]")
     lines.append(f"[{node_color}]  │  {title[:box_width-2]:<{box_width-2}}│[/]")
     lines.append(f"[{node_color}]  └{'─' * (box_width + 2)}┘[/]")
 
+    use_arrows = layout_type == "FLOW"
     if layout_type == "GRID" and layout_topology.get("map"):
-        lines.extend(_render_grid(nodes, layout_topology, config, S, node_color, child_color))
+        lines.extend(
+            _render_grid(
+                nodes, layout_topology, config, S, node_color, child_color,
+                selected_node_id=selected_node_id,
+            )
+        )
     else:
-        lines.extend(_render_simple_flow(nodes, config, S, node_color, child_color))
+        lines.extend(
+            _render_simple_flow(
+                nodes, config, S, node_color, child_color,
+                selected_node_id=selected_node_id,
+                use_arrows=use_arrows,
+            )
+        )
 
     return "\n".join(lines)
 
@@ -68,28 +98,46 @@ def _render_simple_flow(
     S: str,
     node_color: str,
     child_color: str,
+    selected_node_id: Optional[str] = None,
+    use_arrows: bool = True,
 ) -> List[str]:
-    """Flow of L1 boxes; L2 as plain text inside each box (no nested box structure)."""
+    """Flow of L1 boxes; L2 as plain text inside each box. Selected box in magenta. Arrows only if use_arrows."""
     arrow = " ──► "
+    spacer = "     "  # same visual width as arrow; used on non-arrow rows
+    selected_color = "#ff00ff"  # magenta for selected box
     min_w, max_w = 12, 28
     lines: List[str] = []
-    boxes: List[tuple] = []
+    boxes: List[tuple] = []  # (nid, label, st_color, l2_line, w)
     for node in nodes:
-        label = (node.get("label") or node.get("id") or "?")
+        nid = node.get("id")
+        label = (node.get("label") or nid or "?")
         status = node.get("status") or "planned"
         st_color = _status_color(status, config)
         l2_list = _l2_labels(node)
         l2_line = ", ".join((t or "?")[:14] for t in l2_list[:8]) if l2_list else "—"
         w = max(min_w, min(max_w, max(len(label) + 6, len(l2_line) + 4)))
-        boxes.append((label, st_color, l2_line, w))
-    parts = [f"[{node_color}]┌{'─' * (w - 2)}┐[/]" for (_, _, _, w) in boxes]
-    lines.append("  " + arrow.join(parts))
-    parts = [f"[{node_color}]│ [/][{st_color}]{S}[/] [{node_color}]{label[:w-6]:<{w-6}}│[/]" for (label, st_color, _, w) in boxes]
-    lines.append("  " + arrow.join(parts))
-    parts = [f"[{child_color}]│ {l2_line[:w-4]:<{w-4}}│[/]" for (_, _, l2_line, w) in boxes]
-    lines.append("  " + arrow.join(parts))
-    parts = [f"[{node_color}]└{'─' * (w - 2)}┘[/]" for (_, _, _, w) in boxes]
-    lines.append("  " + arrow.join(parts))
+        boxes.append((nid, label, st_color, l2_line, w))
+    # Per-box border/label color: magenta when selected
+    def box_color(nid: Optional[str]) -> str:
+        return selected_color if (selected_node_id and nid == selected_node_id) else node_color
+    def row_child_color(nid: Optional[str]) -> str:
+        return selected_color if (selected_node_id and nid == selected_node_id) else child_color
+    # Top border: no arrow
+    parts = [f"[{box_color(nid)}]┌{'─' * (w - 2)}┐[/]" for (nid, _, _, _, w) in boxes]
+    lines.append("  " + spacer.join(parts))
+    # Label row: arrow between boxes only when use_arrows (FLOW with edges); else spacer
+    sep = arrow if use_arrows else spacer
+    parts = [
+        f"[{box_color(nid)}]│ [/][{st_color}]{S}[/] [{box_color(nid)}]{label[:w-6]:<{w-6}}│[/]"
+        for (nid, label, st_color, _, w) in boxes
+    ]
+    lines.append("  " + sep.join(parts))
+    # L2 row: no arrow
+    parts = [f"[{row_child_color(nid)}]│ {l2_line[:w-4]:<{w-4}}│[/]" for (nid, _, _, l2_line, w) in boxes]
+    lines.append("  " + spacer.join(parts))
+    # Bottom border: no arrow
+    parts = [f"[{box_color(nid)}]└{'─' * (w - 2)}┘[/]" for (nid, _, _, _, w) in boxes]
+    lines.append("  " + spacer.join(parts))
     return lines
 
 
@@ -100,8 +148,10 @@ def _render_grid(
     S: str,
     node_color: str,
     child_color: str,
+    selected_node_id: Optional[str] = None,
 ) -> List[str]:
-    """GRID: place L1 nodes by topology.map."""
+    """GRID: place L1 nodes by topology.map. Selected cell in magenta."""
+    selected_color = "#ff00ff"  # magenta
     lines: List[str] = []
     dims = layout_topology.get("dimensions") or {}
     rows = max(1, int(dims.get("rows") or 1))
@@ -127,10 +177,8 @@ def _render_grid(
         for c in range(cols):
             nid = grid[r][c]
             if nid and nid in id_to_node:
-                node = id_to_node[nid]
-                label = (node.get("label") or node.get("id") or "?")[:cell_w - 4]
-                st = _status_color(node.get("status") or "planned", config)
-                line_parts.append(f"[{node_color}]┌{'─' * (cell_w-2)}┐[/]")
+                color = selected_color if nid == selected_node_id else node_color
+                line_parts.append(f"[{color}]┌{'─' * (cell_w-2)}┐[/]")
             else:
                 line_parts.append(" " * cell_w)
         lines.append("  " + " ".join(line_parts))
@@ -141,7 +189,8 @@ def _render_grid(
                 node = id_to_node[nid]
                 label = (node.get("label") or node.get("id") or "?")[:cell_w - 4]
                 st = _status_color(node.get("status") or "planned", config)
-                line_parts.append(f"[{node_color}]│ [/][{st}]{S}[/] [{node_color}]{label:<{cell_w-6}}│[/]")
+                color = selected_color if nid == selected_node_id else node_color
+                line_parts.append(f"[{color}]│ [/][{st}]{S}[/] [{color}]{label:<{cell_w-6}}│[/]")
             else:
                 line_parts.append(" " * cell_w)
         lines.append("  " + " ".join(line_parts))
@@ -149,7 +198,8 @@ def _render_grid(
         for c in range(cols):
             nid = grid[r][c]
             if nid and nid in id_to_node:
-                line_parts.append(f"[{node_color}]└{'─' * (cell_w-2)}┘[/]")
+                color = selected_color if nid == selected_node_id else node_color
+                line_parts.append(f"[{color}]└{'─' * (cell_w-2)}┘[/]")
             else:
                 line_parts.append(" " * cell_w)
         lines.append("  " + " ".join(line_parts))

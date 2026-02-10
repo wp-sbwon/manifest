@@ -248,11 +248,23 @@ class ManifestViewApp(App[None]):
             self._view_data = view_data
 
             if entities and root_id:
+                if self._diagram_root_id == "PROJECT_ROOT":
+                    design = self._get_cached_design_blueprint()
+                    root_entity = get_root_entity(design) if design else None
+                    diagram_title = entity_display_name(root_entity) if root_entity else "Project"
+                else:
+                    root_ent = next(
+                        (e for e in entities if (e.get("id") or "") == self._diagram_root_id),
+                        None,
+                    )
+                    diagram_title = (
+                        entity_display_name(root_ent) if root_ent else self._diagram_root_id
+                    )
                 spec = build_diagram_spec(
                     entities,
                     comp_status,
                     root_id=self._diagram_root_id,
-                    title=None,
+                    title=diagram_title,
                     filter_app_only=True,
                 )
                 self._diagram_layered_spec = spec
@@ -274,16 +286,12 @@ class ManifestViewApp(App[None]):
                         "PROJECT_ROOT",
                         {"id": "PROJECT_ROOT", "name": root_display_name, "description": root_desc},
                     ))
+                # Only L1 nodes (same layer): do not add L2 row items so n/p cycles within layer only.
                 for node in spec.get("nodes") or []:
                     data = node.get("_data")
                     nid = node.get("id") or ""
                     if data and nid:
                         selectable.append(("node", nid, data))
-                    for t in node.get("row") or []:
-                        td = t.get("_data")
-                        tid = t.get("id") or ""
-                        if td and tid:
-                            selectable.append(("node", tid, td))
                 self._diagram_selectable_nodes = selectable
                 self._diagram_component_list = [d for _, _, d in selectable if _ != "root" and _ != "up"]
             else:
@@ -465,20 +473,27 @@ class ManifestViewApp(App[None]):
         return "\n".join(lines)
 
     def _load_diagram_view(self) -> Union[str, RenderableType]:
-        """Diagram: layered spec (L1 + L2 rows) or empty. Return markup string so Static renders color."""
+        """Diagram: layered spec (L1 + L2 rows) or empty. Selected node box in magenta."""
         try:
             if not self._diagram_blueprint:
                 return "  (no blueprint — run app or sync refresh)"
             config = load_diagram_config(self.manifest_dir)
+            selected_node_id: Optional[str] = None
+            nodes = self._get_selectable_nodes()
+            idx = max(0, min(self._selected_node_index - 1, len(nodes) - 1))
+            if idx < len(nodes):
+                kind, nid, _ = nodes[idx]
+                if kind == "node":
+                    selected_node_id = nid
             if self._diagram_layered_spec and self._diagram_layered_spec.get("nodes") is not None:
                 spec = dict(self._diagram_layered_spec)
                 spec["title"] = spec.get("title") or config.get("title") or "ARCHITECTURE FLOW"
-                return render_diagram(spec, config)
+                return render_diagram(spec, config, selected_node_id=selected_node_id)
             spec = {
                 "title": config.get("title") or "ARCHITECTURE FLOW",
                 "nodes": [],
             }
-            return render_diagram(spec, config)
+            return render_diagram(spec, config, selected_node_id=selected_node_id)
         except Exception as e:
             logger.debug("Diagram view load failed: %s", e)
             return f"(load failed: {e})"
@@ -901,9 +916,11 @@ class ManifestViewApp(App[None]):
         return out
 
     def _inspection_section(self, title: str, body: str) -> str:
-        """One inspection section: title, rule, then content. Strong visual separation between 항목."""
+        """One inspection section: title, rule, then content. Blank line between each row for readability."""
         rule = "[#58a6ff]" + "─" * 44 + "[/]"
-        indented = "\n  ".join(body.split("\n"))
+        # Separate each line with a blank line so rows are easy to distinguish
+        lines = [line.strip() for line in body.split("\n") if line.strip()]
+        indented = "\n  \n  ".join(lines)
         return f"\n\n[bold #58a6ff]{title}[/]\n{rule}\n  {indented}\n"
 
     def _get_root_entity_for_inspector(self) -> Dict[str, Any]:
@@ -955,14 +972,17 @@ class ManifestViewApp(App[None]):
         mission = _fmt(narrative.get("mission"), 240)
         blueprint = intent.get("blueprint") or {}
         bp_type = _fmt(blueprint.get("type"), 20)
+        bp_topology = blueprint.get("topology") or {}
         protocol_i = intent.get("protocol") or {}
         profile_i = intent.get("profile") or {}
         gov = intent.get("governance") or {}
         symbol = _fmt(reality.get("symbol"), 120)
+        protocol_r = reality.get("protocol") or {}
         profile_r = reality.get("profile") or {}
         deps = data.get("dependencies") or []
         reality_deps = reality.get("dependencies") or []
         traits = reality.get("traits") or []
+        topology_actual = reality.get("topology_actual") or {}
         preview = _fmt(reality.get("preview"), 160)
         children_ids = data.get("children") or []
         id_to_name = self._id_to_display_name_map()
@@ -976,11 +996,19 @@ class ManifestViewApp(App[None]):
             f"[white]{_cap('children')}[/]: {', '.join(children_display) or '—'}",
             f"[white]{_cap('dependencies')}[/]: {', '.join(deps[:12]) or '—'}",
         ])
+        topology_summary = "—"
+        if isinstance(bp_topology, dict) and bp_topology:
+            dims = bp_topology.get("dimensions") or {}
+            if dims:
+                topology_summary = f"dimensions {dims}"
+            else:
+                topology_summary = "present"
         intent_body = "\n".join([
             f"{_cap('role')}: {role}",
             f"{_cap('mission')}: {mission}",
             f"{_cap('blueprint')}",
             f"  — {_cap('type')}: {bp_type}",
+            f"  — {_cap('topology')}: {topology_summary}",
             f"{_cap('protocol')}",
             f"  — {_cap('input')}: {_fmt(protocol_i.get('input'))}",
             f"  — {_cap('output')}: {_fmt(protocol_i.get('output'))}",
@@ -993,13 +1021,20 @@ class ManifestViewApp(App[None]):
             f"  — {_cap('rules')}: {_fmt(gov.get('rules'))}",
             f"  — {_cap('assertions')}: {_fmt(gov.get('assertions'))}",
         ])
+        topology_actual_summary = "—"
+        if isinstance(topology_actual, dict) and topology_actual:
+            topology_actual_summary = _fmt(topology_actual.get("type")) or "present"
         reality_body = "\n".join([
             f"{_cap('symbol')}: {symbol}",
+            f"{_cap('protocol')}",
+            f"  — {_cap('input')}: {_fmt(protocol_r.get('input'))}",
+            f"  — {_cap('output')}: {_fmt(protocol_r.get('output'))}",
             f"{_cap('profile')}",
             f"  — {_cap('language')}: {profile_r.get('language') or '—'}",
             f"  — {_cap('platform')}: {profile_r.get('platform') or '—'}",
             f"{_cap('dependencies')}: {', '.join(reality_deps[:12]) or '—'}",
             f"{_cap('traits')}: {', '.join(traits[:10]) or '—'}",
+            f"{_cap('topology_actual')}: {topology_actual_summary}",
             f"{_cap('preview')}: {preview}",
         ])
         contract_lines = [f"→ {c.get('to') or '—'} [{c.get('type') or 'dependency'}] {c.get('file') or ''} {', '.join((c.get('symbols') or [])[:4])}" for c in (contracts or [])[:10]]
@@ -1012,8 +1047,8 @@ class ManifestViewApp(App[None]):
         parts = [
             header.strip(),
             self._inspection_section("Identity", identity_body),
-            self._inspection_section("Intent", intent_body),
-            self._inspection_section("Reality", reality_body),
+            self._inspection_section("Intent (design)", intent_body),
+            self._inspection_section("Reality (code)", reality_body),
             self._inspection_section("Outgoing contracts", contracts_body),
             self._inspection_section("Validation", validation_body),
         ]
@@ -1034,11 +1069,23 @@ class ManifestViewApp(App[None]):
         actual_reality = actual.get("reality") or {}
         def _s(v: Any, w: int = 28) -> str:
             return (str(v) if v is not None and v != "" else "—")[:w].replace("\n", " ")
+        plan_protocol = plan_intent.get("protocol") or {}
+        actual_protocol = actual_intent.get("protocol") or {}
+        plan_profile = plan_intent.get("profile") or {}
+        actual_profile = actual_intent.get("profile") or {}
+        plan_gov = plan_intent.get("governance") or {}
+        actual_gov = actual_intent.get("governance") or {}
         rows = [
             ("role", _s(plan_narr.get("role")), _s(actual_narr.get("role"))),
             ("mission", _s(plan_narr.get("mission")), _s(actual_narr.get("mission"))),
-            ("symbol", _s(plan_reality.get("symbol")), _s(actual_reality.get("symbol"))),
             ("blueprint.type", _s(plan_intent.get("blueprint", {}).get("type")), _s(actual_intent.get("blueprint", {}).get("type"))),
+            ("protocol.input", _s(plan_protocol.get("input")), _s(actual_protocol.get("input"))),
+            ("protocol.output", _s(plan_protocol.get("output")), _s(actual_protocol.get("output"))),
+            ("profile.language", _s(plan_profile.get("language")), _s(actual_profile.get("language"))),
+            ("governance.rules", _s(plan_gov.get("rules")), _s(actual_gov.get("rules"))),
+            ("symbol", _s(plan_reality.get("symbol")), _s(actual_reality.get("symbol"))),
+            ("dependencies", _s(plan_reality.get("dependencies")), _s(actual_reality.get("dependencies"))),
+            ("traits", _s(plan_reality.get("traits")), _s(actual_reality.get("traits"))),
         ]
         lines = [header, "[white]  Planned          |  Code[/]", "[white]  " + "-" * 30 + "+" + "-" * 30 + "[/]"]
         for label, d_val, a_val in rows:

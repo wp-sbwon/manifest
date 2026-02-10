@@ -28,11 +28,13 @@ Keys: **n** next node, **p** previous node, **D** Differences, **Tab** next tab,
 - **1:DIAGRAM** – Architecture flow diagram
 - **2:FILES** – File list
 - **3:TIMELINE** – Design history + Git by time
-- **4:MISSION** – Goals (from architecture)
+- **4:MISSION** – Goals (from blueprint root intent)
 
 ---
 
 ## Diagram
+
+Top-left: **Status legend** (■ Planned, ■ Healthy, ■ Partial, ■ Deviation). One flow arrow (──►) between boxes on the label row.
 
 | Shown | Data source |
 |-------|-------------|
@@ -73,7 +75,7 @@ Selection: **Root** (System Core) or **Component** (diagram node). **[D]** toggl
 
 | Section | Data source |
 |--------|-------------|
-| Goal Intent, Interface Contract, Logic Style, Essential Rules | `blueprint.json` (BlueprintLoader), component matched by id |
+| Goal Intent, Interface Contract, Logic Style, Essential Rules | `blueprint_design.json` (BlueprintLoader), component matched by id |
 | Actual Code (dependencies, side_effects, complexity, detected_interface) | `blueprint_code.json` (BlueprintLoader.load_code_blueprint), match by id then name |
 | Last Output, Shadow Trace | State (shadow-*) |
 
@@ -81,14 +83,16 @@ Selection: **Root** (System Core) or **Component** (diagram node). **[D]** toggl
 
 | Column | Data source |
 |--------|-------------|
-| Planned | Same as component design: `blueprint.json` |
+| Planned | Same as component design: `blueprint_design.json` |
 | Code | Same as Actual Code: `blueprint_code.json` (id then name fallback) |
 
 ---
 
 ## Entity model integration
 
-The view loads design and code blueprints, runs comparison, and attaches validation per entity via `get_entities_for_view(manifest_dir)` (`src/manifest/view/entity_model.py`). That returns blueprint, code_blueprint, comp_status, validation_by_id (entity_id → { status, deviations }), architecture, and conflicts. Validation (status, deviations) exists only in the integrated view, not in persisted blueprint/blueprint_code files.
+The view loads design and code blueprints, runs comparison, and attaches validation per entity via `get_entities_for_view(manifest_dir)` (`src/manifest/view/entity_model.py`). That returns blueprint, code_blueprint, comp_status, validation_by_id (entity_id → { status, deviations }), view_schema, and conflicts. Validation (status, deviations) exists only in the integrated view, not in persisted blueprint/blueprint_code files.
+
+**Diagram** shows structure (root → L1 → L2), labels (name / role / symbol), status, edges from outgoing_contracts, and layout from root intent.blueprint (type, topology). **Inspector (Design)** shows all entity fields: Identity (id, children, dependencies), Intent (design): narrative, blueprint (type, topology), protocol, profile, governance, Reality (code): symbol, protocol, profile, dependencies, traits, topology_actual, preview, plus Outgoing contracts and Validation. **Inspector (Differences)** shows plan vs code for role, mission, blueprint.type, protocol, profile.language, governance.rules, symbol, dependencies, traits.
 
 ---
 
