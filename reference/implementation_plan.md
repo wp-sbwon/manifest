@@ -13,7 +13,7 @@ Manifest is an **AI-Native Orchestration IDE** designed to solve "Code Blindness
 > **Manifest Context Engine (Tiered Orchestration)**:
 > Context is no longer a dump of all files. Manifest manages what an agent sees based on the Mission Stage.
 > - **Tier 0 (The Law)**: `.claude/rules/manifest-policy.md` is forced into EVERY agent.
-> - **Tier 1 (The Intent)**: `architecture.json` and high-level goals are provided to the **Planner**.
+> - **Tier 1 (The Intent)**: Blueprint (design) and high-level goals are provided to the **Planner**.
 > - **Tier 2 (The Blueprint)**: Relevant `blueprint.json` nodes and their structural specs are provided to the **Coder**.
 > - **Tier 3 (Surgical Code)**: Full file contents are ONLY provided for files referenced in the `blueprint.json` or specifically requested by the agent via `LSP/AST-Grep` exploration.
 
@@ -50,8 +50,8 @@ A modular interface built with the Textual library, supporting the PRD's vision.
 
 #### [MODIFY] [app.py](file:///Users/wonseongbae/Documents/GoogleAG/Manifest/app.py)
 - **View 1: Architect (Intention)**:
-    - **Visual Intent Map**: Renders \`architecture/intent.md\` showing Features, Requirements, and User Goals.
-    - Powered by \`intent.json\`.
+    - **Visual Intent Map**: Renders design showing Features, Requirements, and User Goals.
+    - Powered by blueprint (design).
 - **View 2: Blueprint (Design)**:
     - **Visual Translation**: Renders \`architecture/blueprint.md\` showing the technical API contract (Classes/Methods).
     - Powered by \`blueprint.json\`.

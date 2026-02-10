@@ -1,5 +1,5 @@
 """
-Mechanical validation for recursive entity schema.
+Mechanical validation for blueprint data.
 
 Normalize null to ""/[]/{}; ensure required keys. Use on read and before write.
 """

@@ -309,7 +309,7 @@ class IntegrationTestAgent:
         contracts = contracts_from_entities(blueprint.get("entities", []))
         api_list = "\n".join([f"- {c.get('name', c.get('id', ''))}" for c in contracts[:10]])
 
-        # Blueprint only (features = top-layer entities). No architecture dict.
+        # Features = top-layer from blueprint.
         architecture_info = f"""
 Features (from blueprint):
 {self._format_blueprint_features(blueprint)}
@@ -381,7 +381,7 @@ Files Modified: {', '.join(files_modified) if files_modified else 'None'}
         )
 
     def _format_blueprint_features(self, blueprint: Dict[str, Any]) -> str:
-        """Format blueprint top-layer entities (features) and requirements for prompt. New schema only."""
+        """Format blueprint top-layer (features) and requirements for prompt."""
         if not blueprint:
             return "No blueprint data available"
         from manifest.audit.entity_schema import top_layer_entities, entity_display_name

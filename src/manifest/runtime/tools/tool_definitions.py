@@ -245,17 +245,17 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
         },
         {
             "name": "architect",
-            "description": "Write PRD, architecture, or intent to .manifest only. Architecture must have: mission, global_rules, architecture_style, features, goals (list of {id, name, description, status}), metrics (code_quality, test_coverage, binary_size).",
+            "description": "Write PRD or blueprint to .manifest only. Use write_architecture with blueprint content (version, root_id, entities). Use write_prd with PRD content. Use ideate for discussion only.",
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "One of: write_prd, write_architecture, write_intent, ideate"
+                        "description": "One of: write_prd, write_architecture, ideate"
                     },
                     "content": {
                         "type": "object",
-                        "description": "For write_architecture: mission, global_rules, architecture_style, features, goals ({id, name, description, status}), metrics. For write_prd/write_intent: doc. Omit for ideate."
+                        "description": "For write_architecture: blueprint (version, root_id, entities). For write_prd: PRD doc. Omit for ideate."
                     }
                 },
                 "required": ["action"]

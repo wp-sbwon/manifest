@@ -3,7 +3,7 @@ Orchestrator for high-level mission management.
 
 This module provides the Orchestrator class which manages top-level missions.
 The orchestrator receives mission descriptions and breaks them down into
-tasks. It operates at Tier 0-1 context level (policies and architecture),
+tasks. It operates at Tier 0-1 context level (policies and blueprint),
 not at the code level.
 
 The orchestrator is the entry point for new missions and coordinates the
@@ -19,7 +19,7 @@ class Orchestrator:
 
     The orchestrator is the top-level agent that receives mission descriptions
     and plans how to accomplish them. It works with Tier 0-1 context (policies
-    and architecture) and delegates actual implementation to worker agents.
+    and blueprint) and delegates actual implementation to worker agents.
 
     Attributes:
         state_manager: Manages state persistence for missions.
@@ -40,7 +40,7 @@ class Orchestrator:
     async def start_mission(self, task_id: str, mission_description: str) -> bool:
         """Start a new mission with the given description.
 
-        Loads Tier 0 (policies) and Tier 1 (architecture) context, generates
+        Loads Tier 0 (policies) and Tier 1 (blueprint) context, generates
         an orchestrator prompt, and registers the mission as active. The
         orchestrator will then work on breaking down the mission into tasks.
 
@@ -97,29 +97,21 @@ class Orchestrator:
         return "Blueprint-First Development: All code must align with blueprint_design.json"
 
     def _get_tier_1_context(self, state: Dict[str, Any]) -> str:
-        """Load Tier 1 context: Architecture and blueprint.
+        """Load Tier 1 context: Blueprint (design).
 
-        Tier 1 contains high-level architecture and blueprint information
-        that guides the orchestrator's planning decisions.
+        Tier 1 contains high-level blueprint information that guides the
+        orchestrator's planning decisions.
 
         Args:
             state: Current application state dictionary.
 
         Returns:
-            String containing architecture and blueprint information, or
-            a message indicating they're not available.
+            String containing blueprint information, or a message if not available.
         """
-        # Get architecture and blueprint from state
-        architecture = state.get("architecture", {})
         blueprint = state.get("blueprint", {})
-
-        context_parts = []
-        if architecture:
-            context_parts.append(f"Architecture: {architecture}")
         if blueprint:
-            context_parts.append(f"Blueprint: {blueprint}")
-
-        return "\n".join(context_parts) if context_parts else "No architecture/blueprint available"
+            return f"Blueprint: {blueprint}"
+        return "No blueprint available"
 
     async def stop_mission(self, task_id: str) -> bool:
         """Stop an active mission.

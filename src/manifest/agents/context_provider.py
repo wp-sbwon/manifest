@@ -5,7 +5,7 @@ This module implements the Tiered Orchestration system that provides agents
 with context at different levels of abstraction:
 
 - Tier 0: The Law - Project policies and rules (manifest-policy.md)
-- Tier 1: The Intent - Root and top-layer entities from blueprint (intent.json); architecture derived from entity graph
+- Tier 1: Root and top-layer from blueprint
 - Tier 2: The Blueprint - Entities (scoped to task)
 - Tier 3: Surgical Code - File contents (scoped to task)
 - Skills: Agent-specific capabilities and tools
@@ -44,7 +44,6 @@ class ContextProvider:
         skills_manager: SkillsManager instance for agent skills.
         state_manager: StateManager instance for accessing state data.
         policy_file: Path to manifest-policy.md (Tier 0).
-        intent_file: Path to intent.json (Tier 1).
         blueprint_file: Path to blueprint_design.json (Tier 1).
     """
 
@@ -67,7 +66,6 @@ class ContextProvider:
         self.skills_manager = SkillsManager(manifest_dir, self.project_root)
         self.state_manager = state_manager or StateManager(manifest_dir)
         self.policy_file = Path(".rules/manifest-policy.md")
-        self.intent_file = self.manifest_dir / "intent.json"
         from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE
         self.blueprint_file = self.manifest_dir / BLUEPRINT_DESIGN_FILE
 
@@ -96,7 +94,7 @@ class ContextProvider:
     def get_orchestrator_context(self) -> Dict[str, Any]:
         """Get context for orchestrator agent.
 
-        Orchestrators receive Tier 0 (policies) and Tier 1 (intent, architecture)
+        Orchestrators receive Tier 0 (policies) and Tier 1 (blueprint / intent)
         context. They don't get scoped blueprint or code since they work at
         a high level breaking down missions into tasks.
 
@@ -213,24 +211,23 @@ class ContextProvider:
         }
 
     def _load_tier_1(self) -> Dict[str, Any]:
-        """Load Tier 1: intent.json and blueprint (blueprint_design.json)."""
-        tier_1 = {}
-
-        # Load intent.json
-        if self.intent_file.exists():
-            try:
-                with open(self.intent_file, "r") as f:
-                    tier_1["intent"] = json.load(f)
-            except Exception as e:
-                logger.debug("context_provider load intent failed: %s", e)
-                tier_1["intent"] = {"version": "1.0", "sprint": "", "features": []}
-        else:
-            tier_1["intent"] = {"version": "1.0", "sprint": "", "features": []}
-
-        # Blueprint entity graph only.
+        """Load Tier 1 from blueprint."""
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
-        tier_1["blueprint"] = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
+        from manifest.audit.entity_schema import top_layer_entities, entity_display_name
 
+        tier_1 = {}
+        tier_1["blueprint"] = BlueprintLoader.load_blueprint(self.manifest_dir, with_metadata=False)
+        blueprint = tier_1["blueprint"] or {}
+        features = []
+        for e in top_layer_entities(blueprint):
+            narr = (e.get("intent") or {}).get("narrative") or {}
+            features.append({
+                "id": e.get("id"),
+                "name": entity_display_name(e) or e.get("id"),
+                "description": narr.get("mission", ""),
+                "components": list(e.get("children") or []),
+            })
+        tier_1["intent"] = {"version": "1.0", "sprint": "", "features": features}
         return tier_1
 
     def _load_tier_2_scoped(self, task_context: Dict[str, Any]) -> Dict[str, Any]:

@@ -1,77 +1,25 @@
 """
-Doc set: same formatted docs from top-down and bottom-up.
+Doc set: top-down and bottom-up blueprints.
 
-Both processes produce the same set of docs; the synchronizer compares them mechanically.
-- Blueprint: top-down = blueprint_design.json, bottom-up = blueprint_code.json.
-- Intent: top-down = intent.json, bottom-up = intent_code.json.
-- Architecture doc type: design blueprint (blueprint_design) vs code blueprint (blueprint_code); no architecture.json.
+Design = blueprint_design.json, code = blueprint_code.json.
 """
-import json
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any
 
-from manifest.core.logger import get_logger
-
-logger = get_logger(__name__)
-
-# Doc types that both top-down and bottom-up produce (same schema)
-DOC_SET = ["blueprint", "intent", "architecture"]
-
-# Bottom-up filenames (architecture doc type = code blueprint)
-BOTTOM_UP_FILES = {
-    "blueprint": "blueprint_code.json",
-    "intent": "intent_code.json",
-    "architecture": "blueprint_code.json",
-}
-
-# Top-down filenames (architecture doc type uses design blueprint)
-TOP_DOWN_FILES = {
-    "blueprint": "blueprint_design.json",
-    "intent": "intent.json",
-    "architecture": "blueprint_design.json",
-}
+DOC_SET = ["blueprint"]
 
 
 def load_top_down(manifest_dir: Path, doc_type: str) -> Dict[str, Any]:
-    """Load top-down doc for a given doc type. Returns empty default if missing."""
+    """Load top-down doc. Only blueprint is supported."""
     if doc_type == "blueprint":
-        from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
-        return BlueprintLoader.load_blueprint(manifest_dir)
-    if doc_type == "intent":
-        path = manifest_dir / TOP_DOWN_FILES["intent"]
-        if not path.exists():
-            return {"version": "1.0", "sprint": "", "features": []}
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            logger.warning("Failed to load intent.json: %s", e)
-            return {"version": "1.0", "sprint": "", "features": []}
-    if doc_type == "architecture":
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         return BlueprintLoader.load_blueprint(manifest_dir)
     return {}
 
 
 def load_bottom_up(manifest_dir: Path, doc_type: str) -> Dict[str, Any]:
-    """Load bottom-up doc for a given doc type. Returns empty default if missing."""
-    filename = BOTTOM_UP_FILES.get(doc_type)
-    if not filename:
-        return {}
-    path = manifest_dir / filename
+    """Load bottom-up doc. Only blueprint is supported."""
     if doc_type == "blueprint":
-        from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
-        return BlueprintLoader.load_code_blueprint(manifest_dir)
-    if doc_type == "intent":
-        if not path.exists():
-            return {"version": "1.0", "sprint": "", "features": []}
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            logger.warning("Failed to load intent_code.json: %s", e)
-            return {"version": "1.0", "sprint": "", "features": []}
-    if doc_type == "architecture":
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
         return BlueprintLoader.load_code_blueprint(manifest_dir)
     return {}

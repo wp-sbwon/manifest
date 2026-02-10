@@ -20,7 +20,6 @@ from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator, B
 from manifest.audit.code.deviation_auditor import Severity
 from manifest.audit.entity_schema import PROJECT_ROOT_ID, top_layer_entities
 from manifest.audit import doc_set
-from manifest.audit.doc_comparator import compare_intent, compare_architecture, DocDiff
 
 logger = get_logger(__name__)
 
@@ -105,10 +104,7 @@ class BlueprintSynchronizer:
         self.comparator = BlueprintComparator()
 
     def compare_all_docs(self, manifest_dir: Optional[Path] = None) -> Dict[str, Any]:
-        """
-        Compare all doc types (blueprint, intent, architecture) between top-down and bottom-up.
-        Returns implementation progress (missing in bottom-up) separately from deviation (conflicts).
-        """
+        """Compare design and code blueprints. Returns implementation progress and deviation conflicts."""
         manifest_dir = manifest_dir or self.manifest_dir
         top_blueprint = doc_set.load_top_down(manifest_dir, "blueprint")
         bottom_blueprint = doc_set.load_bottom_up(manifest_dir, "blueprint")
@@ -117,22 +113,12 @@ class BlueprintSynchronizer:
         deviation_conflicts = [c for c in blueprint_conflicts if c.severity in [Severity.ERROR, Severity.WARNING]]
         info_conflicts = [c for c in blueprint_conflicts if c.severity == Severity.INFO]
 
-        top_intent = doc_set.load_top_down(manifest_dir, "intent")
-        bottom_intent = doc_set.load_bottom_up(manifest_dir, "intent")
-        intent_diffs = compare_intent(top_intent, bottom_intent)
-
-        top_architecture = doc_set.load_top_down(manifest_dir, "architecture")
-        bottom_architecture = doc_set.load_bottom_up(manifest_dir, "architecture")
-        architecture_diffs = compare_architecture(top_architecture, bottom_architecture)
-
         return {
             "blueprint": {
                 "implementation_progress": [c.to_dict() for c in implementation_progress],
                 "deviation_conflicts": [c.to_dict() for c in deviation_conflicts],
                 "info": [c.to_dict() for c in info_conflicts],
             },
-            "intent": {"diffs": [d.to_dict() for d in intent_diffs]},
-            "architecture": {"diffs": [d.to_dict() for d in architecture_diffs]},
         }
 
     def detect_mismatch(
@@ -477,7 +463,7 @@ class BlueprintSynchronizer:
         blueprint: Dict[str, Any],
         status_info: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Update blueprint entities with implementation status and feature completion. New schema only."""
+        """Update blueprint entities with implementation status and feature completion."""
         component_statuses = status_info.get("node_statuses", {})
         component_deviations = status_info.get("node_deviations", {})
         feature_completions = status_info.get("feature_completions", {})

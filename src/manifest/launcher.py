@@ -18,8 +18,8 @@ logger = get_logger(__name__)
 
 DEFAULT_AGENT = "orchestrator"
 
-# Project directory: cwd when running from a target project; in dev (manifest repo) use a temp dir inside the repo.
-# Override with MANIFEST_PROJECT_DIR (e.g. export MANIFEST_PROJECT_DIR=/path/to/project).
+# Project directory: cwd for actual app use. Override with MANIFEST_PROJECT_DIR.
+# In dev (manifest repo), set MANIFEST_DEV=1 to use tmp/ inside repo; otherwise cwd is used.
 DEV_PROJECT_DIR_NAME = "tmp"
 
 
@@ -29,13 +29,14 @@ def _is_manifest_repo(path: Path) -> bool:
 
 
 def _get_default_project_dir() -> Path:
-    """Return the session project directory. In dev (manifest repo) use tmp/ inside repo; else cwd."""
+    """Return the session project directory. Uses MANIFEST_PROJECT_DIR if set; else cwd.
+    In dev (manifest repo), set MANIFEST_DEV=1 to use tmp/ inside repo."""
     if os.environ.get("MANIFEST_PROJECT_DIR"):
         p = Path(os.environ.get("MANIFEST_PROJECT_DIR", "")).resolve()
         p.mkdir(parents=True, exist_ok=True)
         return p
     cwd = Path.cwd()
-    if _is_manifest_repo(cwd):
+    if _is_manifest_repo(cwd) and os.environ.get("MANIFEST_DEV"):
         p = cwd / DEV_PROJECT_DIR_NAME
         p.mkdir(parents=True, exist_ok=True)
         return p
@@ -293,6 +294,24 @@ def _start_podman_machine() -> Tuple[bool, str]:
         except Exception as e:
             return False, str(e)[:200]
     return False, "unsupported platform"
+
+
+def _is_podman_machine_running() -> bool:
+    """True if podman machine is running (e.g. 'podman info' or 'podman machine list' succeeds)."""
+    podman = shutil.which("podman")
+    if not podman or platform.system() not in ("Darwin", "Windows"):
+        return False
+    r = subprocess.run(
+        [podman, "machine", "list", "--format", "{{.Running}}"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        env=os.environ,
+    )
+    if r.returncode == 0 and r.stdout:
+        return "true" in r.stdout.lower()
+    r2 = subprocess.run([podman, "info"], capture_output=True, text=True, timeout=10, env=os.environ)
+    return r2.returncode == 0
 
 
 def _restart_podman_machine() -> Tuple[bool, str]:
@@ -600,27 +619,39 @@ def main() -> int:
     docker_host = _get_podman_docker_host()
     api_ok = docker_host and _is_container_runtime_available()
     if not api_ok and shutil.which("podman") and not os.environ.get("MANIFEST_SKIP_PODMAN_AUTOSTART"):
+        machine_running = _is_podman_machine_running()
         if not docker_host:
-            sys.stderr.write("Starting Podman machine...\n")
-            ok, err = _start_podman_machine()
+            if machine_running:
+                sys.stderr.write("Podman is running but we couldn't reach it (e.g. after sleep).\n")
+                sys.stderr.write("Restarting the machine now to get a fresh connection...\n")
+                ok, err = _restart_podman_machine()
+            else:
+                sys.stderr.write("Podman isn't running yet.\n")
+                sys.stderr.write("Starting the machine now...\n")
+                ok, err = _start_podman_machine()
             if ok:
                 docker_host = _get_podman_docker_host()
                 api_ok = docker_host and _is_container_runtime_available()
             elif err:
-                sys.stderr.write(f"  {err}\n")
+                sys.stderr.write(f"  Result: {err}\n")
         else:
-            sys.stderr.write("Restarting Podman machine to fix connection...\n")
+            sys.stderr.write("We found a Podman socket but the connection didn't respond.\n")
+            sys.stderr.write("Restarting the machine now to get a fresh connection...\n")
             ok, err = _restart_podman_machine()
             if ok:
                 docker_host = _get_podman_docker_host()
                 api_ok = docker_host and _is_container_runtime_available()
             elif err:
-                sys.stderr.write(f"  {err}\n")
+                sys.stderr.write(f"  Result: {err}\n")
     if not docker_host:
         if os.environ.get("MANIFEST_PODMAN_DEBUG"):
             _print_podman_diagnostic()
-        sys.stderr.write("Podman is not running.\n")
-        sys.stderr.write("  Try: podman machine start\n")
+        if _is_podman_machine_running():
+            sys.stderr.write("Podman is running but the connection could not be established.\n")
+            sys.stderr.write("  Try: podman machine stop && podman machine start\n")
+        else:
+            sys.stderr.write("Podman is not running.\n")
+            sys.stderr.write("  Try: podman machine start\n")
         return 1
     if not _is_container_runtime_available():
         if os.environ.get("MANIFEST_PODMAN_DEBUG"):

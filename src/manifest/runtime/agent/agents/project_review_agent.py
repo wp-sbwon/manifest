@@ -94,7 +94,7 @@ class ProjectReviewAgent:
 
         Args:
             prd_data: Product Requirements Document containing project goals.
-            architecture_data: Architecture document with system design.
+            architecture_data: Design doc; may match blueprint_data.
             blueprint_data: Blueprint document with component specifications.
             worker_squad_output: Complete output from Worker Squad execution.
             context: Tiered context for additional information.

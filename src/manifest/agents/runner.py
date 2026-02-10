@@ -224,7 +224,6 @@ async def run_agent(task_id: str, agent_type: str):
             }
         )
     finally:
-        # Cleanup
         await state_sync.stop()
         await message_bus.disconnect()
 

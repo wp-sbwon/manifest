@@ -31,7 +31,10 @@ from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator
 from manifest.core.logger import get_logger
 from manifest.view.file_watcher import ViewFileWatcher
 from manifest.audit.monitoring.deviation_monitor import DeviationMonitor
-from manifest.view.entity_model import get_entities_for_view
+from manifest.view.entity_model import (
+    get_entities_for_view,
+    entities_and_comp_status_from_view_schema,
+)
 from manifest.core.paths import default_manifest_dir
 from manifest.core.constants import STATE_FILE, TASKS_FILE
 from manifest.view.diagram import (
@@ -115,7 +118,7 @@ class ManifestViewApp(App[None]):
     #main { width: 3fr; padding: 0; }
     #main-tab-bar { height: auto; padding: 0 1; background: #161b22; border-bottom: solid #30363d; }
     #main-scroll { padding: 1 2; }
-    #info-hub { width: 1fr; min-width: 48; max-width: 62; border-left: solid #30363d; background: #0d1117; }
+    #info-hub { width: 1fr; min-width: 58; max-width: 78; border-left: solid #30363d; background: #0d1117; }
     #info-hub ScrollableContainer { padding: 0 2; }
     #info-hub-footer { height: 1; padding: 0 1; border-top: solid #30363d; }
     .sidebar-section { margin-bottom: 1; padding: 0 1; border-bottom: solid #30363d; }
@@ -230,9 +233,16 @@ class ManifestViewApp(App[None]):
             blueprint = view_data["blueprint"]
             code_blueprint = view_data["code_blueprint"]
             comp_status = view_data["comp_status"]
-            diagram_blueprint = code_blueprint if (code_blueprint.get("entities")) else blueprint
-            entities = diagram_blueprint.get("entities") or []
-            root_id = diagram_blueprint.get("root_id") or "PROJECT_ROOT"
+            view_schema = view_data.get("view_schema") or {}
+            # Use comparison output for diagram when available.
+            if view_schema.get("entities"):
+                entities, comp_status = entities_and_comp_status_from_view_schema(view_schema)
+                root_id = view_schema.get("root_id") or "PROJECT_ROOT"
+                diagram_blueprint = {"root_id": root_id, "entities": entities}
+            else:
+                diagram_blueprint = code_blueprint if (code_blueprint.get("entities")) else blueprint
+                entities = diagram_blueprint.get("entities") or []
+                root_id = diagram_blueprint.get("root_id") or "PROJECT_ROOT"
             self._diagram_blueprint = diagram_blueprint
             self._diagram_comp_status = comp_status
             self._view_data = view_data
@@ -474,8 +484,10 @@ class ManifestViewApp(App[None]):
             return f"(load failed: {e})"
 
     def _load_files_view(self) -> Union[str, RenderableType]:
-        """Source tree: root/ with dirs and files, dot by status."""
+        """Source tree: project root (manifest_dir.parent) with dirs and files, dot by status."""
         try:
+            project_root = self.manifest_dir.parent
+            root_label = project_root.name or "root"
             bottom_up = self._get_cached_code_blueprint()
             top_down = self._get_cached_design_blueprint()
             status_info = self._get_blueprint_sync().calculate_implementation_status(
@@ -494,12 +506,16 @@ class ManifestViewApp(App[None]):
                     dirs[dir_name] = []
                 dirs[dir_name].append((parts[-1] if parts else "?", c, comp_status.get(c.get("id") or "", "planned")))
             S = "■"
-            lines = ["[dim]Source Tree[/]", "", "[white]root/[/]"]
+            lines = [
+                "[dim]Source Tree[/]",
+                f"[dim]Project root: {project_root}[/]",
+                "",
+                f"[white]{root_label}/[/]",
+            ]
             dir_list = sorted(dirs.items())
             for i, (d, items) in enumerate(dir_list):
                 prefix = "└── " if i == len(dir_list) - 1 else "├── "
-                tag = "magenta" if d in ("cli", "output") else ACCENT_BLUE
-                lines.append(f"[{tag}]{prefix}{S}[/] {d}/")
+                lines.append(f"[{ACCENT_BLUE}]{prefix}{S}[/] {d}/")
                 for j, (fname, comp, st) in enumerate(items[:12]):
                     st_tag = _status_color_tag(st)
                     sub_prefix = "    " if i == len(dir_list) - 1 else "│   "
@@ -791,7 +807,9 @@ class ManifestViewApp(App[None]):
     def _get_diagram_label_for_node(self, kind: str, nid: str, data: Dict[str, Any]) -> str:
         """Label for right panel: match diagram (feature name for single-comp feature, else node name)."""
         if kind == "root":
-            return "System Core"
+            design = self._get_cached_design_blueprint()
+            root_entity = get_root_entity(design) if design else None
+            return (entity_display_name(root_entity) or "System Core").strip()
         if kind == "up":
             return "↑ Up"
         if kind == "node":
@@ -883,13 +901,13 @@ class ManifestViewApp(App[None]):
         return out
 
     def _inspection_section(self, title: str, body: str) -> str:
-        """One inspection section: title, rule, then content (indented). Clear visual separation."""
-        rule = "[#58a6ff]" + "─" * 36 + "[/]"
+        """One inspection section: title, rule, then content. Strong visual separation between 항목."""
+        rule = "[#58a6ff]" + "─" * 44 + "[/]"
         indented = "\n  ".join(body.split("\n"))
-        return f"\n[bold #58a6ff]{title}[/]\n{rule}\n  {indented}\n"
+        return f"\n\n[bold #58a6ff]{title}[/]\n{rule}\n  {indented}\n"
 
     def _get_root_entity_for_inspector(self) -> Dict[str, Any]:
-        """Root (System Core) as entity: same shape as other entities. From blueprint root or synthetic from root_intent."""
+        """Root (System Core) as entity; same shape as other entities."""
         design = self._get_cached_design_blueprint()
         code = self._get_cached_code_blueprint()
         root_design = get_root_entity(design) if design else None
@@ -990,7 +1008,7 @@ class ManifestViewApp(App[None]):
         if deviations:
             validation_body += "\n" + "\n".join(f"{_cap('deviation')}: {_fmt(d, 120)}" for d in deviations[:6])
 
-        section_sep = "\n\n"
+        section_sep = "\n"
         parts = [
             header.strip(),
             self._inspection_section("Identity", identity_body),

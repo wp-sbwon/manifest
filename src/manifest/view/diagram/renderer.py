@@ -14,13 +14,13 @@ def _status_color(status: str, config: Dict[str, Any]) -> str:
 
 
 def _entity_color(key: str, config: Dict[str, Any]) -> str:
-    """Entity-based: 'entity' for L1 nodes, 'child' for row items. No gateway/module/method."""
+    """'entity' for L1 nodes, 'child' for row items."""
     colors = config.get("colors") or {}
     return colors.get(key) or "#58a6ff"
 
 
 def render_diagram(spec: Dict[str, Any], config: Dict[str, Any]) -> str:
-    """Render from spec { title, nodes, layout_type, layout_topology }. Entity-based colors."""
+    """Render from spec { title, nodes, layout_type, layout_topology }."""
     nodes: List[Dict[str, Any]] = spec.get("nodes") or []
     layout_type: str = (spec.get("layout_type") or "STACK").strip().upper()
     if layout_type not in ("FLOW", "GRID", "STACK"):
@@ -101,7 +101,7 @@ def _render_grid(
     node_color: str,
     child_color: str,
 ) -> List[str]:
-    """GRID: place L1 entities by topology.map. Entity-based colors."""
+    """GRID: place L1 nodes by topology.map."""
     lines: List[str] = []
     dims = layout_topology.get("dimensions") or {}
     rows = max(1, int(dims.get("rows") or 1))

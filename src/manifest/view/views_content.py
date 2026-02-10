@@ -71,7 +71,7 @@ def blueprint_component_names(manifest_dir: Path) -> Dict[str, str]:
 
 
 def blueprint_features_by_component(blueprint: Dict[str, Any]) -> Dict[str, List[str]]:
-    """Map component id to feature names that use it. Top-layer entities = features, children = entity_ids."""
+    """Map component id to feature names that reference it."""
     comp_to_features: Dict[str, List[str]] = {}
     for e in top_layer_entities(blueprint):
         name = entity_display_name(e) or e.get("name") or e.get("id") or "?"
@@ -84,7 +84,7 @@ def feature_status_from_entities(
     blueprint: Dict[str, Any],
     entity_status: Dict[str, str],
 ) -> Dict[str, str]:
-    """Status per feature id (healthy, planned, partial, deviation). Top-layer entities = features."""
+    """Status per feature id (healthy, planned, partial, deviation)."""
     out: Dict[str, str] = {}
     for e in top_layer_entities(blueprint):
         fid = e.get("id")
@@ -218,13 +218,7 @@ def order_entities_by_flow(
 
 
 def component_type_color(comp: Dict[str, Any], name: str) -> str:
-    """Color by type: blue=module, cyan=method, magenta=gateway."""
-    nm = (name or "").upper()
-    typ = (comp.get("type") or "").lower()
-    if any(x in nm for x in ("PARSER", "FORMATTER", "CLI", "INPUT", "OUTPUT", "GATEWAY")):
-        return "magenta"
-    if typ == "function" or "method" in nm:
-        return "cyan"
+    """Color for an entity. One accent for all."""
     return ACCENT_BLUE
 
 

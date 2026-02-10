@@ -134,9 +134,8 @@ See `requirements.txt` for the complete list.
 
 ## Git hooks (optional)
 
-- **Bottom-up docs on every commit:** After each commit, Manifest can refresh `blueprint_code.json` from code and generate `intent_code.json` / `architecture_code.json` via the OpenCode session. To enable:
+- **Bottom-up docs on every commit:** After each commit, Manifest can refresh `blueprint_code.json` from code. To enable:
   `ln -sf ../../scripts/post_commit_bottom_up.sh .git/hooks/post-commit`
-  Requires OpenCode running (or auto-started) for LLM-based intent/architecture; blueprint_code is always refreshed.
 - **CI checks before push:** See `scripts/pre_push_ci_check.sh` and `.pre-commit-config.yaml` (pre-push stage).
 
 ## Development Workflow
