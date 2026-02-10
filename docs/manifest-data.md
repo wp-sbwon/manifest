@@ -17,7 +17,7 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 | File | Role | Created by |
 |------|------|------------|
 | **blueprint_design.json** | Design (top-down). Intent filled, reality from design or empty. | Architect / design agents |
-| **blueprint_code.json** | Code (bottom-up). Mechanical extraction from code + LLM for intent where needed. Same schema as design so the two are mechanically comparable. | CodeExtractor + optional LLM (e.g. `generate_higher_level_docs_from_code`) |
+| **blueprint_code.json** | Code (bottom-up). **Exact reflection of the actual code** — produced by CodeExtractor from the codebase; same schema as design so the two are mechanically comparable. | CodeExtractor + optional LLM (e.g. `generate_higher_level_docs_from_code`) |
 | **blueprint_view.json** | **Final blueprint for the view.** Mechanical comparison of design vs code + schema validation. Plan/actual pairs and validation per entity. This is the file the view side references. | `build_view_schema` on refresh (after validation) |
 
 **Design and code:** Same shape: `version`, `root_id`, `entities`; per entity: `id`, `children`, `dependencies`, `intent`, `reality`, `outgoing_contracts`. Both files must align to this schema for comparison.

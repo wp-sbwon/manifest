@@ -164,6 +164,9 @@ def build_diagram_spec(
         layout_topology = root_blueprint.get("topology") or {}
         if not isinstance(layout_topology, dict):
             layout_topology = {}
+    # No arrows when there is no flow between nodes (e.g. siblings add/sub/mul).
+    if layout_type == "FLOW" and not edges:
+        layout_type = "STACK"
 
     return {
         "title": title or "ARCHITECTURE FLOW",
