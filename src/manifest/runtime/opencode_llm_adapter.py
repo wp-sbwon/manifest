@@ -285,8 +285,7 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
     ) -> str:
         """Send a single prompt to OpenCode and return the full response text.
 
-        Used by Reflector (bottom-up doc generation: intent_code.json, architecture_code.json).
-        Creates or reuses a dedicated session for reflector docs.
+        Creates or reuses a dedicated session when a single LLM call is needed.
 
         Args:
             prompt: Full prompt text to send.
@@ -590,7 +589,7 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
         return cleaned
 
     def __del__(self):
-        """Cleanup: stop server process if we started it."""
+        """Stop server process if we started it."""
         if self.server_process:
             try:
                 self.server_process.terminate()

@@ -1,5 +1,5 @@
 """
-Design history for PRD, architecture, and blueprint docs.
+Design history for PRD and blueprint.
 
 Records a versioned history when design docs (prd.json, blueprint_design.json)
 are saved so the View can display it alongside Git history.
@@ -47,7 +47,7 @@ def record_design_save(manifest_dir: Path, doc: str, path_relative: str) -> None
 
     Args:
         manifest_dir: Path to the .manifest directory.
-        doc: Document name (e.g. "prd", "blueprint", "architecture").
+        doc: Document name (e.g. "prd", "blueprint").
         path_relative: Relative path of the file (e.g. "prd.json").
     """
     manifest_dir = Path(manifest_dir)

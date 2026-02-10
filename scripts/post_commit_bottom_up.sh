@@ -2,8 +2,7 @@
 # Post-commit hook: run bottom-up doc generation after every commit.
 # Install: ln -sf ../../scripts/post_commit_bottom_up.sh .git/hooks/post-commit
 #
-# Refreshes blueprint_code.json from code and generates intent_code.json /
-# architecture_code.json via OpenCode session. Process is always bottom-up.
+# Refreshes blueprint_code.json from code. Process is always bottom-up.
 # Does not block or fail the commit; errors are logged to stderr.
 
 set -e

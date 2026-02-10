@@ -313,7 +313,7 @@ Task Description: {task_description}
         user_flows = prd_data.get("user_flows", [])
         user_flows_str = "\n".join([f"- {flow.get('persona', 'User')}: {flow.get('steps', [])}" for flow in user_flows[:5]]) if user_flows else "No user flows defined"
 
-        # Blueprint only (features = top-layer entities). No architecture dict.
+        # Features = top-layer from blueprint.
         blueprint = context.get("tier_1", {}).get("blueprint", {})
         architecture_info = f"""
 Features (from blueprint):
@@ -345,7 +345,7 @@ PRD:
         )
 
     def _format_blueprint_features(self, blueprint: Dict[str, Any]) -> str:
-        """Format blueprint top-layer entities (features) and requirements for prompt. New schema only."""
+        """Format blueprint top-layer (features) and requirements for prompt."""
         if not blueprint:
             return "No blueprint data available"
         from manifest.audit.entity_schema import top_layer_entities, entity_display_name

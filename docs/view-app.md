@@ -18,7 +18,7 @@ Keys: **n** next node, **p** previous node, **D** Differences, **Tab** next tab,
 | Shown | Data source |
 |-------|-------------|
 | Planning / Differences | App state (Inspector mode) |
-| STATUS (Deviation / Partial / Healthy / Planned) | `comp_status` from BlueprintSynchronizer (blueprint vs blueprint_code vs architecture) |
+| STATUS (Deviation / Partial / Healthy / Planned) | `comp_status` from BlueprintSynchronizer (blueprint_design vs blueprint_code) |
 | TIME | Local time |
 
 ---
@@ -36,8 +36,8 @@ Keys: **n** next node, **p** previous node, **D** Differences, **Tab** next tab,
 
 | Shown | Data source |
 |-------|-------------|
-| Title | `architecture.json` → `diagram_title` or default "ARCHITECTURE FLOW" |
-| Nodes | `get_entities_for_view()`: when architecture has features, uses features + blueprint components; else entity-tree (root_id, children) or flat component list from blueprint. Components/entities from blueprint or blueprint_code. |
+| Title | Blueprint root → `diagram_title` or default "ARCHITECTURE FLOW" |
+| Nodes | `get_entities_for_view()`: entity-tree (root_id, children) or flat component list from blueprint. Components/entities from blueprint or blueprint_code. |
 | Node status (■) | `comp_status` from BlueprintSynchronizer (same as header) |
 | Colors | `diagram_config.json` |
 
@@ -62,12 +62,12 @@ Selection: **Root** (System Core) or **Component** (diagram node). **[D]** toggl
 
 | Section | Data source |
 |--------|-------------|
-| Goal Intent | `architecture.json` → `mission` |
-| Interface Contract | `architecture.json` → `interface` |
-| Logic Style | `architecture.json` → `architecture_style` |
+| Goal Intent | Blueprint root intent → `mission` |
+| Interface Contract | Blueprint root intent → `interface` |
+| Logic Style | Blueprint root intent → `architecture_style` |
 | Dependencies / Side Effects / Complexity | — (fixed "—") |
 | Last Output, Shadow Trace | State (shadow-*) |
-| Essential Rules | `architecture.json` → `global_rules` |
+| Essential Rules | Blueprint root intent → `global_rules` |
 
 ### Component (design view)
 
@@ -97,9 +97,9 @@ The view loads design and code blueprints, runs comparison, and attaches validat
 | Where | What | Source | Created by |
 |-------|------|--------|------------|
 | Header | STATUS | comp_status (sync) | Bottom-up (comparison) |
-| Diagram | Nodes, title | architecture + blueprint | Top-down |
+| Diagram | Nodes, title | blueprint | Top-down |
 | Diagram | Status ■, colors | comp_status + diagram_config | Bottom-up + config |
-| Inspector root | Goal, Interface, Style, Rules | architecture.json | Top-down |
+| Inspector root | Goal, Interface, Style, Rules | blueprint (root intent) | Top-down |
 | Inspector component | Design | blueprint.json | Top-down |
 | Inspector component / Diff | Actual Code | blueprint_code.json | Bottom-up |
 | Sidebar Health | Metrics | state.json | Bottom-up |
@@ -119,7 +119,7 @@ Detailed file fields: [Manifest data](manifest-data.md). How to refresh: [Script
 
 **What changed:**
 
-- **Entity-based diagram (commit fc6f2d5 and later):** Node types switched from gateway/module/method to **entity** (L1) and **child** (L2). Config keys are now `colors.entity` and `colors.child`; `load_diagram_config()` merges defaults so `entity`/`child` get `#58a6ff` and `#7ee8fa` if missing. The header box now uses `node_color` (entity color) instead of `[white]`. The rest of the flow is unchanged: same `render_diagram()` → string with `[#hex]` / `[green]` etc. → `_load_diagram_view()` → `_get_current_view_content()` → `main_w.update(...)`.
+- **Diagram (commit fc6f2d5 and later):** L1 and L2 nodes. Config keys `colors.entity` and `colors.child`; `load_diagram_config()` merges defaults. Same flow: `render_diagram()` → string → `_load_diagram_view()` → `_get_current_view_content()` → `main_w.update(...)`.
 - **No code path was removed** that previously converted the diagram string to a Rich `Text` or `Content` before passing to Static; the app has always passed the raw string from `render_diagram()` to `Static.update()`.
 
 **Why it might show no color now (no assumptions):**

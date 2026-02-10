@@ -12,7 +12,7 @@ These are imported from `views_content` in `src/manifest/view/app.py` but **neve
 
 | Import | Used? | Note |
 |--------|--------|------|
-| `render_intent_summary` | No | Legacy (intent.json shape). Prefer `render_features_summary_from_blueprint`. |
+| `render_intent_summary` | No | Prefer `render_features_summary_from_blueprint`. |
 | `load_setup_md` | No | Loads `.manifest/setup.md` / logic.md / how_it_works.md. |
 | `render_deviation_summary` | No | Deviation summary text. |
 | `render_modules_and_methods` | No | Table of modules/methods from blueprint_code. |

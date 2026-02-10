@@ -25,29 +25,15 @@ class TaskScoper:
         self.manifest_dir = manifest_dir or Path(".manifest")
         from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE
         self.blueprint_file = self.manifest_dir / BLUEPRINT_DESIGN_FILE
-        self.intent_file = self.manifest_dir / "intent.json"
         self._blueprint_data = {}
-        self._intent_data = {}
         self._load_data()
 
     def _load_data(self):
-        """Load blueprint and intent data."""
+        """Load blueprint data."""
         from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
-        # Load blueprint with metadata
         self._blueprint_data = BlueprintLoader.load_blueprint(
             self.manifest_dir, with_metadata=True
         )
-
-        # Load intent
-        if self.intent_file.exists():
-            try:
-                with open(self.intent_file, "r") as f:
-                    self._intent_data = json.load(f)
-            except Exception as e:
-                logger.debug("task_scoper load intent failed: %s", e)
-                self._intent_data = {"version": "1.0", "sprint": "", "features": []}
-        else:
-            self._intent_data = {"version": "1.0", "sprint": "", "features": []}
 
     def get_task_context(self, task_id: str) -> Dict[str, Any]:
         """Get scoped context for a task.
@@ -94,18 +80,17 @@ class TaskScoper:
         return sorted(list(files))
 
     def _get_task_requirements(self, task_id: str) -> List[Dict[str, Any]]:
-        """Get task-specific requirements from intent.json."""
-        features = self._intent_data.get("features", [])
+        """Get task-specific requirements from blueprint (entity governance/assertions)."""
         requirements = []
-
-        # Find feature that contains this task
-        for feature in features:
-            feature_tasks = feature.get("tasks", [])
-            if task_id in feature_tasks or any(t.get("id") == task_id for t in feature_tasks if isinstance(t, dict)):
-                # Get requirements for this feature
-                reqs = feature.get("reqs", [])
-                requirements.extend(reqs)
-
+        for e in self._blueprint_data.get("entities") or []:
+            if e.get("task_id") == task_id or task_id in (e.get("tasks") or []):
+                gov = (e.get("intent") or {}).get("governance") or {}
+                for a in gov.get("assertions") or []:
+                    if isinstance(a, str):
+                        requirements.append({"description": a})
+                for r in gov.get("rules") or []:
+                    if isinstance(r, str):
+                        requirements.append({"description": r})
         return requirements
 
     def _get_allowed_modifications(self, entities: List[Dict[str, Any]], files: List[str]) -> List[str]:

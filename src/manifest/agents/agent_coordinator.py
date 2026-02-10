@@ -345,7 +345,7 @@ class AgentCoordinator:
             - error: Optional error message if failed
 
         Completion detection order (canonical, checked in this sequence):
-        1. task_id not in active_agents (agent was removed from coordinator's active list)
+        1. task_id not in active_agents
         2. bridge._active_agents[task_id].completed or status in [completed, stopped, failed]
            (PRIMARY CHECK: bridge sets completed=True when it receives a type=complete chunk)
         3. executor.active_sessions[session_id].status == "completed" (if executor available)
@@ -413,7 +413,7 @@ class AgentCoordinator:
             success = False
             logger.warning(f"Agent {task_id} timed out after {timeout or 'default'} seconds")
         elif task_id not in self.active_agents:
-            # Agent was removed from active_agents (completed)
+            # Agent completed
             status = "completed"
             success = True
             logger.debug(f"Agent {task_id} completed (removed from active_agents)")
@@ -508,7 +508,7 @@ class AgentCoordinator:
         await self.state_manager.save_state()
 
     def _persist_state_sync(self) -> None:
-        """Sync active_task_ids and save state synchronously (e.g. from sync stop_agent path)."""
+        """Sync active_task_ids and save state."""
         task_ids = [tid for tid in self.active_agents if tid != "orchestrator"]
         self.state_manager.set_active_task_ids(task_ids)
         self.state_manager.save_state_sync()

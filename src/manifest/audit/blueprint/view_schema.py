@@ -29,7 +29,7 @@ def build_view_schema(
     comp_status: Dict[str, str],
     conflicts: List[Any],
 ) -> Dict[str, Any]:
-    """Build view schema: entities with intent/reality as plan/actual pairs and validation."""
+    """Build view schema: plan/actual pairs and validation per entity."""
     design_entities = {e.get("id"): e for e in (design.get("entities") or []) if e.get("id")}
     code_entities = {e.get("id"): e for e in (code.get("entities") or []) if e.get("id")}
     all_ids = set(design_entities) | set(code_entities)
@@ -92,8 +92,12 @@ def build_view_schema(
             or (getattr(c, "bottom_up_node") or {}).get("id") == eid
         ]
         status = comp_status.get(eid, "planned") if eid != root_id else "planned"
+        children = de.get("children") if de.get("children") is not None else ce.get("children")
+        outgoing_contracts = de.get("outgoing_contracts") if de.get("outgoing_contracts") is not None else ce.get("outgoing_contracts")
         view_entities.append({
             "id": eid,
+            "children": children if isinstance(children, list) else [],
+            "outgoing_contracts": outgoing_contracts if isinstance(outgoing_contracts, list) else [],
             "intent": view_intent,
             "reality": view_reality,
             "validation": {"status": status, "deviations": deviations},
@@ -121,7 +125,7 @@ def write_view_schema(manifest_dir: Path, view_schema: Dict[str, Any]) -> bool:
 
 
 def load_view_schema(manifest_dir: Path) -> Dict[str, Any]:
-    """Load blueprint_view.json if present; otherwise return empty structure."""
+    """Load blueprint_view.json or return empty structure."""
     path = Path(manifest_dir) / BLUEPRINT_VIEW_FILE
     if not path.exists():
         return {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": []}

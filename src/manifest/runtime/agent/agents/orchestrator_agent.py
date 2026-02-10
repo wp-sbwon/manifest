@@ -178,27 +178,7 @@ class OrchestratorAgent:
         context: Dict[str, Any],
         model_config: Dict[str, Any]
     ) -> AsyncIterator[Dict[str, Any]]:
-        """Create a sprint plan based on PRD, architecture, and blueprint.
-
-        Analyzes the PRD, architecture, and blueprint to break down work
-        into tasks and organize them into sprints. Tasks are grouped to
-        allow parallel execution (no file overlap, no dependencies).
-
-        The plan follows task granularity rules and ensures tasks in a
-        sprint can be executed simultaneously.
-
-        Args:
-            prd_data: Product Requirements Document data.
-            architecture_data: Architecture document data.
-            blueprint_data: Blueprint document data.
-            context: Tiered context for planning.
-            model_config: Dictionary with provider, model, and api_key.
-
-        Yields:
-            Dictionaries with type "chunk" (streaming) or "complete" (finished).
-            Content contains the sprint plan with task list and parallel
-            execution groups.
-        """
+        """Create a sprint plan from PRD and blueprint. Yields streaming chunks."""
         from manifest.runtime.agent.prompts.orchestrator_prompt import get_orchestrator_prompt
 
         # Load task granularity rules
@@ -207,11 +187,12 @@ class OrchestratorAgent:
         if granularity_file.exists():
             granularity_rules = granularity_file.read_text(encoding="utf-8")
 
-        # Create sprint planning prompt
+        # Build sprint planning prompt
+        design_data = architecture_data if architecture_data else blueprint_data
         mission_description = f"""
 Create a Sprint plan based on:
 - PRD: {prd_data.get('title', 'N/A')}
-- Architecture: {json.dumps(architecture_data, indent=2) if architecture_data else 'N/A'}
+- Design (blueprint): {json.dumps(design_data, indent=2) if design_data else 'N/A'}
 - Blueprint: {json.dumps(blueprint_data, indent=2) if blueprint_data else 'N/A'}
 
 Task Granularity Rules:

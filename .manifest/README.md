@@ -21,10 +21,10 @@ Manifest 앱이 실행될 때 사용하는 파일들을 저장합니다.
 ### 프로젝트 설계 문서 (Project Design Documents)
 사용자가 Manifest로 관리하는 **프로젝트**의 설계 문서:
 
-- `intent.json` - 프로젝트 의도, 기능, 요구사항
-- `blueprint.json` - Top-down 설계 (LLM이 생성한 설계도)
-- `blueprint_code.json` - Bottom-up 설계 (코드에서 추출한 설계도)
-- `architecture.json` - 아키텍처 스펙, Features, Requirements, Goals
+- `prd.json` - 제품 요구사항 (PRD)
+- `blueprint_design.json` - Top-down 설계 (설계도)
+- `blueprint_code.json` - Bottom-up 설계 (코드에서 추출)
+- `blueprint_view.json` - 비교 결과 (설계 vs 코드, 검증 포함)
 
 ### 충돌 리포트 (Conflict Reports)
 - `conflicts/` - Blueprint 동기화 시 발생한 충돌 리포트 저장

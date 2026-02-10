@@ -86,7 +86,7 @@ class GitManager:
             return None
 
     def _trigger_bottom_up_docs_after_commit(self) -> None:
-        """Trigger bottom-up doc generation in background (same as post-commit hook)."""
+        """Trigger bottom-up doc generation in background."""
         try:
             root = Path(getattr(self.repo, "working_tree_dir", None) or self.project_root)
             script = root / "scripts" / "run_bottom_up_docs.py"
