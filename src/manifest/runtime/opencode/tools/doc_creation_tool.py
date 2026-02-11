@@ -236,10 +236,10 @@ def write_blueprint_layer(
     current_blueprint: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Placeholder for layer writer output. In production, an LLM or agent uses
-    parent_entity_id + prd_excerpt + current_blueprint to produce direct children.
-    Returns { "ok": True, "children": [] }. Caller (layer writer agent) should
-    replace "children" with actual entity dicts and call merge_blueprint_fragment.
+    Produce direct children for parent_entity_id. NOT WIRED: currently returns
+    empty children. Caller should wire an OpenCode/LLM call here using
+    parent_entity_id + prd_excerpt (full PRD + blueprint_scope) + current_blueprint
+    to generate entity dicts, then return { "ok": True, "children": [...] }.
     """
     manifest_dir = Path(manifest_dir)
     if current_blueprint is None:

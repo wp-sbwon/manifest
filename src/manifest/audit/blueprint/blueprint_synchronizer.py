@@ -333,7 +333,7 @@ class BlueprintSynchronizer:
         bottom_up: Dict[str, Any],
         mode: str = "workflow"  # "strict", "workflow", "merge"
     ) -> Dict[str, Any]:
-        """Synchronize blueprints based on mode."""
+        """Synchronize blueprints based on mode. Note: mode='merge' does not perform auto-merge (returns merged=False, conflict count only)."""
         if mode == "strict":
             # Block if conflicts exist
             conflicts = self.comparator.compare_blueprints(top_down, bottom_up)
@@ -359,6 +359,7 @@ class BlueprintSynchronizer:
             return {"success": True, "workflow_triggered": False}
 
         elif mode == "merge":
+            # Not implemented: no auto-merge; only report conflict count.
             conflicts = self.comparator.compare_blueprints(top_down, bottom_up)
             return {
                 "success": True,

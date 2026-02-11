@@ -611,8 +611,7 @@ Files Modified: {', '.join(modified_files) if modified_files else 'None'}
         channel = f"squad-{task_id}-test"
         self.state_manager.add_chat_message(channel, "assistant", content)
 
-        # Extract test information from content (simplified parsing)
-        # In production, would parse structured output or use code extraction
+        # Best-effort extraction from content; structured output would require an agent contract.
         test_files = []
         test_cases = []
 

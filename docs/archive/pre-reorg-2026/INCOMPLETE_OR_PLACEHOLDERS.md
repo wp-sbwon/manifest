@@ -44,11 +44,11 @@ So "merge" does not update the top-down blueprint with bottom-up changes; it jus
 
 ---
 
-## 2. ConfigManager — Google API key validation
+## 2. ConfigManager — Google API key validation — **Resolved (OpenCode default)**
 
-**Location:** `src/manifest/core/config.py` — `validate_key(provider="google", key=...)`
+**Location:** `src/manifest/core/config.py` — `validate_key` / `validate_all_keys`
 
-Provider keys are managed by OpenCode; Manifest does not require or validate them.
+**Resolution:** When `agent.execution_backend` is `"opencode"` (default), Manifest does not store or validate API keys; OpenCode manages model selection and keys. `validate_key` and `validate_all_keys` return success without calling any provider. See module and method docstrings in `config.py`. For non-OpenCode backends, Google remains presence-only; Anthropic/OpenAI are validated by test request.
 
 ### What’s incomplete
 

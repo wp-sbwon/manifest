@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 STATE_CHANGING_TOOLS = frozenset({
     "bash", "edit", "write",
     "task_management", "sprint_management", "worker_squad_spawn", "blueprint_sync",
-    "architect",
+    "architect", "doc_creation",
 })
 
 class ToolExecutor:
@@ -194,6 +194,8 @@ class ToolExecutor:
                 result = self._execute_blueprint_sync(tool_input)
             elif tool_name == "architect":
                 result = self._execute_architect(tool_input)
+            elif tool_name == "doc_creation":
+                result = self._execute_doc_creation(tool_input)
             elif tool_name == "drift_check":
                 result = self._execute_drift_check(tool_input)
             else:
@@ -410,7 +412,7 @@ class ToolExecutor:
                         agent_type=permission_details.get("agent_type", "unknown"),
                         tool_name="bash",
                         tool_input=tool_input,
-                        approval_callback=None  # Will be handled by retry mechanism
+                        approval_callback=None  # Optional; when None, approval/retry is handled elsewhere in the flow
                     )
 
                     return self._tool_result(
@@ -956,6 +958,29 @@ class ToolExecutor:
         except Exception as e:
             logger.error(f"architect error: {e}", exc_info=True)
             return self._tool_result(tool_input, "architect", error=str(e))
+
+    def _execute_doc_creation(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute doc_creation tool (hierarchical blueprint from PRD)."""
+        from manifest.runtime.opencode.tools.doc_creation_tool import DocCreationTool
+        tool = DocCreationTool(self.manifest_dir)
+        action = (tool_input.get("action") or "").strip()
+        if not action:
+            return self._tool_result(tool_input, "doc_creation", error="Missing action")
+        try:
+            out = tool.run(
+                action=action,
+                parent_entity_id=tool_input.get("parent_entity_id"),
+                child_entities=tool_input.get("child_entities"),
+                prd_excerpt=tool_input.get("prd_excerpt"),
+                context=tool_input.get("context"),
+                depth=tool_input.get("depth"),
+            )
+            if out.get("ok"):
+                return self._tool_result(tool_input, "doc_creation", result=out)
+            return self._tool_result(tool_input, "doc_creation", error=out.get("error", "Unknown error"))
+        except Exception as e:
+            logger.error(f"doc_creation error: {e}", exc_info=True)
+            return self._tool_result(tool_input, "doc_creation", error=str(e))
 
     def _execute_drift_check(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute drift_check tool (returns component statuses: healthy/planned/deviation/extra)."""
