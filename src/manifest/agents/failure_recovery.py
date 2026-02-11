@@ -306,7 +306,7 @@ class FailureRecoveryManager:
 
         elif strategy == RecoveryStrategy.RETRY_WITH_SIMPLIFIED_PROMPT:
             # Retry with simplified prompt (reduce context)
-            return await self._retry_with_simplified_prompt(
+            return await self._retry_with_delay(
                 task_id, stage, agent_type, previous_stages
             )
 
@@ -376,14 +376,17 @@ class FailureRecoveryManager:
 
         return result
 
-    async def _retry_with_simplified_prompt(
+    async def _retry_with_delay(
         self,
         task_id: str,
         stage: str,
         agent_type: str,
         previous_stages: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
-        """Retry with simplified prompt (reduced context).
+        """Retry the stage after a short delay with the same context.
+
+        Does not reduce context or change the prompt; only waits then retries.
+        A true "simplified prompt" retry (reduced context) may be added later.
 
         Args:
             task_id: Task ID.
@@ -394,7 +397,7 @@ class FailureRecoveryManager:
         Returns:
             Result from retry attempt.
         """
-        logger.info(f"Retrying stage {stage} for task {task_id} with simplified prompt")
+        logger.info("Retrying stage %s for task %s after delay", stage, task_id)
 
         import asyncio
         await asyncio.sleep(2.0)
