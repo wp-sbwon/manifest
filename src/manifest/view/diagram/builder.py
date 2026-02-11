@@ -2,6 +2,9 @@
 
 from typing import Dict, Any, List, Optional, Set, Tuple
 
+from manifest.audit.entity_schema import PROJECT_ROOT_ID
+from manifest.view.constants import DEFAULT_DIAGRAM_TITLE
+
 
 def is_app_component(node: Dict[str, Any]) -> bool:
     """Return True if node is app code (exclude test components)."""
@@ -36,7 +39,7 @@ def _status_for(comp_status: Dict[str, str], comp_id: str) -> str:
 def build_flat_diagram_spec(
     node_list: List[Dict[str, Any]],
     comp_status: Dict[str, str],
-    title: str = "ARCHITECTURE FLOW",
+    title: str = DEFAULT_DIAGRAM_TITLE,
 ) -> Dict[str, Any]:
     """Build flat spec (one diagram node per item in list)."""
     nodes = []
@@ -84,13 +87,13 @@ def _flat_spec_from_tree(
     nodes: List[Dict[str, Any]],
     contracts: List[Dict[str, Any]],
     comp_status: Dict[str, str],
-    root_id: str = "PROJECT_ROOT",
-    title: Optional[str] = "ARCHITECTURE FLOW",
+    root_id: str = PROJECT_ROOT_ID,
+    title: Optional[str] = DEFAULT_DIAGRAM_TITLE,
     filter_app_only: bool = True,
 ) -> Dict[str, Any]:
     """Build flat diagram spec from tree (root_id, children)."""
     ordered = _tree_order(nodes, contracts, root_id, filter_app_only=filter_app_only)
-    return build_flat_diagram_spec(ordered, comp_status, title=title or "ARCHITECTURE FLOW")
+    return build_flat_diagram_spec(ordered, comp_status, title=title or DEFAULT_DIAGRAM_TITLE)
 
 
 def _edges_for_layer(entities: List[Dict[str, Any]], layer_ids: Set[str]) -> List[Dict[str, str]]:
@@ -112,8 +115,8 @@ def _edges_for_layer(entities: List[Dict[str, Any]], layer_ids: Set[str]) -> Lis
 def build_diagram_spec(
     nodes: List[Dict[str, Any]],
     comp_status: Dict[str, str],
-    root_id: str = "PROJECT_ROOT",
-    title: Optional[str] = "ARCHITECTURE FLOW",
+    root_id: str = PROJECT_ROOT_ID,
+    title: Optional[str] = DEFAULT_DIAGRAM_TITLE,
     filter_app_only: bool = True,
 ) -> Dict[str, Any]:
     """
@@ -123,7 +126,7 @@ def build_diagram_spec(
     id_to_node = {n.get("id"): n for n in nodes if n.get("id")}
     root = id_to_node.get(root_id)
     if not root:
-        return {"title": title or "ARCHITECTURE FLOW", "root_id": root_id, "nodes": [], "edges": []}
+        return {"title": title or DEFAULT_DIAGRAM_TITLE, "root_id": root_id, "nodes": [], "edges": []}
     child_ids = [cid for cid in (root.get("children") or []) if cid in id_to_node]
     if filter_app_only:
         child_ids = [cid for cid in child_ids if is_app_component(id_to_node[cid])]
@@ -169,7 +172,7 @@ def build_diagram_spec(
         layout_type = "STACK"
 
     return {
-        "title": title or "ARCHITECTURE FLOW",
+        "title": title or DEFAULT_DIAGRAM_TITLE,
         "root_id": root_id,
         "nodes": out_nodes,
         "edges": edges,

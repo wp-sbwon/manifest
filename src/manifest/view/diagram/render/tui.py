@@ -1,12 +1,9 @@
-"""
-Render diagram from spec + config. Data-driven: layout follows spec.layout_type and spec.layout_topology.
-"""
-
 from typing import Dict, Any, List, Optional
+
+from manifest.view.constants import DEFAULT_DIAGRAM_TITLE
 
 
 def _status_color(status: str, config: Dict[str, Any]) -> str:
-    """Status color from config.colors.status[status] or default."""
     colors = config.get("colors") or {}
     status_colors = colors.get("status") or {}
     key = (status or "").strip().lower()
@@ -14,9 +11,13 @@ def _status_color(status: str, config: Dict[str, Any]) -> str:
 
 
 def _entity_color(key: str, config: Dict[str, Any]) -> str:
-    """'entity' for L1 nodes, 'child' for row items."""
     colors = config.get("colors") or {}
     return colors.get(key) or "#58a6ff"
+
+
+def _selected_color(config: Dict[str, Any]) -> str:
+    colors = config.get("colors") or {}
+    return colors.get("selected") or "#ff00ff"
 
 
 def render_diagram(
@@ -24,7 +25,6 @@ def render_diagram(
     config: Dict[str, Any],
     selected_node_id: Optional[str] = None,
 ) -> str:
-    """Render from spec { title, nodes, layout_type, layout_topology }. Selected node box in magenta."""
     nodes: List[Dict[str, Any]] = spec.get("nodes") or []
     layout_type: str = (spec.get("layout_type") or "STACK").strip().upper()
     if layout_type not in ("FLOW", "GRID", "STACK"):
@@ -36,14 +36,14 @@ def render_diagram(
     if not nodes:
         return "  (no nodes)"
 
-    title = spec.get("title") or config.get("title") or "ARCHITECTURE FLOW"
+    title = spec.get("title") or config.get("title") or DEFAULT_DIAGRAM_TITLE
     box_width = config.get("box_width") or 28
     S = "■"
     node_color = _entity_color("entity", config)
     child_color = _entity_color("child", config)
+    selected_color = _selected_color(config)
 
     lines: List[str] = []
-    # Legend (top-left): status meanings
     leg_planned = _status_color("planned", config)
     leg_healthy = _status_color("healthy", config)
     leg_partial = _status_color("partial", config)
@@ -65,14 +65,14 @@ def render_diagram(
     if layout_type == "GRID" and layout_topology.get("map"):
         lines.extend(
             _render_grid(
-                nodes, layout_topology, config, S, node_color, child_color,
+                nodes, layout_topology, config, S, node_color, child_color, selected_color,
                 selected_node_id=selected_node_id,
             )
         )
     else:
         lines.extend(
             _render_simple_flow(
-                nodes, config, S, node_color, child_color,
+                nodes, config, S, node_color, child_color, selected_color,
                 selected_node_id=selected_node_id,
                 use_arrows=use_arrows,
             )
@@ -82,7 +82,6 @@ def render_diagram(
 
 
 def _l2_labels(node: Dict[str, Any]) -> List[str]:
-    """L2 labels from node row or methods (for display inside L1)."""
     row = node.get("row") or []
     methods = node.get("methods") or []
     if row:
@@ -98,16 +97,15 @@ def _render_simple_flow(
     S: str,
     node_color: str,
     child_color: str,
+    selected_color: str,
     selected_node_id: Optional[str] = None,
     use_arrows: bool = True,
 ) -> List[str]:
-    """Flow of L1 boxes; L2 as plain text inside each box. Selected box in magenta. Arrows only if use_arrows."""
     arrow = " ──► "
-    spacer = "     "  # same visual width as arrow; used on non-arrow rows
-    selected_color = "#ff00ff"  # magenta for selected box
+    spacer = "     "
     min_w, max_w = 12, 28
     lines: List[str] = []
-    boxes: List[tuple] = []  # (nid, label, st_color, l2_line, w)
+    boxes: List[tuple] = []
     for node in nodes:
         nid = node.get("id")
         label = (node.get("label") or nid or "?")
@@ -117,25 +115,23 @@ def _render_simple_flow(
         l2_line = ", ".join((t or "?")[:14] for t in l2_list[:8]) if l2_list else "—"
         w = max(min_w, min(max_w, max(len(label) + 6, len(l2_line) + 4)))
         boxes.append((nid, label, st_color, l2_line, w))
-    # Per-box border/label color: magenta when selected
+
     def box_color(nid: Optional[str]) -> str:
         return selected_color if (selected_node_id and nid == selected_node_id) else node_color
+
     def row_child_color(nid: Optional[str]) -> str:
         return selected_color if (selected_node_id and nid == selected_node_id) else child_color
-    # Top border: no arrow
+
     parts = [f"[{box_color(nid)}]┌{'─' * (w - 2)}┐[/]" for (nid, _, _, _, w) in boxes]
     lines.append("  " + spacer.join(parts))
-    # Label row: arrow between boxes only when use_arrows (FLOW with edges); else spacer
     sep = arrow if use_arrows else spacer
     parts = [
         f"[{box_color(nid)}]│ [/][{st_color}]{S}[/] [{box_color(nid)}]{label[:w-6]:<{w-6}}│[/]"
         for (nid, label, st_color, _, w) in boxes
     ]
     lines.append("  " + sep.join(parts))
-    # L2 row: no arrow
     parts = [f"[{row_child_color(nid)}]│ {l2_line[:w-4]:<{w-4}}│[/]" for (nid, _, _, l2_line, w) in boxes]
     lines.append("  " + spacer.join(parts))
-    # Bottom border: no arrow
     parts = [f"[{box_color(nid)}]└{'─' * (w - 2)}┘[/]" for (nid, _, _, _, w) in boxes]
     lines.append("  " + spacer.join(parts))
     return lines
@@ -148,10 +144,9 @@ def _render_grid(
     S: str,
     node_color: str,
     child_color: str,
+    selected_color: str,
     selected_node_id: Optional[str] = None,
 ) -> List[str]:
-    """GRID: place L1 nodes by topology.map. Selected cell in magenta."""
-    selected_color = "#ff00ff"  # magenta
     lines: List[str] = []
     dims = layout_topology.get("dimensions") or {}
     rows = max(1, int(dims.get("rows") or 1))

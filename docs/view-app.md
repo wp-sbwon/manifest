@@ -118,13 +118,13 @@ Detailed file fields: [Manifest data](manifest-data.md). How to refresh: [Script
 **Previous process (when color worked):**
 
 1. **Config:** `diagram_config.json` (or package default) had `colors.gateway`, `colors.module`, `colors.method`, and `colors.status.*`. All diagram colors came from config (no hardcoded hex in renderer).
-2. **Renderer:** `render_diagram(spec, config)` in `src/manifest/view/diagram/renderer.py` produced a **single string** of lines. Each line used Rich/Textual markup tags, e.g. `[#58a6ff]...[/]`, `[green]■[/]`, `[#8b949e]...[/]`. The header used `[white]` for the top box.
+2. **Renderer:** `render_diagram(spec, config)` in `src/manifest/view/diagram/render/tui.py` produces a **single string** of lines. Each line uses Rich/Textual markup tags, e.g. `[#58a6ff]...[/]`, `[green]■[/]`, `[#8b949e]...[/]`. The header uses `[white]` for the top box.
 3. **App:** `_load_diagram_view()` returned that string. `_get_current_view_content()` returned it for the Diagram tab. `_refresh_main_content()` did `main_w.update(self._get_current_view_content())` where `main_w` is the `Static` with `id="main-content"`. The Static was created with `yield Static("", id="main-content")` (no `markup=False`), so **markup defaulted to True** and the string was parsed as markup and rendered with colors.
 
 **What changed:**
 
 - **Diagram (commit fc6f2d5 and later):** L1 and L2 nodes. Config keys `colors.entity` and `colors.child`; `load_diagram_config()` merges defaults. Same flow: `render_diagram()` → string → `_load_diagram_view()` → `_get_current_view_content()` → `main_w.update(...)`.
-- **No code path was removed** that previously converted the diagram string to a Rich `Text` or `Content` before passing to Static; the app has always passed the raw string from `render_diagram()` to `Static.update()`.
+- **Current behavior:** For the Diagram tab, `_get_current_view_content()` calls `_load_diagram_view()`; when the result is a string, it returns `Text.from_markup(raw)` so the main content receives a Rich `Text` with markup applied. The main-content `Static` then displays that renderable.
 
 **Why it might show no color now (no assumptions):**
 

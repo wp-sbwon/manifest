@@ -70,7 +70,7 @@ class BlueprintSyncTool:
         return self.detect_deviation()
 
     def sync_blueprint(self, mode: str = "workflow") -> Dict[str, Any]:
-        """Synchronize blueprints (strict | workflow | merge)."""
+        """Synchronize blueprints (strict | workflow)."""
         try:
             top_down, bottom_up = self._load_both_blueprints(with_metadata=False)
             result = self._synchronizer.sync_blueprints(

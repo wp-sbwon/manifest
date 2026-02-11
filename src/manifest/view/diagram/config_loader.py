@@ -28,6 +28,7 @@ def _get_package_default_config() -> Dict[str, Any]:
             "colors": {
                 "entity": "#58a6ff",
                 "child": "#7ee8fa",
+                "selected": "#ff00ff",
                 "status": {
                     "healthy": "green",
                     "planned": "#8b949e",
@@ -56,7 +57,7 @@ def load_diagram_config(manifest_dir: Optional[Path] = None) -> Dict[str, Any]:
                 status = colors.get("status")
                 if not status and default_status:
                     colors = {**colors, "status": default_status}
-                for k in ("entity", "child"):
+                for k in ("entity", "child", "selected"):
                     if not colors.get(k) and (default.get("colors") or {}).get(k):
                         colors[k] = (default.get("colors") or {})[k]
                 loaded["colors"] = colors
