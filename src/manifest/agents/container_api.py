@@ -43,7 +43,7 @@ class MessageResponse(BaseModel):
     message_id: str
 
 
-# Global message store (in production, use Redis or similar)
+# In-memory message store; not durable. For production, replace with Redis or similar.
 _message_store: Dict[str, List[Dict[str, Any]]] = {}  # topic -> messages
 _agent_statuses: Dict[str, Dict[str, Any]] = {}  # agent_id -> status
 

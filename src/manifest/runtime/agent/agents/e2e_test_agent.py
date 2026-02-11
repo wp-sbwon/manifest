@@ -628,7 +628,7 @@ Task Description: {task_description}
         channel = f"squad-{task_id}-e2e_test"
         self.state_manager.add_chat_message(channel, "assistant", content)
 
-        # Parse test results from content (simplified - in production would parse structured output)
+        # Best-effort parsing from content; full structured output would require an agent contract.
         test_results = {
             "status": "completed",
             "output": content,

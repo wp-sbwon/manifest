@@ -1,13 +1,15 @@
 """
 Configuration and API key management for Manifest.
 
-This module handles all configuration needs including API key storage,
-encryption, validation, and agent model configuration. API keys are
-encrypted using Fernet symmetric encryption and stored securely on disk.
+When agent.execution_backend is "opencode" (default), model selection and
+API keys are managed by OpenCode. Manifest does not store or validate keys
+in that case; has_all_keys() and validate_key/validate_all_keys return
+success without checking. Provider/key logic here applies only when using
+a different execution backend that calls LLM APIs from Manifest.
 
-The ConfigManager loads API keys from the keys file or, when missing, from
-environment variables, and can validate keys by making test requests to
-the respective providers.
+Otherwise: API key storage (encrypted with Fernet), validation via test
+requests to Anthropic/OpenAI (Google is presence-only), and agent model
+configuration (provider/model overrides for OpenCode or other backends).
 """
 import json
 import os
@@ -176,7 +178,9 @@ class ConfigManager:
         return all(keys.get(k) for k in ["anthropic", "openai"])
 
     async def validate_key(self, provider: str, key: str) -> bool:
-        """Validate an API key. When using a backend that manages keys (e.g. opencode), keys are not stored here."""
+        """Validate an API key. When execution_backend is opencode, keys are managed by OpenCode; we do not validate."""
+        if self.get_setting("agent.execution_backend", "opencode") == "opencode":
+            return True
         try:
             if provider == "anthropic":
                 async with httpx.AsyncClient() as client:
@@ -200,21 +204,16 @@ class ConfigManager:
                         timeout=5.0
                     )
                     return response.status_code == 200
+            # Google and other providers: presence-only (no API call from Manifest)
             return len(key) > 0
         except Exception as e:
             logger.debug("validate_key %s failed: %s", provider, e)
             return False
 
     async def validate_all_keys(self) -> Dict[str, bool]:
-        """Validate all stored API keys.
-
-        Checks each provider's key by making test API requests. This can
-        take a few seconds as it makes network calls.
-
-        Returns:
-            Dictionary mapping provider names to validation results. True
-            means the key is valid, False means it's invalid or missing.
-        """
+        """Validate all stored API keys. When execution_backend is opencode, keys are managed by OpenCode; returns all True."""
+        if self.get_setting("agent.execution_backend", "opencode") == "opencode":
+            return {"anthropic": True, "google": True, "openai": True}
         keys = self.get_api_keys()
         results = {}
         for provider, key in keys.items():

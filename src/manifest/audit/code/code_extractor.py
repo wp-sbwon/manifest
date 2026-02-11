@@ -566,8 +566,7 @@ class CodeExtractor:
                                 if "abstractmethod" in decorator.id.lower():
                                     return "Strategy"
 
-            # Check if multiple classes implement the same interface
-            # (simplified check - would need more context in production)
+            # Check if multiple classes implement the same interface (heuristic; full context would improve accuracy)
             if entity.type == "class":
                 # Check for interface-like patterns
                 if len(entity.methods) > 0:
