@@ -328,15 +328,20 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
         session_id: str,
         prompt: str,
         context: Optional[Dict[str, Any]] = None,
-        tools: Optional[List[Dict[str, Any]]] = None
+        tools: Optional[List[Dict[str, Any]]] = None,
+        agent: Optional[str] = None,
     ) -> AsyncIterator[Dict[str, Any]]:
         """Send a prompt to OpenCode session and stream response.
+
+        When agent is set, the OpenCode server runs that agent (from opencode.json)
+        for this message, so the backend owns context, tools, and model for the agent.
 
         Args:
             session_id: OpenCode session ID.
             prompt: Prompt text to send.
             context: Optional context dictionary.
             tools: Optional tool definitions.
+            agent: Optional agent name (e.g. 'architect'). Server runs this agent for the message.
 
         Yields:
             Chunks in Manifest format.
@@ -346,14 +351,16 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
             return
 
         try:
-            # Prepare request payload
-            payload = {
+            # Prepare request payload (agent lets backend run the configured agent)
+            payload: Dict[str, Any] = {
                 "prompt": prompt
             }
             if context:
                 payload["context"] = context
             if tools:
                 payload["tools"] = tools
+            if agent:
+                payload["agent"] = agent
 
             async with httpx.AsyncClient(timeout=self.request_timeout) as client:
                 async with client.stream(
@@ -524,8 +531,10 @@ class OpenCodeLLMAdapter(BaseAgentExecutor):
             if history_text:
                 full_prompt = f"{full_prompt}\n\nPrevious conversation:\n{history_text}"
 
-        # Send prompt and stream response
-        async for chunk in self._send_prompt(session_id, full_prompt, context, tools):
+        # Send prompt and stream response; pass agent so OpenCode runs that agent (context/tools)
+        async for chunk in self._send_prompt(
+            session_id, full_prompt, context, tools, agent=agent_type
+        ):
             yield chunk
 
         # Update session status
