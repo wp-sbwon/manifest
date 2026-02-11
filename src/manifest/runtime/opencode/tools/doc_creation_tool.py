@@ -8,15 +8,21 @@ merge fragments into blueprint_design.json. See docs/doc-creation-process.md.
 
 Layer writers run as subprocesses (parallel within a layer); layer n+1 is
 spawned only after all layer-n tasks in the same batch are completed.
+
+When OpenCode is configured, write_blueprint_layer calls it (sync HTTP) to
+produce child entities; otherwise returns empty children.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 import uuid
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+
+import httpx
 
 from manifest.audit.entity_schema import (
     PROJECT_ROOT_ID,
@@ -27,6 +33,7 @@ from manifest.audit.entity_schema import (
     empty_outgoing_contracts,
 )
 from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
+from manifest.core.config import ConfigManager
 from manifest.core.logger import get_logger
 
 # Optional cap for layer depth (can be passed in context; not enforced here)
@@ -229,6 +236,149 @@ def start_blueprint_from_prd(manifest_dir: Path) -> Dict[str, Any]:
     }
 
 
+LAYER_WRITER_INSTRUCTION = """You are a blueprint layer writer. Given the PRD, the parent entity, and its blueprint scope, output a JSON array of direct child entities. Each child must have: "id" (string, required), "intent" with "narrative" containing "role" and "mission" (strings). You may omit "children", "dependencies", "reality", "outgoing_contracts" (they will be defaulted). Output only the JSON array, no markdown or explanation. If there are no children, output []."""
+
+
+def _build_layer_writer_prompt(parent_entity_id: str, context: Dict[str, Any]) -> str:
+    """Build prompt for the layer-writer LLM from context (PRD + parent_entity + blueprint_scope)."""
+    parts = [LAYER_WRITER_INSTRUCTION, ""]
+    prd = context.get("prd") or {}
+    if prd:
+        parts.append("PRD (excerpt):")
+        parts.append(json.dumps(prd, indent=2, ensure_ascii=False)[:4000])
+        parts.append("")
+    parent = context.get("parent_entity") or {}
+    if parent:
+        parts.append("Parent entity:")
+        parts.append(json.dumps(parent, indent=2, ensure_ascii=False)[:2000])
+        parts.append("")
+    scope = context.get("blueprint_scope") or {}
+    if scope:
+        parts.append("Blueprint scope (path, siblings):")
+        parts.append(json.dumps(scope, indent=2, ensure_ascii=False))
+        parts.append("")
+    parts.append("Output the JSON array of child entities:")
+    return "\n".join(parts)
+
+
+def _parse_children_from_response(text: str) -> List[Dict[str, Any]]:
+    """Extract a JSON array of entity dicts from LLM response. Returns [] on parse failure."""
+    if not (text or text.strip()):
+        return []
+    text = text.strip()
+    # Try to find JSON array: either whole response or inside ```json ... ```
+    match = re.search(r"\[[\s\S]*\]", text)
+    if not match:
+        return []
+    try:
+        raw = json.loads(match.group(0))
+        if not isinstance(raw, list):
+            return []
+    except json.JSONDecodeError:
+        return []
+    out = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        eid = (item.get("id") or "").strip()
+        if not eid:
+            continue
+        entity = empty_entity(eid)
+        if "intent" in item and isinstance(item["intent"], dict):
+            entity["intent"] = {**empty_intent(), **item["intent"]}
+            narrative = (entity["intent"].get("narrative") or {})
+            if isinstance(narrative, dict):
+                entity["intent"]["narrative"] = {**narrative, "role": narrative.get("role", ""), "mission": narrative.get("mission", "")}
+        if "children" in item and isinstance(item["children"], list):
+            entity["children"] = list(item["children"])
+        if "dependencies" in item and isinstance(item["dependencies"], list):
+            entity["dependencies"] = list(item["dependencies"])
+        out.append(entity)
+    return out
+
+
+def _call_layer_writer_llm_sync(
+    manifest_dir: Path,
+    parent_entity_id: str,
+    context: Dict[str, Any],
+    timeout: float = 120.0,
+) -> List[Dict[str, Any]]:
+    """Call OpenCode via backend agent (sync HTTP) to produce child entities.
+
+    Uses the OpenCode session message API with an agent name so the backend runs
+    that agent (context, tools, model). Returns [] if disabled or on error.
+    """
+    manifest_dir = Path(manifest_dir)
+    try:
+        cm = ConfigManager(manifest_dir)
+        if cm.get_setting("agent.execution_backend", "opencode") != "opencode":
+            return []
+        host = cm.get_setting("opencode.server_host", "localhost")
+        port = int(cm.get_setting("opencode.server_port", 4096))
+        agent_name = cm.get_setting("opencode.layer_writer_agent", "architect")
+        base_url = f"http://{host}:{port}"
+    except Exception as e:
+        logger.debug("_call_layer_writer_llm_sync config: %s", e)
+        return []
+    prompt = _build_layer_writer_prompt(parent_entity_id, context)
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            r = client.post(f"{base_url}/session/create", json={"config": {}})
+            if r.status_code != 200:
+                logger.debug("OpenCode session/create failed: %s", r.status_code)
+                return []
+            data = r.json()
+            session_id = data.get("id") or data.get("sessionId")
+            if not session_id:
+                return []
+            full_text = ""
+            # Prefer message API with agent (backend runs the agent)
+            msg_r = client.post(
+                f"{base_url}/session/{session_id}/message",
+                json={
+                    "agent": agent_name,
+                    "parts": [{"type": "text", "text": prompt}],
+                },
+            )
+            if msg_r.status_code == 200:
+                msg_data = msg_r.json()
+                for part in msg_data.get("parts") or []:
+                    if isinstance(part, dict) and part.get("type") == "text":
+                        full_text += part.get("text") or ""
+                    elif isinstance(part, dict) and "text" in part:
+                        full_text += part["text"]
+            else:
+                # Fallback: streaming /prompt with agent
+                content_parts: List[str] = []
+                with client.stream(
+                    "POST",
+                    f"{base_url}/session/{session_id}/prompt",
+                    json={"prompt": prompt, "agent": agent_name},
+                ) as resp:
+                    if resp.status_code != 200:
+                        return []
+                    for line in resp.iter_lines():
+                        if not line.strip():
+                            continue
+                        try:
+                            chunk = json.loads(line)
+                            if chunk.get("type") in ("chunk", "text"):
+                                content_parts.append(
+                                    chunk.get("content") or chunk.get("text", "")
+                                )
+                            elif chunk.get("type") in ("complete", "done"):
+                                if chunk.get("content"):
+                                    content_parts.append(chunk["content"])
+                                break
+                        except json.JSONDecodeError:
+                            content_parts.append(line)
+                full_text = "".join(content_parts)
+            return _parse_children_from_response(full_text)
+    except Exception as e:
+        logger.debug("_call_layer_writer_llm_sync: %s", e)
+        return []
+
+
 def write_blueprint_layer(
     manifest_dir: Path,
     parent_entity_id: str,
@@ -236,15 +386,15 @@ def write_blueprint_layer(
     current_blueprint: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
-    Produce direct children for parent_entity_id. NOT WIRED: currently returns
-    empty children. Caller should wire an OpenCode/LLM call here using
-    parent_entity_id + prd_excerpt (full PRD + blueprint_scope) + current_blueprint
-    to generate entity dicts, then return { "ok": True, "children": [...] }.
+    Produce direct children for parent_entity_id. When OpenCode is configured,
+    calls it (sync) to generate child entities; otherwise returns empty children.
     """
     manifest_dir = Path(manifest_dir)
     if current_blueprint is None:
         current_blueprint = BlueprintLoader.load_blueprint(manifest_dir)
-    return {"ok": True, "children": []}
+    context = prd_excerpt or {}
+    children = _call_layer_writer_llm_sync(manifest_dir, parent_entity_id, context)
+    return {"ok": True, "children": children}
 
 
 def spawn_layer_writer(

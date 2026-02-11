@@ -22,7 +22,6 @@ if _SRC.exists() and str(_SRC) not in sys.path:
     sys.path.insert(0, str(_SRC))
 
 from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
-from manifest.audit.entity_schema import empty_entity
 from manifest.runtime.opencode.tools.doc_creation_tool import (
     _load_layer_tasks,
     _save_layer_tasks,
@@ -42,12 +41,11 @@ def _produce_children(
     """
     Produce child entities for the parent. Uses task context (full PRD + scoped
     blueprint when provided). Empty children are allowed (no placeholder).
+    Same behavior for all layers: no layer-0-specific logic.
     """
-    from manifest.audit.entity_schema import PROJECT_ROOT_ID
-
-    # Prefer full PRD from context (build_layer_writer_context)
+    # Use PRD from context; if missing, try loading from manifest (same for any layer)
     prd = context.get("prd") if isinstance(context, dict) else {}
-    if not prd and parent_entity_id == PROJECT_ROOT_ID and layer_index == 0:
+    if not prd:
         prd_path = manifest_dir / "prd.json"
         if prd_path.exists():
             try:
@@ -55,14 +53,13 @@ def _produce_children(
                     prd = json.load(f)
             except Exception:
                 pass
-    # Layer 0: placeholder top-level when no LLM; in production LLM uses context["prd"] + blueprint_scope
-    if parent_entity_id == PROJECT_ROOT_ID and layer_index == 0:
-        return [empty_entity("core"), empty_entity("support")]
+        if prd and isinstance(context, dict):
+            context = dict(context)
+            context["prd"] = prd
 
     blueprint = BlueprintLoader.load_blueprint(manifest_dir)
     out = write_blueprint_layer(manifest_dir, parent_entity_id, prd_excerpt=context, current_blueprint=blueprint)
     children = out.get("children") or []
-    # Accept empty children; do not add placeholder
     return children
 
 

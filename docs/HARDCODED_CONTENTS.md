@@ -84,6 +84,7 @@ Inventory of hardcoded URLs, paths, ports, provider/model names, file names, tim
 | `agents/runner.py` | `if agent_type == "orchestrator":` | Special handling. |
 | `runtime/agent/core/manager.py` | `"orchestrator": ORCHESTRATOR_IDENTITY` | Identity map. |
 | `runtime/shadow_manager.py` | `"{agent_type}"`, `"{task_id}"`, `"{stage}"` in generated script | Template placeholders in f-string; interpolated when script is generated. |
+| `runtime/opencode/tools/doc_creation_tool.py` | `opencode.layer_writer_agent` default `"architect"` | Agent run by OpenCode for blueprint layer writing; config overridable. |
 
 ---
 

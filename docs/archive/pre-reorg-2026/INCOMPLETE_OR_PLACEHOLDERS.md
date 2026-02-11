@@ -88,25 +88,11 @@ So "merge" does not update the top-down blueprint with bottom-up changes; it jus
 
 ## 5. UI package
 
-**Location:** `src/manifest/ui/__init__.py`
+**Location:** N/A — no `manifest.ui` package in repo.
 
-### What’s incomplete
+### Status
 
-- The `manifest.ui` package redirects to `manifest.view`; chat and terminal are in OpenCode.
-
-So there is no real UI code in `manifest.ui`; it exists for backwards compatibility or to avoid import errors.
-
-### Why it matters
-
-- Code or docs that reference `manifest.ui` get an empty package. If something used to live here, it may be unclear where it moved.
-
-### Suggestions
-
-1. **Document and redirect**
-   - Docstring points to `manifest.view`; chat/terminal are in OpenCode. README states that `manifest.view` is the View package.
-
-3. **Removal only when safe**
-   - Remove the package only after grepping the repo and dependent code for `manifest.ui` / `from manifest import ui` and updating or dropping those references.
+- The codebase has `manifest.view` only (dashboard, viz panels). There is no `manifest.ui` package; nothing references it. Chat and terminal are in OpenCode. If a legacy or external reference to `manifest.ui` appears, point it to `manifest.view` or add a thin `manifest.ui` redirect with a docstring.
 
 ---
 
@@ -126,7 +112,7 @@ So there is no real UI code in `manifest.ui`; it exists for backwards compatibil
 | Key validation | config.py | — | Removed; OpenCode manages keys |
 | Task description | context_provider.py | — | Resolved; uses state_manager.get_task() |
 | View chat area | view/app.py | Low | Chat in OpenCode; View is visualization-only |
-| UI package | ui/__init__.py | Low | Document deprecation; optional DeprecationWarning |
+| UI package | — | Low | No manifest.ui in repo; use manifest.view |
 | Retry with delay | failure_recovery.py | Medium | Renamed from simplified-prompt; docstring updated |
 
 None of these block normal use of the app; they are improvements for correctness, UX, and maintainability.
