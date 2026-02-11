@@ -280,14 +280,45 @@ def build_code_blueprint() -> dict:
 
 
 def build_prd() -> dict:
-    """PRD for Mission/planning context."""
+    """PRD for Mission/planning context (fixed schema; timestamp versioning only)."""
     return {
         "title": "Calc CLI MVP",
-        "sections": [
-            {"id": "sec-1", "name": "User can run calculator from terminal"},
-            {"id": "sec-2", "name": "Support add, subtract, multiply"},
-            {"id": "sec-3", "name": "Unit tests for operations and CLI"},
+        "overview": {
+            "product_name": "Calc CLI MVP",
+            "primary_goal": "CLI calculator: parse args, compute, format, print.",
+            "target_users": "Developers and CLI users",
+            "success_metrics": "Unit tests pass; add/sub/mul work from terminal.",
+        },
+        "user_flows": [
+            {
+                "persona": "Developer",
+                "use_cases": [
+                    {
+                        "name": "Run calculator",
+                        "flow_steps": "Open terminal, run with op and two numbers",
+                        "entry_point": "CLI",
+                        "exit_point": "Printed result",
+                        "error_handling": "Invalid input shows usage",
+                    },
+                ],
+            },
         ],
+        "technical_constraints": {
+            "language": "Python",
+            "platform": "CLI",
+            "no_io_in_engine": True,
+        },
+        "success_criteria": {
+            "functional": ["add", "subtract", "multiply from CLI"],
+            "acceptance": "Unit tests for operations and CLI",
+        },
+        "architecture_requirements": {
+            "overview": "CLI → arithmetic engine → output formatter",
+            "components": ["cli", "arithmetic_engine", "output"],
+        },
+        "dependencies": [],
+        "created_at": _ts(),
+        "updated_at": _ts(),
     }
 
 
