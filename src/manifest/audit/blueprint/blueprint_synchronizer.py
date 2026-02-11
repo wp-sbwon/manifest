@@ -331,14 +331,9 @@ class BlueprintSynchronizer:
         self,
         top_down: Dict[str, Any],
         bottom_up: Dict[str, Any],
-        mode: str = "workflow"  # "strict", "workflow", "merge"
+        mode: str = "workflow"  # "strict", "workflow"
     ) -> Dict[str, Any]:
-        """Synchronize blueprints based on mode.
-
-        - strict: block if any ERROR/WARNING conflicts.
-        - workflow: trigger conflict workflow (report, planner, user approval).
-        - merge: not implemented; only runs comparator and returns conflict count (merged=False). A warning is logged.
-        """
+        """Synchronize blueprints based on mode (strict or workflow)."""
         if mode == "strict":
             # Block if conflicts exist
             conflicts = self.comparator.compare_blueprints(top_down, bottom_up)
@@ -362,19 +357,6 @@ class BlueprintSynchronizer:
                     "conflict_report": report.to_dict()
                 }
             return {"success": True, "workflow_triggered": False}
-
-        elif mode == "merge":
-            # Not implemented: no auto-merge; only report conflict count.
-            logger.warning(
-                "sync_blueprints(mode='merge') is not implemented; returning conflict count only (merged=False). "
-                "Use mode='workflow' for conflict resolution."
-            )
-            conflicts = self.comparator.compare_blueprints(top_down, bottom_up)
-            return {
-                "success": True,
-                "merged": False,
-                "conflicts": len(conflicts)
-            }
 
         return {"success": False, "error": f"Unknown mode: {mode}"}
 

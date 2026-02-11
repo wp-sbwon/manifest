@@ -53,6 +53,14 @@ from manifest.audit.entity_schema import (
     root_intent,
     mission_from_blueprint,
 )
+from manifest.view.constants import (
+    DEFAULT_DIAGRAM_TITLE,
+    DEFAULT_PROJECT_LABEL,
+    DEFAULT_ROOT_DESC,
+    DEFAULT_ROOT_LABEL,
+    INSPECTOR_ACCENT,
+    INSPECTOR_RULE_LENGTH,
+)
 from manifest.view.views_content import (
     ACCENT_BLUE,
     blueprint_component_names as _blueprint_component_names,
@@ -123,7 +131,7 @@ class ManifestViewApp(App[None]):
     #info-hub-footer { height: 1; padding: 0 1; border-top: solid #30363d; }
     .sidebar-section { margin-bottom: 1; padding: 0 1; border-bottom: solid #30363d; }
     #sidebar-tasks { overflow: hidden; }
-    .sidebar-title { color: #58a6ff; text-style: bold; }
+    .sidebar-title { color: """ + INSPECTOR_ACCENT + """; text-style: bold; }
     .nav-item { padding: 0 1; margin-right: 1; }
     .nav-item.active { background: #1f6feb; color: white; }
     #app-version-strip { height: 1; padding: 0 1; background: #161b22; border-top: solid #30363d; }
@@ -159,7 +167,7 @@ class ManifestViewApp(App[None]):
         self._diagram_blueprint: Optional[Dict[str, Any]] = None
         self._diagram_comp_status: Dict[str, str] = {}
         self._view_data: Dict[str, Any] = {}
-        self._diagram_root_id: str = "PROJECT_ROOT"
+        self._diagram_root_id: str = PROJECT_ROOT_ID
         self._diagram_root_stack: List[str] = []
         self._diagram_layered_spec: Optional[Dict[str, Any]] = None
         self._diagram_selectable_nodes: List[Tuple[str, str, Dict[str, Any]]] = []
@@ -237,21 +245,21 @@ class ManifestViewApp(App[None]):
             # Use comparison output for diagram when available.
             if view_schema.get("entities"):
                 entities, comp_status = entities_and_comp_status_from_view_schema(view_schema)
-                root_id = view_schema.get("root_id") or "PROJECT_ROOT"
+                root_id = view_schema.get("root_id") or PROJECT_ROOT_ID
                 diagram_blueprint = {"root_id": root_id, "entities": entities}
             else:
                 diagram_blueprint = code_blueprint if (code_blueprint.get("entities")) else blueprint
                 entities = diagram_blueprint.get("entities") or []
-                root_id = diagram_blueprint.get("root_id") or "PROJECT_ROOT"
+                root_id = diagram_blueprint.get("root_id") or PROJECT_ROOT_ID
             self._diagram_blueprint = diagram_blueprint
             self._diagram_comp_status = comp_status
             self._view_data = view_data
 
             if entities and root_id:
-                if self._diagram_root_id == "PROJECT_ROOT":
+                if self._diagram_root_id == PROJECT_ROOT_ID:
                     design = self._get_cached_design_blueprint()
                     root_entity = get_root_entity(design) if design else None
-                    diagram_title = entity_display_name(root_entity) if root_entity else "Project"
+                    diagram_title = entity_display_name(root_entity) if root_entity else DEFAULT_PROJECT_LABEL
                 else:
                     root_ent = next(
                         (e for e in entities if (e.get("id") or "") == self._diagram_root_id),
@@ -271,8 +279,8 @@ class ManifestViewApp(App[None]):
                 selectable: List[Tuple[str, str, Dict[str, Any]]] = []
                 design = self._get_cached_design_blueprint()
                 root_entity = get_root_entity(design) if design else None
-                root_display_name = entity_display_name(root_entity) if root_entity else "System Core"
-                root_desc = mission_from_blueprint(design, "Project root.")
+                root_display_name = entity_display_name(root_entity) if root_entity else DEFAULT_ROOT_LABEL
+                root_desc = mission_from_blueprint(design, DEFAULT_ROOT_DESC)
                 if self._diagram_root_id != root_id and self._diagram_root_stack:
                     parent_id = self._diagram_root_stack[-1]
                     selectable.append((
@@ -283,8 +291,8 @@ class ManifestViewApp(App[None]):
                 else:
                     selectable.append((
                         "root",
-                        "PROJECT_ROOT",
-                        {"id": "PROJECT_ROOT", "name": root_display_name, "description": root_desc},
+                        PROJECT_ROOT_ID,
+                        {"id": PROJECT_ROOT_ID, "name": root_display_name, "description": root_desc},
                     ))
                 # Only L1 nodes (same layer): do not add L2 row items so n/p cycles within layer only.
                 for node in spec.get("nodes") or []:
@@ -299,13 +307,13 @@ class ManifestViewApp(App[None]):
                 self._diagram_component_list = []
                 design = self._get_cached_design_blueprint()
                 root_entity = get_root_entity(design) if design else None
-                root_display_name = entity_display_name(root_entity) if root_entity else "System Core"
-                root_desc = mission_from_blueprint(design, "Project root.")
+                root_display_name = entity_display_name(root_entity) if root_entity else DEFAULT_ROOT_LABEL
+                root_desc = mission_from_blueprint(design, DEFAULT_ROOT_DESC)
                 self._diagram_selectable_nodes = [
                     (
                         "root",
-                        "PROJECT_ROOT",
-                        {"id": "PROJECT_ROOT", "name": root_display_name, "description": root_desc},
+                        PROJECT_ROOT_ID,
+                        {"id": PROJECT_ROOT_ID, "name": root_display_name, "description": root_desc},
                     ),
                 ]
 
@@ -326,19 +334,19 @@ class ManifestViewApp(App[None]):
             return self._diagram_selectable_nodes
         root_fallback: Tuple[str, str, Dict[str, Any]] = (
             "root",
-            "PROJECT_ROOT",
-            {"id": "PROJECT_ROOT", "name": "System Core", "description": "Project root."},
+            PROJECT_ROOT_ID,
+            {"id": PROJECT_ROOT_ID, "name": DEFAULT_ROOT_LABEL, "description": DEFAULT_ROOT_DESC},
         )
         nodes: List[Tuple[str, str, Dict[str, Any]]] = []
         try:
             design = self._get_cached_design_blueprint()
             root_entity = get_root_entity(design) if design else None
-            root_display_name = entity_display_name(root_entity) if root_entity else "System Core"
-            root_desc = mission_from_blueprint(design, "Project root.")
+            root_display_name = entity_display_name(root_entity) if root_entity else DEFAULT_ROOT_LABEL
+            root_desc = mission_from_blueprint(design, DEFAULT_ROOT_DESC)
             nodes.append((
                 "root",
-                "PROJECT_ROOT",
-                {"id": "PROJECT_ROOT", "name": root_display_name, "description": root_desc},
+                PROJECT_ROOT_ID,
+                {"id": PROJECT_ROOT_ID, "name": root_display_name, "description": root_desc},
             ))
             for comp in self._diagram_component_list:
                 if isinstance(comp, dict) and comp.get("id"):
@@ -487,10 +495,10 @@ class ManifestViewApp(App[None]):
                     selected_node_id = nid
             if self._diagram_layered_spec and self._diagram_layered_spec.get("nodes") is not None:
                 spec = dict(self._diagram_layered_spec)
-                spec["title"] = spec.get("title") or config.get("title") or "ARCHITECTURE FLOW"
+                spec["title"] = spec.get("title") or config.get("title") or DEFAULT_DIAGRAM_TITLE
                 return render_diagram(spec, config, selected_node_id=selected_node_id)
             spec = {
-                "title": config.get("title") or "ARCHITECTURE FLOW",
+                "title": config.get("title") or DEFAULT_DIAGRAM_TITLE,
                 "nodes": [],
             }
             return render_diagram(spec, config, selected_node_id=selected_node_id)
@@ -917,11 +925,11 @@ class ManifestViewApp(App[None]):
 
     def _inspection_section(self, title: str, body: str) -> str:
         """One inspection section: title, rule, then content. Blank line between each row for readability."""
-        rule = "[#58a6ff]" + "─" * 44 + "[/]"
+        rule = f"[{INSPECTOR_ACCENT}]" + "─" * INSPECTOR_RULE_LENGTH + "[/]"
         # Separate each line with a blank line so rows are easy to distinguish
         lines = [line.strip() for line in body.split("\n") if line.strip()]
         indented = "\n  \n  ".join(lines)
-        return f"\n\n[bold #58a6ff]{title}[/]\n{rule}\n  {indented}\n"
+        return f"\n\n[bold {INSPECTOR_ACCENT}]{title}[/]\n{rule}\n  {indented}\n"
 
     def _get_root_entity_for_inspector(self) -> Dict[str, Any]:
         """Root (System Core) as entity; same shape as other entities."""

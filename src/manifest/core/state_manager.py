@@ -316,7 +316,8 @@ class StateManager:
         """
         from manifest.core.prd_manager import PRDManager
         prd_manager = PRDManager(self)
-        return prd_manager.save_prd(prd_data)
+        ok, _ = prd_manager.save_prd(prd_data)
+        return ok
 
     async def save_prd_async(self, prd_data: Dict[str, Any]) -> bool:
         """Save PRD data to file asynchronously. Delegates to PRDManager.
@@ -329,7 +330,8 @@ class StateManager:
         """
         from manifest.core.prd_manager import PRDManager
         prd_manager = PRDManager(self)
-        return await prd_manager.save_prd_async(prd_data)
+        ok, _ = await prd_manager.save_prd_async(prd_data)
+        return ok
 
     def load_prd(self) -> Optional[Dict[str, Any]]:
         """Load PRD data from file. Delegates to PRDManager.

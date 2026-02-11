@@ -1,23 +1,15 @@
 """
-Configuration and API key management for Manifest.
+Configuration for Manifest.
 
-When agent.execution_backend is "opencode" (default), model selection and
-API keys are managed by OpenCode. Manifest does not store or validate keys
-in that case; has_all_keys() and validate_key/validate_all_keys return
-success without checking. Provider/key logic here applies only when using
-a different execution backend that calls LLM APIs from Manifest.
-
-Otherwise: API key storage (encrypted with Fernet), validation via test
-requests to Anthropic/OpenAI (Google is presence-only), and agent model
-configuration (provider/model overrides for OpenCode or other backends).
+Model selection and API keys are managed by OpenCode (default execution backend).
+This module handles settings (settings.json), agent model config (provider/model
+overrides in agent_config.json), and permissions. No API key storage or validation.
 """
 import json
 import os
 from pathlib import Path
 from typing import Optional, Dict, Any
-from cryptography.fernet import Fernet
-import asyncio
-import httpx
+
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -44,54 +36,25 @@ DEFAULT_SETTINGS = {
 
 
 class ConfigManager:
-    """Manages API keys and agent configuration.
+    """Manages settings and agent model configuration.
 
-    Handles secure storage of API keys using encryption, validation of keys
-    against provider APIs, and loading of agent model configurations. API
-    keys are stored encrypted on disk and can also be loaded from environment
-    variables.
+    Handles settings.json, agent_config.json (provider/model per agent), and
+    permissions. API keys are managed by OpenCode; this class does not store
+    or validate keys.
 
     Attributes:
         manifest_dir: Directory where configuration files are stored.
-        keys_file: Path to the encrypted keys file.
-        key_file: Path to the encryption key file.
-        _cipher: Fernet cipher instance for encryption/decryption.
     """
 
     def __init__(self, manifest_dir: Path = None):
         """Initialize the configuration manager.
-
-        Sets up the manifest directory and loads or creates the encryption
-        key needed for secure API key storage.
 
         Args:
             manifest_dir: Optional path to the manifest directory. Defaults
                 to .manifest in the current directory.
         """
         self.manifest_dir = manifest_dir or Path(".manifest")
-        self.keys_file = self.manifest_dir / "keys.json"
-        self.key_file = self.manifest_dir / ".key"
-        self._cipher = None
-        self._load_or_create_key()
         self._ensure_default_settings()
-
-    def _load_or_create_key(self) -> None:
-        """Load the encryption key from disk or create a new one.
-
-        If the key file exists, loads it. Otherwise, generates a new Fernet
-        key and saves it to disk with restricted permissions (readable only
-        by the owner).
-        """
-        if self.key_file.exists():
-            with open(self.key_file, "rb") as f:
-                key = f.read()
-        else:
-            key = Fernet.generate_key()
-            with open(self.key_file, "wb") as f:
-                f.write(key)
-            # Make key file readable only by owner
-            os.chmod(self.key_file, 0o600)
-        self._cipher = Fernet(key)
 
     def _ensure_default_settings(self) -> None:
         """Create .manifest/settings.json with default template if it does not exist."""
@@ -105,123 +68,6 @@ class ConfigManager:
             logger.debug("Created default settings.json in %s", self.manifest_dir)
         except Exception as e:
             logger.debug("Could not create default settings.json: %s", e)
-
-    def get_api_keys(self) -> Dict[str, Optional[str]]:
-        """Get all stored API keys in decrypted form.
-
-        Attempts to load and decrypt the keys file. If the file doesn't exist
-        or decryption fails, returns keys from environment variables when
-        available; otherwise None for each provider.
-
-        Returns:
-            Dictionary mapping provider names to their API keys. Keys that
-            aren't set will be None. Supported providers: anthropic, google,
-            openai.
-        """
-        if not self.keys_file.exists():
-            return {
-                "anthropic": os.getenv("ANTHROPIC_API_KEY") or os.getenv("anthropic_api_key"),
-                "google": os.getenv("GOOGLE_API_KEY") or os.getenv("google_api_key"),
-                "openai": os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key")
-            }
-
-        try:
-            with open(self.keys_file, "rb") as f:
-                encrypted = f.read()
-            decrypted = self._cipher.decrypt(encrypted)
-            stored_keys = json.loads(decrypted)
-
-            # Merge with environment variables (env vars take precedence)
-            result = {
-                "anthropic": os.getenv("ANTHROPIC_API_KEY") or os.getenv("anthropic_api_key") or stored_keys.get("anthropic"),
-                "google": os.getenv("GOOGLE_API_KEY") or os.getenv("google_api_key") or stored_keys.get("google"),
-                "openai": os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key") or stored_keys.get("openai")
-            }
-            return result
-        except Exception as e:
-            logger.debug("get_api_keys decryption failed, using env: %s", e)
-            return {
-                "anthropic": os.getenv("ANTHROPIC_API_KEY") or os.getenv("anthropic_api_key"),
-                "google": os.getenv("GOOGLE_API_KEY") or os.getenv("google_api_key"),
-                "openai": os.getenv("OPENAI_API_KEY") or os.getenv("openai_api_key")
-            }
-
-    def save_api_keys(self, keys: Dict[str, str]) -> bool:
-        """Save API keys to disk in encrypted form.
-
-        Encrypts the keys dictionary and writes it to the keys file. The file
-        is created with restricted permissions (readable only by owner) for
-        security.
-
-        Args:
-            keys: Dictionary mapping provider names to API key strings.
-
-        Returns:
-            True if save was successful, False otherwise. Errors are logged.
-        """
-        try:
-            encrypted = self._cipher.encrypt(json.dumps(keys).encode())
-            with open(self.keys_file, "wb") as f:
-                f.write(encrypted)
-            # Restrict file permissions for security
-            os.chmod(self.keys_file, 0o600)
-            return True
-        except Exception as e:
-            logger.error(f"Error saving keys: {e}", exc_info=True)
-            return False
-
-    def has_all_keys(self) -> bool:
-        """Check if API keys are sufficient. When the backend manages keys (e.g. opencode), no keys required here."""
-        if self.get_setting("agent.execution_backend", "opencode") == "opencode":
-            return True
-        keys = self.get_api_keys()
-        return all(keys.get(k) for k in ["anthropic", "openai"])
-
-    async def validate_key(self, provider: str, key: str) -> bool:
-        """Validate an API key. When execution_backend is opencode, keys are managed by OpenCode; we do not validate."""
-        if self.get_setting("agent.execution_backend", "opencode") == "opencode":
-            return True
-        try:
-            if provider == "anthropic":
-                async with httpx.AsyncClient() as client:
-                    response = await client.post(
-                        "https://api.anthropic.com/v1/messages",
-                        headers={
-                            "x-api-key": key,
-                            "anthropic-version": "2023-06-01",
-                            "content-type": "application/json"
-                        },
-                        json={"model": "claude-3-sonnet-20240229", "max_tokens": 10, "messages": [{"role": "user", "content": "test"}]},
-                        timeout=5.0
-                    )
-                    # 400 status means auth worked but request was invalid (key is valid)
-                    return response.status_code in [200, 400]
-            elif provider == "openai":
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(
-                        "https://api.openai.com/v1/models",
-                        headers={"Authorization": f"Bearer {key}"},
-                        timeout=5.0
-                    )
-                    return response.status_code == 200
-            # Google and other providers: presence-only (no API call from Manifest)
-            return len(key) > 0
-        except Exception as e:
-            logger.debug("validate_key %s failed: %s", provider, e)
-            return False
-
-    async def validate_all_keys(self) -> Dict[str, bool]:
-        """Validate all stored API keys. When execution_backend is opencode, keys are managed by OpenCode; returns all True."""
-        if self.get_setting("agent.execution_backend", "opencode") == "opencode":
-            return {"anthropic": True, "google": True, "openai": True}
-        keys = self.get_api_keys()
-        results = {}
-        for provider, key in keys.items():
-            if key:
-                results[provider] = await self.validate_key(provider, key)
-            else:
-                results[provider] = False
-        return results
 
     def _load_agent_config(self) -> Dict[str, Any]:
         """Load agent configuration from the config file.
@@ -270,59 +116,30 @@ class ConfigManager:
     def get_agent_model_config(self, agent_type: str) -> Dict[str, Any]:
         """Get the model configuration for a specific agent type.
 
-        Loads the configuration for the agent, using defaults when not
-        specified. Resolves the API key from stored keys or agent-specific
-        encrypted keys, or from environment variables when not stored.
+        OpenCode manages API keys; this returns provider and model only (api_key always None).
 
         Args:
             agent_type: Type of agent (e.g., "orchestrator", "planner", "coder").
 
         Returns:
-            Dictionary with "provider", "model", and "api_key" fields. The
-            API key will be resolved from the appropriate source based on
-            configuration.
+            Dictionary with "provider", "model", and "api_key" (None). OpenCode uses its own keys.
         """
         agent_config = self._load_agent_config()
         agent_models = agent_config.get("agent_models", {})
 
-        # Get agent-specific config or use defaults (no hardcoded model: use OpenCode default)
         if agent_type in agent_models:
             config = agent_models[agent_type].copy()
         else:
             default_models = agent_config.get("default_models", {}) or {}
-            provider = "anthropic"
             config = {
-                "provider": provider,
-                "model": default_models.get(provider),
-                "use_default_key": True
+                "provider": "anthropic",
+                "model": default_models.get("anthropic"),
             }
 
-        # Resolve API key from appropriate source
-        if config.get("use_default_key", True):
-            # Use the default key for this provider
-            keys = self.get_api_keys()
-            provider = config["provider"]
-            api_key = keys.get(provider)
-
-            if not api_key:
-                env_key = os.getenv(f"{provider.upper()}_API_KEY") or os.getenv(f"{provider}_api_key")
-                api_key = env_key
-        else:
-            # Use agent-specific key (stored encrypted in config)
-            api_key = config.get("api_key")
-            if api_key:
-                # Decrypt the agent-specific key
-                try:
-                    api_key = self._cipher.decrypt(api_key.encode()).decode()
-                except Exception as e:
-                    logger.debug("Agent key decryption failed: %s", e)
-                    api_key = None
-
-        # model may be None: caller should use OpenCode default or opencode.model setting
         return {
             "provider": config.get("provider", "anthropic"),
             "model": config.get("model"),
-            "api_key": api_key
+            "api_key": None,
         }
 
     def set_agent_model_config(
@@ -335,44 +152,27 @@ class ConfigManager:
     ) -> bool:
         """Set the model configuration for a specific agent type.
 
-        Saves the configuration to agent_config.json. If an agent-specific
-        API key is provided and use_default_key is False, the key will be
-        encrypted before storage.
+        Saves provider and model to agent_config.json. API keys are managed by OpenCode; api_key is ignored.
 
         Args:
             agent_type: Type of agent to configure (e.g., "orchestrator").
             provider: LLM provider name ("anthropic", "openai", "google").
-            model: Model name to use (e.g., "claude-3-5-sonnet-20241022").
-            api_key: Optional agent-specific API key. Only used if
-                use_default_key is False.
-            use_default_key: If True, agent will use the default key for the
-                provider. If False, uses the provided api_key.
+            model: Model name to use.
+            api_key: Ignored (OpenCode manages keys).
+            use_default_key: Ignored (kept for signature compatibility).
 
         Returns:
             True if configuration was saved successfully, False otherwise.
-            Errors are logged.
         """
         agent_config = self._load_agent_config()
 
         if "agent_models" not in agent_config:
             agent_config["agent_models"] = {}
 
-        config = {
+        agent_config["agent_models"][agent_type] = {
             "provider": provider,
             "model": model,
-            "use_default_key": use_default_key
         }
-
-        # If agent-specific key provided, encrypt and store
-        if api_key and not use_default_key:
-            try:
-                encrypted_key = self._cipher.encrypt(api_key.encode())
-                config["api_key"] = encrypted_key.decode()
-            except Exception as e:
-                logger.error(f"Error encrypting API key: {e}", exc_info=True)
-                return False
-
-        agent_config["agent_models"][agent_type] = config
 
         # Save to file
         agent_config_file = self.manifest_dir / AGENT_CONFIG_FILE

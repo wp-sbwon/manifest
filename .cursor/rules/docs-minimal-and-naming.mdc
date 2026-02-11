@@ -1,0 +1,10 @@
+---
+description: Do not create docs for everything; docs naming (lowercase + hyphen). Remember permanently for this project.
+alwaysApply: true
+---
+
+# Docs: minimal and naming
+
+- **Do not create documentation for literally everything.** Only add or change docs when the user explicitly asks for documentation.
+- **docs/ convention:** Doc names use **lowercase letters and hyphens** (e.g. `view-app.md`, `manifest-data.md`). Exception: `README.md` is the basic index and stays.
+- Remember this permanently for this project.

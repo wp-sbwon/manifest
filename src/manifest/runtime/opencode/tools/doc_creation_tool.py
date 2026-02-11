@@ -1,16 +1,10 @@
 """
 Doc creation tool: hierarchical blueprint from PRD.
 
-Supports the flow: PRD first (via architect write_prd), then blueprint built
-layer-by-layer. One agent writes layer 0 (root + top-level); for each entity
-at that layer we spawn a layer writer that produces that entity's children;
-merge fragments into blueprint_design.json. See docs/doc-creation-process.md.
-
-Layer writers run as subprocesses (parallel within a layer); layer n+1 is
-spawned only after all layer-n tasks in the same batch are completed.
-
-When OpenCode is configured, write_blueprint_layer calls it (sync HTTP) to
-produce child entities; otherwise returns empty children.
+PRD first (via architect write_prd), then blueprint built layer-by-layer.
+One agent run per parent produces direct children; fragments are merged into
+blueprint_design.json. Layer n+1 runs only after all layer-n runs in the same
+batch are completed.
 """
 import json
 import os
@@ -114,11 +108,8 @@ def build_layer_writer_context(
     max_depth: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
-    Build context for a single layer-writer task: full PRD + scoped blueprint only.
-
-    Each sub-worker receives full PRD and scoped blueprint (path_from_root,
-    parent_entity, sibling_ids, root_id, optional sibling_summaries). No full
-    blueprint or full entities list is included.
+    Build context for one layer-writer run: full PRD and scoped blueprint only
+    (path_from_root, parent_entity, sibling_ids, root_id, sibling_summaries).
     """
     manifest_dir = Path(manifest_dir)
     context: Dict[str, Any] = {
@@ -266,7 +257,6 @@ def _parse_children_from_response(text: str) -> List[Dict[str, Any]]:
     if not (text or text.strip()):
         return []
     text = text.strip()
-    # Try to find JSON array: either whole response or inside ```json ... ```
     match = re.search(r"\[[\s\S]*\]", text)
     if not match:
         return []
@@ -303,11 +293,7 @@ def _call_layer_writer_llm_sync(
     context: Dict[str, Any],
     timeout: float = 120.0,
 ) -> List[Dict[str, Any]]:
-    """Call OpenCode via backend agent (sync HTTP) to produce child entities.
-
-    Uses the OpenCode session message API with an agent name so the backend runs
-    that agent (context, tools, model). Returns [] if disabled or on error.
-    """
+    """Call OpenCode backend agent (sync HTTP) to produce child entities. Returns [] if disabled or on error."""
     manifest_dir = Path(manifest_dir)
     try:
         cm = ConfigManager(manifest_dir)
@@ -332,7 +318,6 @@ def _call_layer_writer_llm_sync(
             if not session_id:
                 return []
             full_text = ""
-            # Prefer message API with agent (backend runs the agent)
             msg_r = client.post(
                 f"{base_url}/session/{session_id}/message",
                 json={
@@ -348,7 +333,6 @@ def _call_layer_writer_llm_sync(
                     elif isinstance(part, dict) and "text" in part:
                         full_text += part["text"]
             else:
-                # Fallback: streaming /prompt with agent
                 content_parts: List[str] = []
                 with client.stream(
                     "POST",
@@ -385,10 +369,7 @@ def write_blueprint_layer(
     prd_excerpt: Optional[Dict[str, Any]] = None,
     current_blueprint: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """
-    Produce direct children for parent_entity_id. When OpenCode is configured,
-    calls it (sync) to generate child entities; otherwise returns empty children.
-    """
+    """Produce direct children for parent_entity_id. Uses OpenCode when configured; otherwise returns empty children."""
     manifest_dir = Path(manifest_dir)
     if current_blueprint is None:
         current_blueprint = BlueprintLoader.load_blueprint(manifest_dir)
@@ -406,7 +387,7 @@ def spawn_layer_writer(
     layer_index: Optional[int] = None,
     start_process: bool = False,
 ) -> Dict[str, Any]:
-    """Record a doc-layer-writer task. Returns { ok, task_id, batch_id }. Optionally register batch and start subprocess."""
+    """Record a layer-writer run. Returns { ok, task_id, batch_id }. Optionally register batch and start subprocess."""
     manifest_dir = Path(manifest_dir)
     path = manifest_dir / DOC_LAYER_WRITER_LOG
     data = _load_layer_tasks(path)
@@ -433,7 +414,7 @@ def spawn_layer_writer(
     _save_layer_tasks(path, data)
     if start_process:
         start_layer_writer_process(manifest_dir, task_id)
-    logger.info("Doc layer writer task: parent=%s task_id=%s batch_id=%s", parent_entity_id, task_id, batch_id)
+    logger.info("Layer writer run: parent=%s task_id=%s batch_id=%s", parent_entity_id, task_id, batch_id)
     return {"ok": True, "task_id": task_id, "batch_id": batch_id}
 
 
@@ -482,10 +463,7 @@ def _entities_at_layer(blueprint: Dict[str, Any], root_id: str, layer_index: int
 
 
 def try_spawn_next_layer(manifest_dir: Path, batch_id: str) -> Dict[str, Any]:
-    """
-    If all tasks in batch are completed and next_layer_spawned is False,
-    spawn one layer-writer task per entity at the next layer and start subprocesses.
-    """
+    """When all runs in the batch are completed, spawn one layer-writer run per entity at the next layer."""
     path = Path(manifest_dir) / DOC_LAYER_WRITER_LOG
     data = _load_layer_tasks(path)
     batches = data.get("batches") or {}
@@ -543,7 +521,7 @@ def spawn_layer_writer_batch(
     context_map: Optional[Dict[str, Dict[str, Any]]] = None,
     start_processes: bool = True,
 ) -> Dict[str, Any]:
-    """Create a batch and one task per parent; optionally start a subprocess for each (non-blocking)."""
+    """Create a batch and one run per parent; optionally start a subprocess for each (non-blocking)."""
     manifest_dir = Path(manifest_dir)
     batch_id = f"batch-{uuid.uuid4().hex[:12]}"
     path = manifest_dir / DOC_LAYER_WRITER_LOG
@@ -572,10 +550,9 @@ def spawn_layer_writer_batch(
 
 def _start_recursive_expansion(manifest_dir: Path) -> Dict[str, Any]:
     """
-    Entry point for recursive blueprint expansion. Same model as every other layer:
-    ensure root-only blueprint, spawn one task for the root at layer_index=0 with
-    build_layer_writer_context; the runner produces children, merges, then
-    try_spawn_next_layer spawns layer 1, and so on. No separate layer-0 flow.
+    Entry point for recursive blueprint expansion. Ensures root-only blueprint,
+    spawns the root at layer_index=0 with build_layer_writer_context; the runner
+    produces children, merges, then try_spawn_next_layer spawns the next layer.
     """
     manifest_dir = Path(manifest_dir)
     design = BlueprintLoader.load_blueprint(manifest_dir)
@@ -594,7 +571,7 @@ def _start_recursive_expansion(manifest_dir: Path) -> Dict[str, Any]:
 
 
 class DocCreationTool:
-    """Tool for hierarchical doc creation: PRD → blueprint layer 0 → spawn layer writers → merge."""
+    """Tool for hierarchical doc creation: PRD → blueprint (layer by layer) → merge."""
 
     def __init__(self, manifest_dir: Optional[Path] = None):
         self.manifest_dir = (manifest_dir or Path(".manifest")).resolve()

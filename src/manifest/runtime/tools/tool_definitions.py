@@ -229,7 +229,7 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                     },
                     "mode": {
                         "type": "string",
-                        "description": "For sync_blueprint: strict | workflow | merge"
+                        "description": "For sync_blueprint: strict | workflow"
                     }
                 },
                 "required": ["action"]
@@ -257,6 +257,31 @@ def get_tool_definitions() -> List[Dict[str, Any]]:
                         "type": "object",
                         "description": "For write_architecture: blueprint (version, root_id, entities). For write_prd: PRD doc. Omit for ideate."
                     }
+                },
+                "required": ["action"]
+            }
+        },
+        {
+            "name": "doc_creation",
+            "description": "Hierarchical blueprint creation from PRD. start_blueprint_from_prd then run_layer_0 (background) or spawn_layer_writer_batch; layer writers run as subprocesses. Actions: start_blueprint_from_prd, write_blueprint_layer, merge_blueprint_fragment, spawn_layer_writer, spawn_layer_writer_batch, run_layer_0.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "description": "One of: start_blueprint_from_prd, write_blueprint_layer, merge_blueprint_fragment, spawn_layer_writer, spawn_layer_writer_batch, run_layer_0"
+                    },
+                    "parent_entity_id": {"type": "string", "description": "Required for write_blueprint_layer, merge_blueprint_fragment, spawn_layer_writer"},
+                    "child_entities": {
+                        "type": "array",
+                        "description": "List of entity dicts (id, children, intent, ...) for merge_blueprint_fragment; or entity ids for spawn_layer_writer_batch when context.parent_entity_ids not set"
+                    },
+                    "prd_excerpt": {"type": "object", "description": "PRD excerpt for write_blueprint_layer"},
+                    "context": {
+                        "type": "object",
+                        "description": "For spawn_layer_writer: batch_id, layer_index, start_process. For spawn_layer_writer_batch: parent_entity_ids, layer_index, start_processes, context_map"
+                    },
+                    "depth": {"type": "integer", "description": "Layer depth / layer_index for spawn_layer_writer and spawn_layer_writer_batch"}
                 },
                 "required": ["action"]
             }

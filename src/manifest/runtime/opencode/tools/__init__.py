@@ -9,6 +9,7 @@ from manifest.runtime.opencode.tools.sprint_management import SprintManagementTo
 from manifest.runtime.opencode.tools.worker_squad_spawn import WorkerSquadSpawnTool
 from manifest.runtime.opencode.tools.blueprint_sync import BlueprintSyncTool, DeviationCheckTool, DriftCheckTool
 from manifest.runtime.opencode.tools.architect_tool import ArchitectTool
+from manifest.runtime.opencode.tools.doc_creation_tool import DocCreationTool
 
 __all__ = [
     "TaskManagementTool",
@@ -18,4 +19,5 @@ __all__ = [
     "DeviationCheckTool",
     "DriftCheckTool",
     "ArchitectTool",
+    "DocCreationTool",
 ]

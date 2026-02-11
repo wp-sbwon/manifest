@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Run a single doc layer-writer task: load task, produce children, merge, mark completed,
-then try to spawn the next layer if this task is part of a completed batch.
+Run one layer-writer run: load by id, produce children, merge, mark completed;
+optionally spawn next layer if batch is complete.
 
 Invoked as a subprocess by doc_creation tool (non-blocking). Usage:
   python scripts/run_doc_layer_writer.py --manifest-dir <path> --task-id <task_id>
@@ -38,12 +38,7 @@ def _produce_children(
     context: dict,
     layer_index: int = 0,
 ) -> list:
-    """
-    Produce child entities for the parent. Uses task context (full PRD + scoped
-    blueprint when provided). Empty children are allowed (no placeholder).
-    Same behavior for all layers: no layer-0-specific logic.
-    """
-    # Use PRD from context; if missing, try loading from manifest (same for any layer)
+    """Produce child entities for the parent. Uses context (PRD + scoped blueprint when provided). Same behavior for all layers."""
     prd = context.get("prd") if isinstance(context, dict) else {}
     if not prd:
         prd_path = manifest_dir / "prd.json"
@@ -59,12 +54,11 @@ def _produce_children(
 
     blueprint = BlueprintLoader.load_blueprint(manifest_dir)
     out = write_blueprint_layer(manifest_dir, parent_entity_id, prd_excerpt=context, current_blueprint=blueprint)
-    children = out.get("children") or []
-    return children
+    return out.get("children") or []
 
 
 def run_task(manifest_dir: Path, task_id: str) -> dict:
-    """Load task, produce children, merge, mark completed, try spawn next layer."""
+    """Load run by id, produce children, merge, mark completed; try spawn next layer if batch complete."""
     manifest_dir = Path(manifest_dir)
     path = manifest_dir / DOC_LAYER_WRITER_LOG
     data = _load_layer_tasks(path)
@@ -106,9 +100,9 @@ def run_task(manifest_dir: Path, task_id: str) -> dict:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run one doc layer-writer task")
+    parser = argparse.ArgumentParser(description="Run one layer-writer run")
     parser.add_argument("--manifest-dir", type=Path, required=True, help="Path to .manifest")
-    parser.add_argument("--task-id", required=True, help="Task ID from doc_layer_writer_tasks.json")
+    parser.add_argument("--task-id", required=True, help="Run id from doc_layer_writer_tasks.json")
     args = parser.parse_args()
     result = run_task(args.manifest_dir, args.task_id)
     print(json.dumps(result, indent=2), file=_stdout_for_json)

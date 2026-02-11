@@ -6,7 +6,7 @@
 
 All documentation is in [`docs/`](docs/). See [docs/README.md](docs/README.md) for the index.
 
-**Quick links:** [Project structure](docs/PROJECT_STRUCTURE.md) · [UI redesign plan](docs/UI_REDESIGN_PLAN.md) · [Worker squad](docs/WORKER_SQUAD_AND_AGENTS.md). **Target architecture:** [Redesign architecture and intent](docs/REDESIGN_ARCHITECTURE_AND_INTENT.md); [implementation status](docs/NEW_ARCHITECTURE_IMPLEMENTATION_STATUS-2026-01-28.md). Older docs are in [docs/archive/](docs/archive/).
+**Quick links:** [docs/README.md](docs/README.md) · [View app](docs/view-app.md) · [Manifest data](docs/manifest-data.md) · [Scripts and pipelines](docs/scripts-and-pipelines.md).
 
 ## Execution backend
 
@@ -130,8 +130,6 @@ See `requirements.txt` for the complete list.
 - Configure skills for individual agents in `.manifest/agent_config.json`
 - Configure project-scoped skills in `AGENTS.md` (OpenCode convention)
 - Skills are automatically loaded from `.rules/` directory
-- See [docs/archive/superseded-2026/SKILLS.md](docs/archive/superseded-2026/SKILLS.md) for detailed documentation
-
 ## Git hooks (optional)
 
 - **Bottom-up docs on every commit:** After each commit, Manifest can refresh `blueprint_code.json` from code. To enable:
