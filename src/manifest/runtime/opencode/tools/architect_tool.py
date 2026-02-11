@@ -50,10 +50,15 @@ class ArchitectTool:
         return {"ok": False, "error": f"Unknown action: {action}"}
 
     def _write_prd(self, prd_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Write PRD to .manifest/prd.json."""
-        if self._prd_manager.save_prd(prd_data):
+        """Write PRD to .manifest/prd.json. Validates against fixed schema; returns errors if invalid."""
+        ok, errors = self._prd_manager.save_prd(prd_data)
+        if ok:
             return {"ok": True, "message": "PRD saved to .manifest/prd.json"}
-        return {"ok": False, "error": "Failed to save PRD"}
+        return {
+            "ok": False,
+            "error": "PRD validation failed",
+            "details": errors,
+        }
 
     def _write_architecture(self, blueprint: Dict[str, Any]) -> Dict[str, Any]:
         """Write blueprint to .manifest/blueprint_design.json."""

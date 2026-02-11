@@ -92,11 +92,14 @@ class SprintDict(TypedDict, total=False):
 
 
 class PRDDict(TypedDict, total=False):
-    """PRD dictionary structure."""
-    version: str
-    name: str
-    description: str
-    requirements: List[Dict[str, Any]]
+    """PRD dictionary structure (fixed schema). Versioning is timestamp-based only (created_at, updated_at)."""
+    title: str
+    overview: Dict[str, Any]
+    user_flows: List[Dict[str, Any]]
+    technical_constraints: Dict[str, Any]
+    success_criteria: Dict[str, Any]
+    architecture_requirements: Dict[str, Any]
+    dependencies: List[Any]
     created_at: str
     updated_at: str
 
