@@ -4,12 +4,14 @@ Tool Executor for executing tool calls from LLMs.
 Routes tool calls to TerminalRouter (bash) and FileManager (edit, write, read, etc.).
 When tool_approval.ask_before_tool_run is True in .manifest/settings.json,
 state-changing tools require user approval before execution.
+
+Approval flow: no callback is wired; the caller receives approval_request_id and must
+re-invoke the tool with __approved_request_id__ set to that id to proceed.
 """
 from pathlib import Path
-from typing import Dict, Any, List, Optional, TYPE_CHECKING, Callable, Awaitable
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from manifest.runtime.tools.file_manager import FileManager
 from manifest.core.logger import get_logger
-from manifest.core.constants import CONTAINER_API_PORT
 
 if TYPE_CHECKING:
     from manifest.runtime.router.terminal_router import TerminalRouter
@@ -21,8 +23,7 @@ logger = get_logger(__name__)
 # State-changing tools that require approval when tool_approval.ask_before_tool_run is True.
 STATE_CHANGING_TOOLS = frozenset({
     "bash", "edit", "write",
-    "task_management", "sprint_management", "worker_squad_spawn", "blueprint_sync",
-    "architect", "doc_creation",
+    "blueprint_sync", "architect", "doc_creation",
 })
 
 class ToolExecutor:
@@ -43,7 +44,6 @@ class ToolExecutor:
         task_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         manifest_dir: Optional[Path] = None,
-        worker_squad_runner: Optional[Callable[[str], Awaitable[Dict[str, Any]]]] = None,
     ):
         """Initialize tool executor.
 
@@ -55,8 +55,7 @@ class ToolExecutor:
             agent_type: Optional agent type for audit logging.
             task_id: Optional task ID for audit logging.
             agent_id: Optional agent ID for audit logging.
-            manifest_dir: Optional path to .manifest for OpenCode tools (task/sprint management).
-            worker_squad_runner: Optional async callable(task_id) to run full Worker Squad for a task.
+            manifest_dir: Optional path to .manifest for OpenCode tools (blueprint_sync, architect, doc_creation).
         """
         self.terminal_router = terminal_router
         self.file_manager = file_manager
@@ -66,7 +65,6 @@ class ToolExecutor:
         self.task_id = task_id
         self.agent_id = agent_id
         self.manifest_dir = manifest_dir or Path.cwd() / ".manifest"
-        self.worker_squad_runner = worker_squad_runner
 
     def _check_tool_approval_gate(self, tool_name: str, tool_input: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Require user approval for state-changing tools when tool_approval.ask_before_tool_run is True.
@@ -98,7 +96,7 @@ class ToolExecutor:
             agent_type=self.agent_type or "agent",
             tool_name=tool_name,
             tool_input=tool_input,
-            approval_callback=None,
+            approval_callback=None,  # No callback; user re-invokes with __approved_request_id__
         )
         return self._tool_result(
             tool_input, tool_name,
@@ -162,34 +160,6 @@ class ToolExecutor:
                 result = self._execute_glob(tool_input)
             elif tool_name == "list":
                 result = self._execute_list(tool_input)
-            elif tool_name == "task_management":
-                result = self._execute_task_management(tool_input)
-            elif tool_name == "sprint_management":
-                result = self._execute_sprint_management(tool_input)
-            elif tool_name == "worker_squad_spawn":
-                action = (tool_input.get("action") or "").strip()
-                task_id = (tool_input.get("task_id") or "").strip()
-                if action == "run_squad" and task_id:
-                    if self.worker_squad_runner:
-                        try:
-                            run_result = await self.worker_squad_runner(task_id)
-                            result = {
-                                "tool_call_id": tool_input.get("id", "unknown"),
-                                "tool_name": "worker_squad_spawn",
-                                "result": run_result,
-                            }
-                        except Exception as e:
-                            logger.error(f"worker_squad_spawn run_squad error: {e}", exc_info=True)
-                            result = {
-                                "tool_call_id": tool_input.get("id", "unknown"),
-                                "tool_name": "worker_squad_spawn",
-                                "error": str(e),
-                                "result": None,
-                            }
-                    else:
-                        result = await self._run_squad_via_container_api(task_id, tool_input)
-                else:
-                    result = self._execute_worker_squad_spawn(tool_input)
             elif tool_name == "blueprint_sync":
                 result = self._execute_blueprint_sync(tool_input)
             elif tool_name == "architect":
@@ -412,7 +382,7 @@ class ToolExecutor:
                         agent_type=permission_details.get("agent_type", "unknown"),
                         tool_name="bash",
                         tool_input=tool_input,
-                        approval_callback=None  # Optional; when None, approval/retry is handled elsewhere in the flow
+                        approval_callback=None,  # No callback; user re-invokes with __approved_request_id__
                     )
 
                     return self._tool_result(
@@ -484,7 +454,7 @@ class ToolExecutor:
                     agent_type=self.file_manager.agent_type if self.file_manager else "unknown",
                     tool_name="edit",
                     tool_input=tool_input,
-                    approval_callback=None
+                    approval_callback=None,  # No callback; user re-invokes with __approved_request_id__
                 )
 
                 return {
@@ -559,7 +529,7 @@ class ToolExecutor:
                     agent_type=self.file_manager.agent_type if self.file_manager else "unknown",
                     tool_name="write",
                     tool_input=tool_input,
-                    approval_callback=None
+                    approval_callback=None,  # No callback; user re-invokes with __approved_request_id__
                 )
 
                 return {
@@ -724,199 +694,6 @@ class ToolExecutor:
             "tool_name": "list",
             "result": result
         }
-
-    def _execute_task_management(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute task_management tool (create/update/list/get tasks)."""
-        from manifest.runtime.opencode.tools.task_management import TaskManagementTool
-        tool = TaskManagementTool(self.manifest_dir)
-        action = (tool_input.get("action") or "").strip()
-        if not action:
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "task_management",
-                "error": "Missing action",
-                "result": None
-            }
-        try:
-            if action == "create_task":
-                out = tool.create_task(
-                    name=tool_input.get("name", ""),
-                    sprint_id=tool_input.get("sprint_id"),
-                    blueprint_entity_ids=tool_input.get("blueprint_entity_ids"),
-                    mission_id=tool_input.get("mission_id"),
-                )
-            elif action == "update_task_status":
-                out = tool.update_task_status(
-                    task_id=tool_input.get("task_id", ""),
-                    status=tool_input.get("status", ""),
-                )
-            elif action == "assign_task":
-                out = tool.assign_task(
-                    task_id=tool_input.get("task_id", ""),
-                    agent_name=tool_input.get("agent_name", ""),
-                )
-            elif action == "update_task_progress":
-                out = tool.update_task_progress(
-                    task_id=tool_input.get("task_id", ""),
-                    percentage=float(tool_input.get("percentage", 0)),
-                )
-            elif action == "update_task_stage":
-                out = tool.update_task_stage(
-                    task_id=tool_input.get("task_id", ""),
-                    stage=tool_input.get("stage", ""),
-                )
-            elif action == "list_tasks":
-                out = {"ok": True, "tasks": tool.list_tasks(sprint_id=tool_input.get("sprint_id"))}
-            elif action == "get_task":
-                t = tool.get_task(tool_input.get("task_id", ""))
-                out = {"ok": t is not None, "task": t}
-            else:
-                return {
-                    "tool_call_id": tool_input.get("id", "unknown"),
-                    "tool_name": "task_management",
-                    "error": f"Unknown action: {action}",
-                    "result": None
-                }
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "task_management",
-                "result": out
-            }
-        except Exception as e:
-            logger.error(f"task_management error: {e}", exc_info=True)
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "task_management",
-                "error": str(e),
-                "result": None
-            }
-
-    def _execute_sprint_management(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute sprint_management tool (create/list/get/update sprints)."""
-        from manifest.runtime.opencode.tools.sprint_management import SprintManagementTool
-        tool = SprintManagementTool(self.manifest_dir)
-        action = (tool_input.get("action") or "").strip()
-        if not action:
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "sprint_management",
-                "error": "Missing action",
-                "result": None
-            }
-        try:
-            if action == "create_sprint":
-                out = tool.create_sprint(
-                    name=tool_input.get("name", ""),
-                    start_date=tool_input.get("start_date"),
-                    end_date=tool_input.get("end_date"),
-                )
-            elif action == "list_sprints":
-                out = {"ok": True, "sprints": tool.list_sprints()}
-            elif action == "get_sprint":
-                s = tool.get_sprint(tool_input.get("sprint_id", ""))
-                out = {"ok": s is not None, "sprint": s}
-            elif action == "update_sprint":
-                out = tool.update_sprint(
-                    sprint_id=tool_input.get("sprint_id", ""),
-                    name=tool_input.get("name"),
-                    status=tool_input.get("status"),
-                    task_ids=tool_input.get("task_ids"),
-                )
-            else:
-                return {
-                    "tool_call_id": tool_input.get("id", "unknown"),
-                    "tool_name": "sprint_management",
-                    "error": f"Unknown action: {action}",
-                    "result": None
-                }
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "sprint_management",
-                "result": out
-            }
-        except Exception as e:
-            logger.error(f"sprint_management error: {e}", exc_info=True)
-            return {
-                "tool_call_id": tool_input.get("id", "unknown"),
-                "tool_name": "sprint_management",
-                "error": str(e),
-                "result": None
-            }
-
-    async def _run_squad_via_container_api(self, task_id: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-        """Run Worker Squad via Container API when worker_squad_runner is not set."""
-        try:
-            port = CONTAINER_API_PORT
-            try:
-                from manifest.core.config import ConfigManager
-                port = ConfigManager(self.manifest_dir).get_setting("container_api.port", CONTAINER_API_PORT) or CONTAINER_API_PORT
-            except Exception as e:
-                logger.debug("ConfigManager container_api.port failed: %s", e)
-            import httpx
-            url = f"http://127.0.0.1:{port}/api/worker_squad/run"
-            payload = {"task_id": task_id, "manifest_dir": str(self.manifest_dir)}
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                resp = await client.post(url, json=payload)
-            if resp.status_code == 200:
-                run_result = resp.json()
-                return self._tool_result(tool_input, "worker_squad_spawn", result=run_result)
-            return self._tool_result(
-                tool_input, "worker_squad_spawn",
-                error=f"Container API returned {resp.status_code}: {resp.text[:200]}",
-            )
-        except Exception as e:
-            if "Connect" in type(e).__name__ or "connect" in str(e).lower() or "Connection refused" in str(e):
-                logger.warning("Container API not reachable for run_squad: %s", e)
-                return self._tool_result(
-                    tool_input, "worker_squad_spawn",
-                    error="Container API not reachable. Start Manifest with Launcher (manifest) so Container API runs, or set worker_squad_runner on ToolExecutor.",
-                )
-            logger.error("run_squad via Container API failed: %s", e, exc_info=True)
-            return self._tool_result(tool_input, "worker_squad_spawn", error=str(e))
-
-    def _execute_worker_squad_spawn(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute worker_squad_spawn tool (spawn planner/coder/test/debug/approver)."""
-        from manifest.runtime.opencode.tools.worker_squad_spawn import WorkerSquadSpawnTool
-        tool = WorkerSquadSpawnTool(self.manifest_dir)
-        action = (tool_input.get("action") or "").strip()
-        task_id = (tool_input.get("task_id") or "").strip()
-        if not action or not task_id:
-            return self._tool_result(tool_input, "worker_squad_spawn", error="Missing action or task_id")
-        try:
-            if action == "spawn_planner":
-                agent_process_id = tool.spawn_planner(task_id, context=tool_input.get("context"))
-            elif action == "spawn_coder":
-                agent_process_id = tool.spawn_coder(
-                    task_id,
-                    plan=tool_input.get("plan"),
-                    context=tool_input.get("context"),
-                )
-            elif action == "spawn_test":
-                agent_process_id = tool.spawn_test(
-                    task_id,
-                    code_changes=tool_input.get("code_changes"),
-                )
-            elif action == "spawn_debug":
-                agent_process_id = tool.spawn_debug(
-                    task_id,
-                    error_info=tool_input.get("error_info"),
-                )
-            elif action == "spawn_approver":
-                agent_process_id = tool.spawn_approver(
-                    task_id,
-                    work_summary=tool_input.get("work_summary"),
-                )
-            elif action == "run_squad":
-                return self._tool_result(
-                    tool_input, "worker_squad_spawn",
-                    error="run_squad is handled by Container API or worker_squad_runner. Use spawn_planner, spawn_coder, etc. for per-stage log-only spawn.",
-                )
-            else:
-                return self._tool_result(tool_input, "worker_squad_spawn", error=f"Unknown action: {action}")
-            return self._tool_result(tool_input, "worker_squad_spawn", result={"ok": True, "agent_process_id": agent_process_id})
-        except Exception as e:
-            logger.error(f"worker_squad_spawn error: {e}", exc_info=True)
-            return self._tool_result(tool_input, "worker_squad_spawn", error=str(e))
 
     def _execute_blueprint_sync(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         """Execute blueprint_sync tool (compare_blueprints, detect_deviation, sync_blueprint, compare_all_docs)."""

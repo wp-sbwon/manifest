@@ -21,10 +21,9 @@ def test_app_starts_up():
 
 
 def test_app_entry_point_runs():
-    """Running the entry point does not crash (import/runtime). Exit 1 for missing Podman/OpenCode is OK. Timeout = app started and handed off to OpenCode. No view window (MANIFEST_VIEW_NO_WINDOW) so tests do not pop up a process/window."""
+    """Running the entry point does not crash (import/runtime). Exit 1 for missing OpenCode is OK. Timeout = app started and handed off to OpenCode. No view window (MANIFEST_VIEW_NO_WINDOW) so tests do not pop up a process/window."""
     env = {
         "PYTHONPATH": str(ROOT / "src"),
-        "MANIFEST_SKIP_PODMAN_AUTOSTART": "1",
         "MANIFEST_VIEW_NO_WINDOW": "1",
     }
     try:
@@ -45,10 +44,10 @@ def test_app_entry_point_runs():
             f"manifest exited with {proc.returncode}, expected 0 or 1.\nstderr: {proc.stderr!r}\nstdout: {proc.stdout!r}"
         )
     err = (proc.stderr or "") + (proc.stdout or "")
-    if "Podman" in err or "OpenCode" in err or "Docker" in err:
+    if "OpenCode" in err or "opencode" in err:
         return
     raise AssertionError(
-        f"manifest exited 1 but stderr does not mention Podman/OpenCode/Docker.\nstderr: {proc.stderr!r}\nstdout: {proc.stdout!r}"
+        f"manifest exited 1 but stderr does not mention OpenCode.\nstderr: {proc.stderr!r}\nstdout: {proc.stdout!r}"
     )
 
 
