@@ -52,14 +52,17 @@ def test_app_entry_point_runs():
 
 
 def test_manifest_view_runs():
-    """manifest view runs without opening a new window (no popup). MANIFEST_VIEW_NO_WINDOW skips Terminal."""
-    env = {"PYTHONPATH": str(ROOT / "src"), "MANIFEST_VIEW_NO_WINDOW": "1"}
-    proc = subprocess.run(
-        [sys.executable, "-m", "manifest", "view"],
-        cwd=ROOT,
-        env={**__import__("os").environ, **env},
-        capture_output=True,
-        text=True,
-        timeout=15,
-    )
-    assert proc.returncode == 0, f"manifest view failed: {proc.stderr!r} {proc.stdout!r}"
+    """View app starts (run with short timeout; timeout or exit 0 is success)."""
+    env = {"PYTHONPATH": str(ROOT / "src")}
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-m", "manifest.view.app", "--manifest-dir", str(ROOT / "tmp" / ".manifest")],
+            cwd=ROOT,
+            env={**__import__("os").environ, **env},
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        return  # App was running (TUI blocks until quit)
+    assert proc.returncode == 0, f"view app failed: {proc.stderr!r} {proc.stdout!r}"

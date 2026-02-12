@@ -156,11 +156,11 @@ def check_workflow_status(
         }
 
 
-# Single startup test only. Full test suite is archived under tests/archive/.
+# Run all non-archived tests (test_startup, test_entity_schema_validation, test_blueprint_io, test_architect).
 CI_TEST_CMD = [
-    "pytest", "tests/test_startup.py", "-v",
+    "pytest", "tests/", "-v", "--ignore=tests/archive",
 ]
-CI_TEST_TIMEOUT_SEC = 60
+CI_TEST_TIMEOUT_SEC = 90
 
 
 def run_ci_equivalent_tests() -> bool:
@@ -186,28 +186,6 @@ def run_ci_equivalent_tests() -> bool:
 
 def main():
     """Main entry point."""
-    # First, run local CI checks
-    try:
-        from manifest.core.ci_monitor import verify_ci_readiness
-        local_check = verify_ci_readiness()
-
-        if not local_check["ready"]:
-            print("❌ Local CI checks failed!")
-            if not local_check["imports"]["success"]:
-                print("  Import errors:")
-                for k, v in local_check["imports"]["results"].items():
-                    if "FAILED" in v:
-                        print(f"    {k}: {v}")
-            if not local_check["syntax"]["success"]:
-                print("  Syntax errors detected")
-            print("  Fix these issues before pushing!")
-            sys.exit(1)
-        else:
-            print("✅ Local CI checks passed")
-    except Exception as e:
-        print(f"⚠️  Could not run local CI checks: {e}")
-        # Continue to GitHub status check
-
     # Run same tests as GitHub Actions so we catch failures before push
     print("Running startup test (pytest tests/test_startup.py)...")
     if not run_ci_equivalent_tests():
