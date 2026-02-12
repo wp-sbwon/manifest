@@ -25,7 +25,7 @@ Then: `./scripts/setup.sh`, `source venv/bin/activate`, `PYTHONPATH=src python -
 | Path | Purpose |
 |------|--------|
 | `src/`, `tests/`, `scripts/`, `docs/` | Source, tests, scripts, documentation |
-| `.manifest/` | Runtime data (tasks, state, blueprints); created at run time |
+| `.manifest/` | Runtime data (state, blueprints); created at run time. Commit `.manifest/*.json` (except keys and conflicts) to version design and progress. |
 | `.rules/` | Project rules (task granularity, PRD template, code style) |
 | (no htmlcov) | We do not run pytest with coverage; test quality is based on actual failproof checklist, not line coverage. |
 | `reference/` | Reference materials (e.g. implementation plan, PDF) |
@@ -38,7 +38,7 @@ This document provides an overview of the development environment setup for the 
 ## Prerequisites
 
 - Python 3.10 or higher
-- **OpenCode** and **Podman** are required but **you do not install or run them yourself**: the setup script and the launcher install and start them when missing.
+- **OpenCode** is required for the chat/terminal backend. The launcher checks for it and exits with a hint if missing.
 
 ## Quick Start
 

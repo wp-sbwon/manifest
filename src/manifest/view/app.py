@@ -23,7 +23,6 @@ from textual.widgets import Static, Header, Footer
 from textual.binding import Binding
 
 from manifest.core.state_manager import StateManager
-from manifest.core.task_manager import TaskManager
 from manifest.core.git_manager import GitManager
 from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
 from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
@@ -36,7 +35,7 @@ from manifest.view.entity_model import (
     entities_and_comp_status_from_view_schema,
 )
 from manifest.core.paths import default_manifest_dir
-from manifest.core.constants import STATE_FILE, TASKS_FILE
+from manifest.core.constants import STATE_FILE
 from manifest.view.diagram import (
     load_diagram_config,
     build_diagram_spec,
@@ -69,13 +68,10 @@ from manifest.view.views_content import (
     feature_status_from_entities as _feature_status_from_entities,
     item_display_name as _item_display_name,
     order_entities_by_flow as _order_entities_by_flow,
-    progress_bar as _progress_bar,
     single_line_node as _single_line_node,
     status_color_tag as _status_color_tag,
     status_label as _status_label,
     status_label_markup as _status_label_markup,
-    task_status_color_tag as _task_status_color_tag,
-    task_status_markup as _task_status_markup,
 )
 
 logger = get_logger(__name__)
@@ -130,7 +126,6 @@ class ManifestViewApp(App[None]):
     #info-hub ScrollableContainer { padding: 0 2; }
     #info-hub-footer { height: 1; padding: 0 1; border-top: solid #30363d; }
     .sidebar-section { margin-bottom: 1; padding: 0 1; border-bottom: solid #30363d; }
-    #sidebar-tasks { overflow: hidden; }
     .sidebar-title { color: """ + INSPECTOR_ACCENT + """; text-style: bold; }
     .nav-item { padding: 0 1; margin-right: 1; }
     .nav-item.active { background: #1f6feb; color: white; }
@@ -161,7 +156,6 @@ class ManifestViewApp(App[None]):
         self.current_view = ViewType.DIAGRAM
         self.inspector_mode = InspectorMode.DESIGN
         self._right_panel_differences = False  # D toggles Design vs Differences
-        self._last_completed_task_ids: set = set()
         self._selected_node_index: int = 1  # 1-based; 1 = root
         self._diagram_component_list: List[Dict[str, Any]] = []
         self._diagram_blueprint: Optional[Dict[str, Any]] = None
@@ -172,7 +166,6 @@ class ManifestViewApp(App[None]):
         self._diagram_layered_spec: Optional[Dict[str, Any]] = None
         self._diagram_selectable_nodes: List[Tuple[str, str, Dict[str, Any]]] = []
         self._state_manager: Optional[StateManager] = None
-        self._task_manager: Optional[TaskManager] = None
         self._blueprint_sync: Optional[BlueprintSynchronizer] = None
         self._git_manager: Optional[GitManager] = None
         self._blueprint_comparator: Optional[BlueprintComparator] = None
@@ -192,11 +185,6 @@ class ManifestViewApp(App[None]):
             self._state_manager = StateManager(self.manifest_dir)
         return self._state_manager
 
-    def _get_task_manager(self) -> TaskManager:
-        if self._task_manager is None:
-            self._task_manager = TaskManager(self._get_state_manager())
-        return self._task_manager
-
     def _get_blueprint_sync(self) -> BlueprintSynchronizer:
         if self._blueprint_sync is None:
             self._blueprint_sync = BlueprintSynchronizer()
@@ -214,17 +202,6 @@ class ManifestViewApp(App[None]):
         if self._blueprint_comparator is None:
             self._blueprint_comparator = BlueprintComparator()
         return self._blueprint_comparator
-
-    def _get_tasks_and_sprints_from_manifest(self) -> Tuple[List[Dict[str, Any]], List[Any]]:
-        """Tasks and sprints from state."""
-        from manifest.core.task_status_observer import observe_tasks_with_status
-        state_mgr = self._get_state_manager()
-        tasks = state_mgr.get_task_checklist()
-        active_task_ids = state_mgr.get_active_task_ids()
-        tasks = observe_tasks_with_status(tasks, active_task_ids)
-        sprint_ids = state_mgr.list_sprints()
-        sprints = [{"id": sid} for sid in sprint_ids]
-        return tasks, sprints
 
     def _ensure_diagram_components(self) -> None:
         """Populate diagram from get_entities_for_view; layered spec and selectable nodes."""
@@ -694,52 +671,6 @@ class ManifestViewApp(App[None]):
             return self._load_mission_control_view()
         return Panel("Unknown view", title="View", border_style="red")
 
-    def _get_sidebar_tasks(self) -> str:
-        """Sidebar tasks: sprint bar, then each task with icon, name, status, progress."""
-        try:
-            tasks, sprints = self._get_tasks_and_sprints_from_manifest()
-            if not tasks:
-                return "[bold cyan]Tasks[/]\n[dim]─────────────────────[/]\n[white](0)[/]"
-            # Each item shows status label and progress bar
-            name_max = 36
-            total_pct = 0.0
-            for t in tasks:
-                prog = t.get("progress") or {}
-                pct = prog.get("percentage", 0) if isinstance(prog, dict) else 0
-                if (t.get("status") or "").lower() == "completed" and pct == 0:
-                    pct = 100
-                total_pct += pct
-            overall_pct = total_pct / len(tasks) if tasks else 0
-            head = f"[white]SPRINT  {int(overall_pct)}%[/]"
-            head_bar = f"[white]{_progress_bar(overall_pct, 8)}[/]"
-            task_lines = []
-            for i, t in enumerate(tasks[:8], 1):
-                raw_name = (t.get("name") or t.get("id") or "?").replace("\n", " ").strip()
-                name = raw_name[:name_max].strip()
-                prog = t.get("progress") or {}
-                pct = prog.get("percentage", 0) if isinstance(prog, dict) else 0
-                st = (t.get("status") or "").lower()
-                if st == "completed" and pct == 0:
-                    pct = 100
-                if st == "completed":
-                    icon = "[green][X][/]"
-                elif st == "in_progress":
-                    icon = "[cyan][>][/]"
-                else:
-                    icon = "[dim][ ][/]"
-                bar = _progress_bar(pct, 6)
-                status_markup = _task_status_markup(t.get("status", "?"))
-                task_lines.append(f"  {icon} [white]{i}. {name}[/]")
-                task_lines.append(f"        {status_markup}[white]{bar} {pct}%[/]")
-                task_lines.append("")
-            lines = ["[bold cyan]Tasks[/]", "[dim]─────────────────────[/]", head, head_bar, ""] + task_lines
-            if len(tasks) > 8:
-                lines.append(f"[white] ... +{len(tasks) - 8}[/]")
-            return "\n".join(lines).rstrip()
-        except Exception as e:
-            logger.debug("Sidebar tasks failed: %s", e)
-            return "[bold cyan]Tasks[/]\n[dim]─────────────────────[/]\n  (—)"
-
     def _get_sidebar_health(self) -> str:
         """Project Health: deviation % from blueprint sync; code quality/coverage/size from state (updated by bottom-up)."""
         try:
@@ -1115,7 +1046,6 @@ class ManifestViewApp(App[None]):
             with Container(id="sidebar"):
                 with VerticalScroll(id="sidebar-scroll"):
                     yield Static("[bold cyan]Project Health[/]\n[dim]─────────────────────[/]\n  (loading)", id="sidebar-health", classes="sidebar-section")
-                    yield Static("[bold cyan]Tasks[/]\n[dim]─────────────────────[/]\n  (loading)", id="sidebar-tasks", classes="sidebar-section")
             with Container(id="main"):
                 yield Static("", id="main-tab-bar")
                 with VerticalScroll(id="main-scroll"):
@@ -1123,7 +1053,7 @@ class ManifestViewApp(App[None]):
             with Container(id="info-hub"):
                 with VerticalScroll(id="info-hub-scroll"):
                     yield Static("[bold cyan]Inspector:: (loading)[/]\n[dim]────────────────────────────────────────[/]\n  (loading)", id="info-hub-content", classes="sidebar-section")
-                yield Static("[dim][E] Edit Design  [S] Re-Sync Data[/]", id="info-hub-footer")
+                yield Static("[dim][S] Re-Sync Data[/]", id="info-hub-footer")
         yield Footer()
         with Container(id="app-version-strip"):
             with Horizontal():
@@ -1152,21 +1082,9 @@ class ManifestViewApp(App[None]):
             logger.debug("Manifest watch check failed: %s", e)
 
     def _on_manifest_change(self, changed_paths: List[Path]) -> None:
-        """On .manifest change: refresh; sync deviation if task done."""
+        """On .manifest change: refresh Diagram and Health."""
         if not changed_paths:
             return
-        task_or_state = any(
-            p.name in (TASKS_FILE, STATE_FILE) for p in changed_paths
-        )
-        if task_or_state:
-            try:
-                tasks, _ = self._get_tasks_and_sprints_from_manifest()
-                completed = {t.get("id") for t in tasks if t.get("id") and t.get("status") == "completed"}
-                if completed - self._last_completed_task_ids:
-                    self._check_deviation()
-                self._last_completed_task_ids = completed
-            except Exception as e:
-                logger.debug("Task-done deviation check failed: %s", e)
         self.refresh_view()
 
     def _check_deviation(self) -> None:
@@ -1243,12 +1161,10 @@ class ManifestViewApp(App[None]):
             logger.debug("Main content refresh failed: %s", e)
 
     def _refresh_sidebar(self) -> None:
-        """Refresh left (Health, Tasks) and right (Inspector) panels."""
+        """Refresh left (Health) and right (Inspector) panels."""
         try:
             health_w = self.query_one("#sidebar-health", Static)
             health_w.update(self._get_sidebar_health())
-            tasks_w = self.query_one("#sidebar-tasks", Static)
-            tasks_w.update(self._get_sidebar_tasks())
             try:
                 hub_w = self.query_one("#info-hub-content", Static)
                 hub_w.update(self._get_info_hub_content())
