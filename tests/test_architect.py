@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from manifest.opencode.architect import write_architecture, write_prd
-from manifest.schema.entity_schema import empty_blueprint_root, PROJECT_ROOT_ID, empty_entity
+from manifest.audit.entity_schema import empty_blueprint_root, PROJECT_ROOT_ID, empty_entity
 
 
 def test_write_architecture_valid(tmp_path: Path) -> None:

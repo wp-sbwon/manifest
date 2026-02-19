@@ -1,7 +1,7 @@
-"""Build diagram spec from blueprint entities and render as text tree."""
+"""Build text tree from blueprint entities."""
 from typing import Dict, Any, List
 
-from manifest.schema.entity_schema import (
+from manifest.audit.entity_schema import (
     entity_display_name,
     get_root_entity,
     top_layer_entities,
@@ -10,7 +10,6 @@ from manifest.schema.entity_schema import (
 
 
 def _entity_tree_lines(blueprint: Dict[str, Any], entity_id: str, prefix: str, last: bool) -> List[str]:
-    """Recursive tree lines for one entity and its children."""
     entities = {e.get("id"): e for e in (blueprint.get("entities") or []) if e.get("id")}
     entity = entities.get(entity_id)
     if not entity:
@@ -27,17 +26,17 @@ def _entity_tree_lines(blueprint: Dict[str, Any], entity_id: str, prefix: str, l
 
 
 def build_diagram_spec(blueprint: Dict[str, Any]) -> List[str]:
-    """Build a text tree spec from blueprint. Root is PROJECT_ROOT_ID or first entity."""
+    """Build text tree from blueprint."""
     entities = blueprint.get("entities") or []
     if not entities:
-        return ["(no entities)"]
+        return ["No entities"]
     root = get_root_entity(blueprint)
     root_id = root.get("id") if root else (entities[0].get("id") if entities else "")
     if not root_id:
-        return ["(no root)"]
+        return ["No root"]
     root_entity = next((e for e in entities if (e.get("id") or "") == root_id), None)
     if not root_entity:
-        return ["(root not in entities)"]
+        return ["Root not in entities"]
     name = entity_display_name(root_entity) or root_id
     lines = [name]
     child_ids = root_entity.get("children") or []

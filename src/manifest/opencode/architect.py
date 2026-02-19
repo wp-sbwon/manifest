@@ -1,21 +1,15 @@
-"""
-Architect tool: write_prd and write_architecture.
-Validates payload with schema and saves via io.save_blueprint.
-"""
+"""write_prd and write_architecture; validate and save blueprint."""
 import json
 from pathlib import Path
 from typing import Any, Dict, Union
 
 from manifest.io.blueprint_io import save_blueprint
-from manifest.schema.entity_validation import normalize_for_schema, validate_blueprint_data
-from manifest.schema.entity_schema import empty_blueprint_root, PROJECT_ROOT_ID, empty_entity
+from manifest.audit.entity_validation import normalize_for_schema, validate_blueprint_data
+from manifest.audit.entity_schema import empty_blueprint_root, PROJECT_ROOT_ID, empty_entity
 
 
 def write_architecture(manifest_dir: Path, payload: Union[Dict[str, Any], str]) -> Dict[str, Any]:
-    """
-    Validate blueprint payload and save to blueprint_design.json.
-    payload: dict or JSON string. Returns { "ok": bool, "error": str? }.
-    """
+    """Validate blueprint payload and save to blueprint_design.json. Returns { "ok": bool, "error": str? }."""
     manifest_dir = Path(manifest_dir)
     if isinstance(payload, str):
         try:
@@ -34,10 +28,7 @@ def write_architecture(manifest_dir: Path, payload: Union[Dict[str, Any], str]) 
 
 
 def write_prd(manifest_dir: Path, content: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
-    """
-    Create a minimal blueprint from PRD content (mission text) and save.
-    content: mission string or dict with "mission" key. Returns { "ok": bool, "error": str? }.
-    """
+    """Create blueprint from mission text and save. Returns { "ok": bool, "error": str? }."""
     manifest_dir = Path(manifest_dir)
     mission = ""
     if isinstance(content, dict):
@@ -50,7 +41,7 @@ def write_prd(manifest_dir: Path, content: Union[str, Dict[str, Any]]) -> Dict[s
         {
             **empty_entity(PROJECT_ROOT_ID),
             "intent": {
-                "narrative": {"role": "project", "mission": mission or "(no mission)"},
+                "narrative": {"role": "project", "mission": mission or "No mission"},
                 "blueprint": {"type": "FLOW", "topology": {}},
                 "protocol": {"input": [], "output": []},
                 "profile": {"language": "", "platform": "", "io_model": "", "state_model": ""},

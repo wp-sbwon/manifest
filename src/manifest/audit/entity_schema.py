@@ -215,7 +215,7 @@ def get_root_entity(blueprint: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def top_layer_entities(blueprint: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Return top-layer entities (root's children). Layer 0 = features."""
+    """Return root's direct children (top-layer entities). No explicit type (e.g. modules)."""
     root = get_root_entity(blueprint)
     if not root:
         return []
@@ -237,14 +237,6 @@ def mission_from_blueprint(blueprint: Dict[str, Any], default: str = "") -> str:
     raw = (root_intent(blueprint).get("narrative") or {}).get("mission") or ""
     out = (raw or "").strip()
     return out if out else (default or "")
-
-
-def goals_from_blueprint(blueprint: Dict[str, Any]) -> List[Any]:
-    """Root goals list for display. Returns list of goal dicts or strings; empty list if none."""
-    goals = root_intent(blueprint).get("goals")
-    if goals is None or not isinstance(goals, list):
-        return []
-    return goals
 
 
 # ---------------------------------------------------------------------------

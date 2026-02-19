@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from manifest.schema.entity_schema import empty_blueprint_root, PROJECT_ROOT_ID, empty_entity
+from manifest.audit.entity_schema import empty_blueprint_root, PROJECT_ROOT_ID, empty_entity
 from manifest.io.blueprint_io import load_blueprint, load_code_blueprint, save_blueprint
-from manifest.schema.manifest_filenames import BLUEPRINT_DESIGN_FILE, BLUEPRINT_CODE_FILE
+from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE, BLUEPRINT_CODE_FILE
 
 
 def test_load_blueprint_missing_returns_empty_root(tmp_path: Path) -> None:

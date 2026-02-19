@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from manifest.schema.entity_schema import (
+from manifest.audit.entity_schema import (
     PROJECT_ROOT_ID,
     empty_intent,
     empty_reality,
     empty_entity,
     empty_blueprint_root,
 )
-from manifest.schema.entity_validation import (
+from manifest.audit.entity_validation import (
     normalize_for_schema,
     validate_entity,
     validate_blueprint_data,

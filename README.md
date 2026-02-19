@@ -64,8 +64,7 @@ manifest/
 │   ├── audit/               # Entity schema, blueprint load/compare/sync, code extraction, monitoring
 │   ├── core/                # State, git, paths, logger, constants
 │   ├── opencode/            # Architect, code_blueprint_enricher
-│   ├── io/                  # Blueprint I/O
-│   └── schema/              # Schema and validation
+│   └── io/                  # Blueprint I/O
 ├── tests/
 ├── docs/
 ├── scripts/                 # setup.sh, run_bottom_up_docs.py, check_ci_status.py, ...
