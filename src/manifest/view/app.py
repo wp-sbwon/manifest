@@ -1147,19 +1147,15 @@ class ManifestViewApp(App[None]):
         self.set_interval(1, self._refresh_header_metrics)
         self._view_file_watcher = ViewFileWatcher(
             self.manifest_dir,
-            on_change=self._on_manifest_change,
+            on_change=lambda paths: self.call_from_thread(self._on_manifest_change, paths),
         )
-        self.set_interval(2, self._check_manifest_changes)
+        self._view_file_watcher.start()
 
-    def _check_manifest_changes(self) -> None:
-        """Check .manifest for changes."""
-        try:
-            self._view_file_watcher.check()
-        except Exception as e:
-            logger.debug("Manifest watch check failed: %s", e)
+    def on_unmount(self) -> None:
+        if hasattr(self, "_view_file_watcher") and self._view_file_watcher is not None:
+            self._view_file_watcher.stop()
 
     def _on_manifest_change(self, changed_paths: List[Path]) -> None:
-        """On .manifest change: refresh Diagram and Health."""
         if not changed_paths:
             return
         self.refresh_view()

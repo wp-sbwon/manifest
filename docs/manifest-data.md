@@ -4,11 +4,13 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 
 ## Blueprint
 
-**Source of truth (design):** `blueprint_design.json`. Root intent holds mission, goals, interface; root's children = top layer (features).
+**Source of truth (design):** `blueprint_design.json`. Root intent holds mission, goals, interface; root's children = top layer (e.g. modules).
 
 **Alignment rule:** `blueprint_design.json` and `blueprint_code.json` use the **same schema** so they can be compared mechanically. Diagram and Inspector data come from the **comparison output**, not from design or code alone.
 
 **Depth / granularity:** No fixed max depth. Diagram can drill (Enter/Backspace). Task-level granularity is separate (`.rules/task-granularity.md`).
+
+**Entity shape:** Same keys at every level (`id`, `children`, `intent`, `reality`, etc.). No explicit type or layer label in the schema. Any distinction (e.g. goal-oriented near root, implementation-oriented deeper) is by context and by the content writers produce, not by a "layer type" or index in doc creation.
 
 ---
 
@@ -17,12 +19,12 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 | File | Role | Created by |
 |------|------|------------|
 | **blueprint_design.json** | Design (top-down). Intent filled, reality from design or empty. | Architect / design agents |
-| **blueprint_code.json** | Code (bottom-up). **Exact reflection of the actual code** — produced by CodeExtractor from the codebase; same schema as design so the two are mechanically comparable. | CodeExtractor + optional LLM (e.g. `generate_higher_level_docs_from_code`) |
-| **blueprint_view.json** | **Final blueprint for the view.** Mechanical comparison of design vs code + schema validation. Plan/actual pairs and validation per entity. This is the file the view side references. | `build_view_schema` on refresh (after validation) |
+| **blueprint_code.json** | Code (bottom-up). Same schema and entity ids as design; reality from CodeExtractor; intent from opencode enricher (ground truth from code). | run_bottom_up_docs.py (on commit) |
+| **blueprint_view.json** | **Final blueprint for the view.** Same keys as design/code; each comparable value is a pair plus deviation: `{ "plan", "actual", "deviates" }`. Validation (status, deviations) per entity. | `build_view_schema` (on view refresh, mock script, or run_bottom_up_docs) |
 
 **Design and code:** Same shape: `version`, `root_id`, `entities`; per entity: `id`, `children`, `dependencies`, `intent`, `reality`, `outgoing_contracts`. Both files must align to this schema for comparison.
 
-**View:** The view reads from the comparison pipeline output. That pipeline loads design and code blueprints, validates them against the schema, compares them mechanically, builds the integrated view schema (plan/actual + validation), and writes `blueprint_view.json`. The view uses that result (and the in-memory `view_schema` from `get_entities_for_view`) as its reference.
+**View:** View schema has the **same keys** as blueprint_design/blueprint_code. Values are not single values but `{ "plan": <design>, "actual": <code>, "deviates": <bool> }` so the view can show one spec and flag deviations. The pipeline loads design and code, validates, compares mechanically, builds this view schema, and writes `blueprint_view.json`. The view uses that (and in-memory `view_schema` from `get_entities_for_view`) as its reference.
 
 ---
 
@@ -73,8 +75,8 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 | File | Top-down | Bottom-up |
 |------|----------|------------|
 | blueprint_design.json | ✓ Agents | |
-| blueprint_code.json | | ✓ CodeExtractor / run_bottom_up_docs.py |
-| blueprint_view.json | | (comparison output) |
+| blueprint_code.json | | ✓ run_bottom_up_docs.py (on commit) |
+| blueprint_view.json | | Comparison output (view refresh; also create_mock_project_data.py, run_bottom_up_docs.py) |
 | state.json (health_metrics) | | ✓ Pipeline |
 | tasks.json | ✓ Core/agents | |
 | diagram_config.json | Config | |

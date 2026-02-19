@@ -1,194 +1,105 @@
 # Manifest
 
-**AI-Native Orchestration IDE** - Solve Code Blindness by elevating developers to Conductors.
+**AI-Native Orchestration IDE** — Reduce code blindness by making design and code visible and comparable in one place. Developers act as conductors: plan (top-down blueprint) and verify (bottom-up code) share the same entity schema; the View shows drift and status.
+
+## Intent
+
+- **Blueprint-based alignment:** Design (intent) and code (reality) use the same entity shape (`id`, `children`, `intent`, `reality`, `outgoing_contracts`). Top-down agents write `blueprint_design.json`; bottom-up extraction and enricher produce `blueprint_code.json`. Both are compared to build `blueprint_view.json` (plan vs actual, per-entity deviations).
+- **Single surface:** The Manifest View TUI shows diagram, files, timeline, mission, and inspector. All data comes from `.manifest/`. Chat, terminal, and LLM execution are provided by **OpenCode**; the View is visualization-only and does not execute tools.
+- **Bottom-up on commit:** When a commit is made (via the app’s GitManager or an optional git post-commit hook), the pipeline runs `run_bottom_up_docs.py`: CodeExtractor → merge with design → opencode enricher → `blueprint_code.json`, then view build and health metrics. The View refreshes when `.manifest` files change.
+
+## Implementation
+
+- **Launcher** (`python -m manifest`): Ensures OpenCode is on PATH; starts the Manifest View (TUI) in a separate window/process, then execs OpenCode for the project directory. Uses `tmp/` as project dir when running from the manifest repo with `MANIFEST_DEV=1`.
+- **View** (`manifest.view.app`): Textual TUI. Reads `blueprint_design.json`, `blueprint_code.json`, `blueprint_view.json`, `state.json`, and related files from `.manifest/`. Renders diagram (with status), files, timeline, mission; inspector shows selected node’s design and actual code. Status (Planned / Healthy / Partial / Deviation) is computed by BlueprintSynchronizer (design vs code). A file watcher (watchdog) refreshes when `.manifest` files change.
+- **Audit:** Entity schema and validation (`audit/entity_schema.py`, `entity_validation.py`); blueprint load, compare, sync (`audit/blueprint/`); code extraction and code blueprint (`audit/code/`); CodeWatcher and `run_bottom_up_docs.py` for bottom-up. GitManager calls the bottom-up script after `create_commit()`.
+- **OpenCode:** Required. Used for chat, terminal, and agent execution. Enricher fills intent from code for the code blueprint.
 
 ## Documentation
 
 All documentation is in [`docs/`](docs/). See [docs/README.md](docs/README.md) for the index.
 
-**Quick links:** [docs/README.md](docs/README.md) · [View app](docs/view-app.md) · [Manifest data](docs/manifest-data.md) · [Scripts and pipelines](docs/scripts-and-pipelines.md).
-
-## Execution backend
-
-The project supports **multiple backends** for chat, terminal, and LLM execution; the **primary** one is OpenCode. The backend is configured via `agent.execution_backend` (default: `opencode`). Additional backends can be added by implementing the executor interface and registering them in the executor factory.
-
-- **Chat and terminal** — Provided by the configured backend; the View app is visualization-only.
-- **LLM execution** — Agent execution goes through the configured backend.
-- **Tool execution** — Tools (including bash) are executed by the backend.
+Quick links: [View app](docs/view-app.md) · [Manifest data](docs/manifest-data.md) · [Scripts and pipelines](docs/scripts-and-pipelines.md).
 
 ## Quick Start
 
-Then: `./scripts/setup.sh`, `source venv/bin/activate`, `PYTHONPATH=src python -m manifest`.
-
-## Root directory (what’s what)
-
-| Path | Purpose |
-|------|--------|
-| `src/`, `tests/`, `scripts/`, `docs/` | Source, tests, scripts, documentation |
-| `.manifest/` | Runtime data (state, blueprints); created at run time. Commit `.manifest/*.json` (except keys and conflicts) to version design and progress. |
-| `.rules/` | Project rules (task granularity, PRD template, code style) |
-| (no htmlcov) | We do not run pytest with coverage; test quality is based on actual failproof checklist, not line coverage. |
-| `reference/` | Reference materials (e.g. implementation plan, PDF) |
-| `AGENTS.md.example` | Example for project-level AGENTS.md (OpenCode convention) |
-
-# Manifest Development Environment
-
-This document provides an overview of the development environment setup for the Manifest project.
-
-## Prerequisites
-
-- Python 3.10 or higher
-- **OpenCode** is required for the chat/terminal backend. The launcher checks for it and exits with a hint if missing.
-
-## Quick Start
-
-### Option 1: Python Virtual Environment (Recommended for Development)
-
-1. **Setup the environment (OpenCode and Podman are installed automatically when missing):**
+1. **Setup (installs venv, OpenCode, Podman if missing):**
    ```bash
    chmod +x scripts/setup.sh
    ./scripts/setup.sh
    ```
 
-2. **Activate the virtual environment:**
+2. **Activate and run:**
    ```bash
    source venv/bin/activate
-   ```
-
-3. **Run the application:**
-   ```bash
    PYTHONPATH=src python -m manifest
    ```
-   Or after `pip install -e .`:
-   ```bash
-   manifest
-   ```
-   This starts **OpenCode** (chat/commands) and the **Manifest View** (blueprint, drift, tasks). If OpenCode or Podman are missing, the launcher will try to install and start them; no manual install needed.
+   Or after `pip install -e .`: `manifest`
 
-   The app uses the **current working directory** as the project: navigate to your target directory in the terminal, then run `manifest`. In **dev** (when you run `manifest` from the manifest repo itself), it uses a temp project dir `tmp/` inside the repo so OpenCode and the View don't load the manifest codebase. Override with `MANIFEST_PROJECT_DIR` if needed.
+   This starts **OpenCode** (chat/terminal) and the **Manifest View** (blueprint, drift, tasks). The app uses the **current working directory** as the project; from the manifest repo in dev, set `MANIFEST_DEV=1` to use `tmp/` as the project so the View doesn’t load the manifest codebase. Override with `MANIFEST_PROJECT_DIR` if needed.
 
-4. **Deactivate when done:**
-   ```bash
-   deactivate
-   ```
+## Prerequisites
 
-### Option 2: Docker Compose (optional / alternative deployment)
+- **Python 3.10+**
+- **OpenCode** — required. The launcher checks for it and exits with a hint if missing.
 
-The main app requires **Podman** (see Option 1). If you use Docker Compose for deployment:
+## Root directory
 
-1. **Install Docker Desktop or Podman** and ensure the runtime is running.
+| Path | Purpose |
+|------|--------|
+| `src/`, `tests/`, `scripts/`, `docs/` | Source, tests, scripts, documentation |
+| `.manifest/` | Runtime data (state, blueprints). Commit `.manifest/*.json` (except secrets/conflicts) to version design and progress. |
+| `.rules/` | Project rules (task granularity, PRD template, code style) |
+| `tmp/` | Dev mock project when `MANIFEST_DEV=1`; view loads `tmp/.manifest` instead of repo `.manifest`. |
+| `reference/` | Reference materials |
+| `AGENTS.md.example` | Example for project-level AGENTS.md (OpenCode convention) |
 
-2. **Setup and run:**
-   ```bash
-   chmod +x setup-docker.sh
-   ./setup-docker.sh
-   docker-compose up
-   ```
-
-3. **Stop:** `docker-compose down`
-
-## Project Structure
+## Project structure
 
 ```
 manifest/
-├── src/
-│   └── manifest/       # Main package (src layout)
-│       ├── core/       # Core modules (config, state_manager)
-│       ├── ui/         # UI modules (app, widgets, bootstrap_ui)
-│       ├── agents/     # Agent modules (coordinator, context_provider, task_scoper)
-│       ├── bridge/     # Bridge modules (agent_bridge)
-│       └── audit/      # Audit modules (drift_auditor)
-├── tests/              # Test files
-├── docs/               # Documentation files
-├── scripts/            # Setup and utility scripts
-├── .manifest/          # Application data and configuration
-├── venv/               # Python virtual environment (gitignored)
-├── requirements.txt    # Python dependencies
-├── pytest.ini          # Pytest configuration
-├── Dockerfile          # Docker image configuration
-├── docker-compose.yml  # Docker Compose configuration
-└── README.md           # This file
+├── src/manifest/
+│   ├── launcher.py          # Entry: start View, then exec OpenCode
+│   ├── view/                # TUI: app, diagram, entity_model, file_watcher
+│   ├── audit/               # Entity schema, blueprint load/compare/sync, code extraction, monitoring
+│   ├── core/                # State, git, paths, logger, constants
+│   ├── opencode/            # Architect, code_blueprint_enricher
+│   ├── io/                  # Blueprint I/O
+│   └── schema/              # Schema and validation
+├── tests/
+├── docs/
+├── scripts/                 # setup.sh, run_bottom_up_docs.py, check_ci_status.py, ...
+├── .manifest/               # Created at run time; blueprint_*.json, state.json, ...
+├── requirements.txt
+├── pyproject.toml
+└── README.md
 ```
 
 ## Dependencies
 
-### Python Dependencies
-- `textual>=0.40.0` - Terminal UI framework
+- See `requirements.txt` and `pyproject.toml`. Key: `textual` (TUI), `opencode-ai` (required), `GitPython`, etc.
+- **OpenCode** is a required dependency; the launcher does not fall back to another backend.
 
-See `requirements.txt` for the complete list.
-
-### Optional Dependencies
-
-**OpenCode Integration** (Optional):
-- Manifest can optionally use OpenCode for terminal command execution
-- If OpenCode is already installed in your environment, Manifest will automatically detect and use it
-- If OpenCode is not available, Manifest falls back to its internal implementation
-- To explicitly enable OpenCode integration, install with: `pip install opencode>=1.0.0`
-- No conflicts: Manifest works seamlessly whether OpenCode is installed or not
-
-**Skills System**:
-- Configure skills for individual agents in `.manifest/agent_config.json`
-- Configure project-scoped skills in `AGENTS.md` (OpenCode convention)
-- Skills are automatically loaded from `.rules/` directory
 ## Git hooks (optional)
 
-- **Bottom-up docs on every commit:** After each commit, Manifest can refresh `blueprint_code.json` from code. To enable:
-  `ln -sf ../../scripts/post_commit_bottom_up.sh .git/hooks/post-commit`
-- **CI checks before push:** See `scripts/pre_push_ci_check.sh` and `.pre-commit-config.yaml` (pre-push stage).
+- **Bottom-up after commit:** Commits made via the app’s GitManager already trigger `run_bottom_up_docs.py`. For commits made with `git commit` in the terminal, install the hook:
+  ```bash
+  ln -sf ../../scripts/post_commit_bottom_up.sh .git/hooks/post-commit
+  ```
+- **CI before push:** `scripts/pre_push_ci_check.sh` and pre-commit pre-push (see `.pre-commit-config.yaml`).
 
-## Development Workflow
+## Development
 
-### Using Virtual Environment
+- Run tests: `PYTHONPATH=src pytest` or `PYTHONPATH=src python scripts/check_ci_status.py`.
+- View only (e.g. with mock data): `PYTHONPATH=src python -m manifest.view.app --manifest-dir tmp/.manifest`
+- Mock data for tmp: `PYTHONPATH=src python scripts/create_mock_project_data.py tmp/.manifest`
 
-1. Always activate the virtual environment before working:
-   ```bash
-   source venv/bin/activate
-   ```
+## Docker (optional)
 
-2. Install new dependencies:
-   ```bash
-   pip install <package-name>
-   pip freeze > requirements.txt
-   ```
-
-3. Run tests or the application:
-   ```bash
-   python -m manifest
-   ```
-
-### Using Docker
-
-1. Build the image:
-   ```bash
-   docker-compose build
-   ```
-
-2. Run the container:
-   ```bash
-   docker-compose up
-   ```
-
-3. For development with live code changes, the volume is mounted automatically.
+If you use Docker Compose for deployment: ensure a container runtime (e.g. Podman) is available. The launcher can start Podman when needed. See `scripts/setup-docker.sh` and `docker-compose.yml`.
 
 ## Troubleshooting
 
-### Python Virtual Environment Issues
-
-- **Virtual environment not found:** Run `./setup.sh` again
-- **Package installation fails:** Ensure pip is upgraded: `pip install --upgrade pip`
-
-### Container runtime issues
-
-- **Podman not running:** The launcher starts it automatically. To start manually: on macOS run `podman machine start`; on Linux run `sudo systemctl start podman.socket`.
-- **Permission denied:** Ensure the container runtime has proper permissions.
-- **Port conflicts:** Modify ports in `docker-compose.yml` if needed.
-
-## Environment Variables
-
-Create a `.env` file in the project root for environment-specific variables (this file is gitignored).
-
-## Notes
-
-- The virtual environment (`venv/`) should not be committed to version control
-- Container images are built automatically on first run when using Docker Compose
-- Both environments are configured for development with hot-reload capabilities
+- **OpenCode not found:** Install so `opencode` is on PATH (e.g. via `scripts/setup.sh` or `pip install opencode-ai`).
+- **View not updating:** Bottom-up runs on commit; the View refreshes when `.manifest` files change (watchdog). Ensure `blueprint_design.json` exists and, after a commit, that `run_bottom_up_docs.py` has run (check for updated `blueprint_code.json`).
+- **Podman:** On macOS run `podman machine start`; on Linux `sudo systemctl start podman.socket` if the launcher doesn’t start it.
