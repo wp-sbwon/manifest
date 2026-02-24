@@ -21,7 +21,7 @@ def get_timeline_events(manifest_dir: Path) -> List[Tuple[str, str, str, str]]:
     project_root = manifest_dir.parent
     git_mgr = GitManager(project_root, search_parent_directories=False)
 
-    design_doc_names = ["blueprint_design.json", "prd.json", "tasks.json"]
+    design_doc_names = ["blueprint_design.json", "prd.json"]
     design_paths = [
         str(manifest_dir.relative_to(project_root) / name)
         for name in design_doc_names

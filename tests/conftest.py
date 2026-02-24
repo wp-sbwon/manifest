@@ -1,10 +1,12 @@
-"""Pytest setup. Skip slow health checks (ruff/pytest) in view tests."""
-import os
+"""Pytest setup."""
 from pathlib import Path
 
 import pytest
 
-os.environ.setdefault("MANIFEST_VIEW_SKIP_SLOW_METRICS", "1")
+
+@pytest.fixture(autouse=True)
+def skip_slow_metrics_by_default(monkeypatch):
+    monkeypatch.setenv("MANIFEST_VIEW_SKIP_SLOW_METRICS", "1")
 
 
 @pytest.fixture

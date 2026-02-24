@@ -331,6 +331,8 @@ class BlueprintSynchronizer:
             report.resolution_note = resolution_note
 
         self._storage.save(report.to_dict())
+        if ConflictWorkflowStatus.is_terminal(status):
+            self._storage.prune(max_age_days=30)
         return True
 
     def sync_blueprints(

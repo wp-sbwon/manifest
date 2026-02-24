@@ -2,7 +2,9 @@
 """
 Setup script to register Manifest agents with OpenCode.
 
-Writes opencode.json:
+Writes opencode.json (tools: {write, edit, bash}). OpenCode may also load
+.opencode/agents/*.json which use tools as string arrays. Schema compatibility
+depends on OpenCode version; merge order (project vs .opencode) determines precedence.
 - default_agent = orchestrator (orchestrator in agent switcher).
 - Built-in agents build and plan are disabled.
 - full-test is a subagent (callable by orchestrator only; not in switcher).

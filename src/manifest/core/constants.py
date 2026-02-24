@@ -8,5 +8,4 @@ DEFAULT_MANIFEST_API_BASE_URL = "http://manifest-app:8000"
 # Manifest file names (relative to .manifest/)
 STATE_FILE = "state.json"
 AGENT_CONFIG_FILE = "agent_config.json"
-TASKS_FILE = "tasks.json"
 DESIGN_HISTORY_FILE = "design_history.json"
