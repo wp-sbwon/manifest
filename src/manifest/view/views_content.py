@@ -16,7 +16,6 @@ from manifest.audit.entity_schema import (
     top_layer_entities,
 )
 from manifest.core.logger import get_logger
-from manifest.core.task_constants import status_display_label
 
 logger = get_logger(__name__)
 
@@ -178,32 +177,6 @@ def status_label_markup(status: str, text: Optional[str] = None) -> str:
     plain = text if text is not None else status_label(status)
     tag = status_color_tag(status)
     return f"[{tag}]{plain}[/]"
-
-
-def task_status_color_tag(status: str) -> str:
-    """Color for task lifecycle status."""
-    s = (status or "").strip().lower()
-    if s == "pending":
-        return "#b8860b"
-    if s == "in_progress":
-        return "#58a6ff"
-    if s == "paused":
-        return "orange1"
-    if s == "blocked":
-        return "red"
-    if s == "completed":
-        return "green"
-    if s == "cancelled":
-        return "grey50"
-    return "#8b949e"
-
-
-def task_status_markup(status: str) -> str:
-    """Task status label with color in brackets."""
-    raw = status or "?"
-    label = status_display_label(raw)
-    tag = task_status_color_tag(raw)
-    return f" [dim]│[/] [{tag}]{label}[/] [dim]│[/] "
 
 
 def order_entities_by_flow(
