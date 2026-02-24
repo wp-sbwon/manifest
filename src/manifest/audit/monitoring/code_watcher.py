@@ -1,6 +1,5 @@
 """
 Update blueprint_code.json from code (extraction + opencode enricher).
-Invoked by the bottom-up pipeline on commit.
 """
 from pathlib import Path
 from typing import Optional

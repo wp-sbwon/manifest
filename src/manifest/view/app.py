@@ -180,14 +180,14 @@ class ManifestViewApp(App[None]):
         return (self._get_design_blueprint(), self._get_code_blueprint())
 
     def _get_implementation_status(self) -> tuple:
-        """Comp status and status_info from view data (entity_model pipeline)."""
+        """Comp status and status_info from view data."""
         vd = self._view_data
         comp_status = (vd.get("comp_status") or {}).copy()
         status_info = {"node_statuses": comp_status}
         return (comp_status, status_info)
 
     def _get_conflicts(self) -> list:
-        """Blueprint conflicts from view data (entity_model pipeline)."""
+        """Blueprint conflicts from view data."""
         return list(self._view_data.get("conflicts") or [])
 
     def _ensure_diagram_components(self) -> None:

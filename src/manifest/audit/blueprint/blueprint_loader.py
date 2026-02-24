@@ -56,10 +56,7 @@ class BlueprintLoader:
         blueprint_data: Dict[str, Any],
         backup: bool = True
     ) -> bool:
-        """
-        Save blueprint_design.json with optional backup.
-        Uses save_blueprint_with_metadata for validation and entity-format persistence.
-        """
+        """Save blueprint_design.json with optional backup."""
         from manifest.audit.blueprint.blueprint_metadata import save_blueprint_with_metadata
 
         manifest_dir = Path(manifest_dir)

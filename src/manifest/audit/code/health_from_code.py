@@ -1,7 +1,5 @@
 """
-Health stats from the real code (no design docs).
-
-Used by Project Health: lint result, test coverage %, build size.
+Health stats from code: lint result, test coverage %, build size.
 """
 import os
 import re
@@ -17,8 +15,7 @@ logger = get_logger(__name__)
 def get_health_from_code(project_root: Path) -> Dict[str, Any]:
     """
     Get health stats from the code on disk.
-    project_root: parent of .manifest.
-    Returns: code_quality, test_coverage, binary_size. Use env MANIFEST_VIEW_SKIP_SLOW_METRICS=1 to skip ruff/pytest in tests.
+    project_root: parent of .manifest. Returns: code_quality, test_coverage, binary_size.
     """
     out: Dict[str, Any] = {"code_quality": None, "test_coverage": None, "binary_size": None}
     project_root = Path(project_root).resolve()

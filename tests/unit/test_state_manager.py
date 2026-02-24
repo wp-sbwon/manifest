@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from manifest.core.state_manager import StateManager, MAX_HISTORY_PER_CHANNEL
+from manifest.core.state_manager import StateManager
 from manifest.core.constants import STATE_FILE
 
 
@@ -14,20 +14,16 @@ def test_state_manager_loads_from_file() -> None:
         manifest_dir = Path(tmp)
         state_file = manifest_dir / STATE_FILE
         state_file.write_text(
-            '{"version":"1.0","chat_history":{},"health_metrics":null,"timestamp":"2020-01-01T00:00:00"}'
+            '{"version":"1.0","health_metrics":{"code_quality":"ok"},"timestamp":"2020-01-01T00:00:00"}'
         )
         mgr = StateManager(manifest_dir)
-        assert mgr.get_state_version() == "1.0"
-        assert mgr.get_chat_history() == []
-        assert mgr.get_health_metrics() is None
+        assert mgr.get_health_metrics() == {"code_quality": "ok"}
 
 
 @pytest.mark.unit
 def test_state_manager_default_when_missing() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         mgr = StateManager(Path(tmp))
-        assert mgr.get_state_version() == "1.0"
-        assert mgr.get_chat_history() == []
         assert mgr.get_health_metrics() is None
 
 
@@ -41,46 +37,3 @@ def test_save_state_sync_persists() -> None:
         assert ok is True
         data = json.loads((manifest_dir / STATE_FILE).read_text())
         assert data.get("health_metrics") == {"code_quality": "ok"}
-
-
-@pytest.mark.unit
-def test_prepare_state_for_persist_includes_chat_history() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        mgr = StateManager(Path(tmp))
-        mgr.add_chat_message("main", "user", "hi")
-        content = mgr._prepare_state_for_persist()
-        parsed = json.loads(content)
-        assert parsed.get("chat_history", {}).get("main")
-        assert parsed["chat_history"]["main"][0]["content"] == "hi"
-
-
-@pytest.mark.unit
-def test_clear_state_resets_to_default() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        mgr = StateManager(Path(tmp))
-        mgr.add_chat_message("main", "user", "hi")
-        mgr.set_health_metrics({"x": 1})
-        mgr.clear_state()
-        assert mgr.get_chat_history() == []
-        assert mgr.get_health_metrics() is None
-
-
-@pytest.mark.unit
-def test_add_chat_message_prunes_when_over_limit() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        mgr = StateManager(Path(tmp))
-        for i in range(MAX_HISTORY_PER_CHANNEL + 10):
-            mgr.add_chat_message("main", "user", f"msg-{i}")
-        history = mgr.get_chat_history("main")
-        assert len(history) == MAX_HISTORY_PER_CHANNEL
-        assert history[0]["content"] == "msg-10"
-        assert history[-1]["content"] == f"msg-{MAX_HISTORY_PER_CHANNEL + 9}"
-
-
-@pytest.mark.unit
-def test_get_state_returns_copy() -> None:
-    with tempfile.TemporaryDirectory() as tmp:
-        mgr = StateManager(Path(tmp))
-        state = mgr.get_state()
-        state["version"] = "mutated"
-        assert mgr.get_state_version() == "1.0"

@@ -10,12 +10,12 @@ from manifest.audit.blueprint.manifest_filenames import (
     BLUEPRINT_DESIGN_FILE,
     BLUEPRINT_VIEW_FILE,
 )
-from manifest.core.constants import STATE_FILE, DESIGN_HISTORY_FILE
+from manifest.core.constants import STATE_FILE
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-WATCH_FILES = (STATE_FILE, BLUEPRINT_CODE_FILE, BLUEPRINT_DESIGN_FILE, BLUEPRINT_VIEW_FILE, DESIGN_HISTORY_FILE)
+WATCH_FILES = (STATE_FILE, BLUEPRINT_CODE_FILE, BLUEPRINT_DESIGN_FILE, BLUEPRINT_VIEW_FILE)
 WATCH_DIR = "conflicts"
 
 DEBOUNCE_SECONDS = 0.15

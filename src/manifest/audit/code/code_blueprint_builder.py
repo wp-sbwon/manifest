@@ -1,6 +1,6 @@
 """
-Build blueprint_code from design structure and code extraction; enrich intent via opencode.
-Output has same schema and entity ids as design.
+Build blueprint_code from design and extraction; enrich intent via opencode.
+Same schema and entity ids as design.
 """
 import re
 from pathlib import Path
@@ -162,6 +162,12 @@ def merge_design_and_extraction(
         if ext and id(ext) not in used_extracted:
             used_extracted.add(id(ext))
             return ext
+        if eid != PROJECT_ROOT_ID:
+            design_name = entity_display_name(design_ent) or design_ent.get("name") or eid
+            logger.warning(
+                "Fuzzy match failed for design entity %s (%s): no extracted match; tried exact id/name, path segment, partial, token overlap",
+                eid, design_name,
+            )
         return None
 
     entities: List[Dict[str, Any]] = []

@@ -22,30 +22,52 @@ def _refresh_blueprint_code(project_root: Path, manifest_dir: Path) -> bool:
     return watcher.force_extract()
 
 
-def _write_project_metrics(manifest_dir: Path, project_root: Path) -> None:
+def _write_project_metrics(manifest_dir: Path, project_root: Path) -> bool:
     try:
         from manifest.audit.code.health_from_code import write_health_to_state
-        write_health_to_state(manifest_dir)
+        return write_health_to_state(manifest_dir)
     except Exception as e:
         print(f"Warning: failed to write project metrics: {e}", file=sys.stderr)
+        return False
 
 
-def _refresh_blueprint_view(manifest_dir: Path) -> None:
+def _refresh_blueprint_view(manifest_dir: Path) -> bool:
     """Build and write blueprint_view.json (same keys as design/code; values = plan/actual + deviates)."""
     try:
         from manifest.view.entity_model import get_entities_for_view
-        get_entities_for_view(manifest_dir)
+        data = get_entities_for_view(manifest_dir)
+        return data.get("view_write_ok", True)
     except Exception as e:
         print(f"Warning: failed to refresh blueprint_view: {e}", file=sys.stderr)
+        return False
 
 
 async def main(project_root: Path, manifest_dir: Path) -> int:
     manifest_dir.mkdir(parents=True, exist_ok=True)
-    updated = _refresh_blueprint_code(project_root, manifest_dir)
-    if updated:
-        print("Updated blueprint_code from codebase.", file=sys.stderr)
-    _refresh_blueprint_view(manifest_dir)
-    _write_project_metrics(manifest_dir, project_root)
+    try:
+        updated = _refresh_blueprint_code(project_root, manifest_dir)
+    except RuntimeError as e:
+        print(
+            f"Error: OpenCode enrichment failed. {e}\n"
+            "Check that opencode is installed and on PATH, and that the project parses correctly.",
+            file=sys.stderr,
+        )
+        return 1
+    except Exception as e:
+        print(f"Error: bottom-up extraction failed: {e}", file=sys.stderr)
+        return 1
+    if not updated:
+        print("Bottom-up extraction did not produce an update.", file=sys.stderr)
+        return 1
+    print("Updated blueprint_code from codebase.", file=sys.stderr)
+    view_ok = _refresh_blueprint_view(manifest_dir)
+    metrics_ok = _write_project_metrics(manifest_dir, project_root)
+    if not view_ok:
+        print("Error: failed to write blueprint_view.json", file=sys.stderr)
+        return 1
+    if not metrics_ok:
+        print("Error: failed to write project metrics to state.json", file=sys.stderr)
+        return 1
     return 0
 
 

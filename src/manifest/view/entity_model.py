@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Set, Optional
 
 from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
-from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
+from manifest.audit.blueprint.blueprint_status import calculate_implementation_status
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator
 from manifest.audit.blueprint.view_schema import (
     build_view_schema,
@@ -14,6 +14,7 @@ from manifest.audit.blueprint.view_schema import (
     unwrap_list_field,
     write_view_schema,
 )
+from manifest.audit.code.deviation_auditor import Severity
 from manifest.audit.entity_schema import PROJECT_ROOT_ID
 from manifest.audit.entity_validation import validate_blueprint_data
 from manifest.view.views_content import parent_aggregate_status_from_children, root_status_from_children
@@ -87,8 +88,7 @@ def _compute_comp_status_and_view_schema(
     -> view schema -> field-level deviation override.
     Returns (comp_status, view_schema).
     """
-    sync = BlueprintSynchronizer()
-    status_info = sync.calculate_implementation_status(design, code)
+    status_info = calculate_implementation_status(design, code)
     comp_status: Dict[str, str] = dict(status_info.get("node_statuses", {}) or {})
 
     agg = parent_aggregate_status_from_children(design, comp_status)
@@ -98,9 +98,16 @@ def _compute_comp_status_and_view_schema(
     comp_status[PROJECT_ROOT_ID] = root_status_from_children(design, comp_status)
 
     view_schema = build_view_schema(design, code, comp_status, conflicts)
+    significant_by_id: Dict[str, bool] = {}
+    for c in conflicts:
+        nid = getattr(c, "node_id", None) or (getattr(c, "top_down_node") or {}).get("id") or (getattr(c, "bottom_up_node") or {}).get("id")
+        if nid and getattr(c, "severity", None) in (Severity.ERROR, Severity.WARNING):
+            significant_by_id[nid] = True
     for ve in view_schema.get("entities") or []:
         eid = ve.get("id")
         if not eid or not entity_has_any_deviates(ve):
+            continue
+        if not significant_by_id.get(eid) or comp_status.get(eid) == "deviation":
             continue
         if comp_status.get(eid) in ("healthy", "partial"):
             comp_status[eid] = "deviation"
@@ -146,7 +153,7 @@ def get_entities_for_view(
     schema_validation_errors = _validate_and_collect_errors(design, code)
     conflicts = _compare_blueprints(design, code)
     comp_status, view_schema = _compute_comp_status_and_view_schema(design, code, conflicts)
-    write_view_schema(manifest_dir, view_schema)
+    view_write_ok = write_view_schema(manifest_dir, view_schema)
     validation_by_id = _build_validation_by_id(design, code, comp_status, conflicts)
     return {
         "blueprint": design,
@@ -156,4 +163,5 @@ def get_entities_for_view(
         "conflicts": conflicts,
         "view_schema": view_schema,
         "schema_validation_errors": schema_validation_errors,
+        "view_write_ok": view_write_ok,
     }

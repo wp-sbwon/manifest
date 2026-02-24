@@ -1,3 +1,6 @@
+"""
+State manager for health metrics in state.json.
+"""
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -8,10 +11,10 @@ from manifest.core.constants import STATE_FILE
 
 logger = get_logger(__name__)
 
-MAX_HISTORY_PER_CHANNEL = 200
-
 
 class StateManager:
+    """Manages state.json with health_metrics."""
+
     def __init__(self, manifest_dir: Path = None):
         self.manifest_dir = manifest_dir or Path(".manifest")
         self.state_file = self.manifest_dir / STATE_FILE
@@ -33,37 +36,14 @@ class StateManager:
         return {
             "version": "1.0",
             "health_metrics": None,
-            "chat_history": {},
-            "last_action": "",
             "timestamp": datetime.now().isoformat(),
         }
-
-    def get_state(self) -> Dict[str, Any]:
-        return self._state.copy()
-
-    def get_chat_history(self, channel: str = "main") -> list:
-        return self._state.get("chat_history", {}).get(channel, [])
 
     def get_health_metrics(self) -> Optional[Dict[str, Any]]:
         return self._state.get("health_metrics")
 
     def set_health_metrics(self, metrics: Optional[Dict[str, Any]]) -> None:
         self._state["health_metrics"] = metrics
-        self._state["timestamp"] = datetime.now().isoformat()
-
-    def add_chat_message(self, channel: str, role: str, content: str) -> None:
-        if "chat_history" not in self._state:
-            self._state["chat_history"] = {}
-        if channel not in self._state["chat_history"]:
-            self._state["chat_history"][channel] = []
-        msgs = self._state["chat_history"][channel]
-        msgs.append({
-            "role": role,
-            "content": content,
-            "timestamp": datetime.now().isoformat(),
-        })
-        if len(msgs) > MAX_HISTORY_PER_CHANNEL:
-            self._state["chat_history"][channel] = msgs[-MAX_HISTORY_PER_CHANNEL:]
         self._state["timestamp"] = datetime.now().isoformat()
 
     def _prepare_state_for_persist(self) -> str:
@@ -80,9 +60,3 @@ class StateManager:
         except Exception as e:
             logger.error("Error saving state: %s", e, exc_info=True)
             return False
-
-    def clear_state(self) -> None:
-        self._state = self._default_state()
-
-    def get_state_version(self) -> str:
-        return self._state.get("version", "1.0")

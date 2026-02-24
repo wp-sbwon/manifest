@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from manifest.core.git_manager import GitManager, DEFAULT_BOTTOM_UP_TIMEOUT
+from manifest.core.git_manager import GitManager
 
 
 @pytest.mark.unit
@@ -18,22 +18,16 @@ def test_git_manager_not_available_when_no_repo() -> None:
 
 
 @pytest.mark.unit
-def test_get_current_branch_returns_unknown_when_unavailable() -> None:
-    """get_current_branch returns 'unknown' when git unavailable."""
+def test_get_latest_commits_returns_empty_when_unavailable() -> None:
+    """get_latest_commits returns [] when git unavailable."""
     mgr = GitManager(Path("/tmp"))
     mgr.repo = None
-    assert mgr.get_current_branch() == "unknown"
+    assert mgr.get_latest_commits() == []
 
 
 @pytest.mark.unit
-def test_bottom_up_timeout_constant() -> None:
-    """DEFAULT_BOTTOM_UP_TIMEOUT is set."""
-    assert DEFAULT_BOTTOM_UP_TIMEOUT > 0
-
-
-@pytest.mark.unit
-def test_get_pending_bottom_up_count() -> None:
-    """GitManager.get_pending_bottom_up_count returns int."""
-    n = GitManager.get_pending_bottom_up_count()
-    assert isinstance(n, int)
-    assert n >= 0
+def test_get_commits_for_paths_returns_empty_when_unavailable() -> None:
+    """get_commits_for_paths returns [] when git unavailable."""
+    mgr = GitManager(Path("/tmp"))
+    mgr.repo = None
+    assert mgr.get_commits_for_paths(["foo.json"]) == []

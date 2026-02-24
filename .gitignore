@@ -65,6 +65,9 @@ htmlcov/
 # Dev: temp project dir when running manifest from this repo
 tmp/
 
+# Node (opencode tooling)
+node_modules/
+
 # Package structure (src layout)
 src/manifest/__pycache__/
 src/manifest/*/__pycache__/
