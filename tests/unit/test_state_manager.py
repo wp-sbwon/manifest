@@ -44,7 +44,7 @@ def test_save_state_sync_persists() -> None:
 
 
 @pytest.mark.unit
-def test_save_state_sync_same_content_as_async() -> None:
+def test_prepare_state_for_persist_includes_chat_history() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         mgr = StateManager(Path(tmp))
         mgr.add_chat_message("main", "user", "hi")

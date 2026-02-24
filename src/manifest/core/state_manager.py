@@ -1,5 +1,4 @@
 import json
-import aiofiles
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -37,21 +36,6 @@ class StateManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-    async def load_state_async(self) -> Dict[str, Any]:
-        if self.state_file.exists():
-            try:
-                async with aiofiles.open(self.state_file, "r") as f:
-                    content = await f.read()
-                    self._state = json.loads(content)
-                    return self._state
-            except Exception as e:
-                logger.debug("state_manager load_async failed: %s", e)
-                self._state = self._default_state()
-                return self._state
-        else:
-            self._state = self._default_state()
-            return self._state
-
     def get_state(self) -> Dict[str, Any]:
         return self._state.copy()
 
@@ -81,16 +65,6 @@ class StateManager:
         self._state["timestamp"] = datetime.now().isoformat()
         self.manifest_dir.mkdir(parents=True, exist_ok=True)
         return json.dumps(self._state, indent=2)
-
-    async def save_state(self) -> bool:
-        try:
-            content = self._prepare_state_for_persist()
-            async with aiofiles.open(self.state_file, "w") as f:
-                await f.write(content)
-            return True
-        except Exception as e:
-            logger.error("Error saving state: %s", e, exc_info=True)
-            return False
 
     def save_state_sync(self) -> bool:
         try:

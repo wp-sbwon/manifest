@@ -75,7 +75,5 @@ class BlueprintLoader:
             blueprint_data, blueprint_file, "llm_design", False, "manual"
         )
         if ok:
-            from manifest.core.design_history import record_design_save
-            record_design_save(manifest_dir, "blueprint", BLUEPRINT_DESIGN_FILE)
             logger.info("Blueprint saved to %s", blueprint_file)
         return ok
