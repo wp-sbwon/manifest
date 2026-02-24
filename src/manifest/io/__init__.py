@@ -1,4 +1,4 @@
-"""Minimal blueprint I/O using schema."""
+"""Blueprint I/O using schema."""
 from manifest.io.blueprint_io import (
     load_blueprint,
     load_code_blueprint,

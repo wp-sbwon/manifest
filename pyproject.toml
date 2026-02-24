@@ -25,7 +25,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-norecursedirs = [".git", ".tox", "dist", "build", "*.egg", "__pycache__", "tests/archive"]
+norecursedirs = [".git", ".tox", "dist", "build", "*.egg", "__pycache__"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]

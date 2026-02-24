@@ -1,1 +1,1 @@
-"""OpenCode agent logic: architect tool (write_prd, write_architecture)."""
+"""Architect tool: write_prd, write_architecture; layer-writer pipeline."""

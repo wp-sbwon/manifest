@@ -6,10 +6,27 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE, BLUEPRINT_CODE_FILE
+from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_CODE_FILE
 from manifest.core.logger import get_logger
+from manifest.io.json_io import read_json_or_default
 
 logger = get_logger(__name__)
+
+
+def _default_blueprint_with_metadata(
+    default_source: str = "llm_design",
+    default_ground_truth: bool = False,
+) -> Dict[str, Any]:
+    """Default blueprint dict with metadata fields set."""
+    return {
+        "version": "1.0",
+        "root_id": "",
+        "source": default_source,
+        "ground_truth": default_ground_truth,
+        "last_updated": datetime.utcnow().isoformat(),
+        "extraction_method": "llm_inference" if default_source.startswith("llm") else "ast_parsing",
+        "entities": [],
+    }
 
 
 def ensure_blueprint_metadata(blueprint: Dict[str, Any], source: str,
@@ -51,50 +68,14 @@ def ensure_blueprint_metadata(blueprint: Dict[str, Any], source: str,
 
 def load_blueprint_with_metadata(blueprint_file: Path, default_source: str = "llm_design",
                                  default_ground_truth: bool = False) -> Dict[str, Any]:
-    """
-    Load blueprint file and ensure it has metadata.
-
-    Args:
-        blueprint_file: Path to blueprint JSON file
-        default_source: Default source if not present
-        default_ground_truth: Default ground_truth if not present
-
-    Returns:
-        Blueprint dictionary with metadata
-    """
-    if not blueprint_file.exists():
-        return {
-            "version": "1.0",
-            "root_id": "",
-            "source": default_source,
-            "ground_truth": default_ground_truth,
-            "last_updated": datetime.utcnow().isoformat(),
-            "extraction_method": "llm_inference" if default_source.startswith("llm") else "ast_parsing",
-            "entities": [],
-        }
-
-    try:
-        with open(blueprint_file, "r", encoding="utf-8") as f:
-            blueprint = json.load(f)
-
-        # Ensure metadata
-        if blueprint_file.name == BLUEPRINT_CODE_FILE:
-            blueprint = ensure_blueprint_metadata(blueprint, "code_extraction", True, "ast_parsing")
-        else:
-            blueprint = ensure_blueprint_metadata(blueprint, default_source, default_ground_truth)
-
-        return blueprint
-    except Exception as e:
-        logger.debug("load_blueprint_with_metadata failed: %s", e)
-        return {
-            "version": "1.0",
-            "root_id": "",
-            "source": default_source,
-            "ground_truth": default_ground_truth,
-            "last_updated": datetime.utcnow().isoformat(),
-            "extraction_method": "llm_inference" if default_source.startswith("llm") else "ast_parsing",
-            "entities": [],
-        }
+    """Load blueprint file and ensure it has metadata."""
+    default = _default_blueprint_with_metadata(default_source, default_ground_truth)
+    blueprint = read_json_or_default(
+        Path(blueprint_file), default, logger=logger
+    )
+    if blueprint_file.name == BLUEPRINT_CODE_FILE:
+        return ensure_blueprint_metadata(blueprint, "code_extraction", True, "ast_parsing")
+    return ensure_blueprint_metadata(blueprint, default_source, default_ground_truth)
 
 
 def save_blueprint_with_metadata(blueprint: Dict[str, Any], blueprint_file: Path,
@@ -121,18 +102,6 @@ def save_blueprint_with_metadata(blueprint: Dict[str, Any], blueprint_file: Path
 
         blueprint = ensure_blueprint_metadata(blueprint, source, ground_truth, extraction_method)
         blueprint["last_updated"] = datetime.utcnow().isoformat()
-
-        # Align design blueprint identity with code blueprint when saving design
-        if blueprint_file.name == BLUEPRINT_DESIGN_FILE and source in (
-            "llm_design", "llm_architecture", "spec_first_management", "automatic_update"
-        ):
-            from manifest.audit.blueprint.design_identity import validate_and_align_design_identity
-            manifest_dir = blueprint_file.parent
-            blueprint, identity_warnings = validate_and_align_design_identity(
-                manifest_dir, blueprint, auto_align_name=True
-            )
-            for w in identity_warnings:
-                logger.debug("Design identity: %s", w)
 
         valid, errors = validate_blueprint_data(blueprint)
         if not valid and errors:

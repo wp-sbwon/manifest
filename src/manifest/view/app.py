@@ -1,7 +1,6 @@
 """Manifest View: Diagram, Files, Timeline. D=Differences, Tab=next, S=refresh."""
 import json
 import os
-import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -15,21 +14,7 @@ if sys.stdout.isatty():
 
 from rich.console import Group, RenderableType
 from rich.panel import Panel
-from rich.table import Table
 from rich.text import Text
-from rich.box import Box
-
-# Dotted horizontal lines between table rows (U+2504 = box drawings light triple dash)
-_DIFF_TABLE_BOX = Box(
-    "    \n"
-    "    \n"
-    " \u2504\u2504 \n"
-    "    \n"
-    " \u2504\u2504 \n"
-    "    \n"
-    "    \n"
-    "    \n"
-)
 from textual.app import App, ComposeResult
 from textual.containers import VerticalScroll, Container, Horizontal
 from textual.widgets import Static, Header, Footer
@@ -37,9 +22,6 @@ from textual.binding import Binding
 
 from manifest.core.state_manager import StateManager
 from manifest.core.git_manager import GitManager
-from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
-from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
-from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator
 from manifest.core.logger import get_logger
 from manifest.view.file_watcher import ViewFileWatcher
 from manifest.view.entity_model import (
@@ -69,7 +51,16 @@ from manifest.view.constants import (
     DEFAULT_ROOT_DESC,
     DEFAULT_ROOT_LABEL,
     INSPECTOR_ACCENT,
-    INSPECTOR_RULE_LENGTH,
+)
+from manifest.view.content import (
+    build_files_view_content,
+    build_header_strip_content,
+    build_info_hub_diff_view,
+    build_info_hub_node_content,
+    build_tab_bar_content,
+    build_timeline_view_content,
+    get_sidebar_health_text,
+    get_sidebar_viz_text,
 )
 from manifest.view.views_content import (
     ACCENT_BLUE,
@@ -174,9 +165,7 @@ class ManifestViewApp(App[None]):
         self._diagram_layered_spec: Optional[Dict[str, Any]] = None
         self._diagram_selectable_nodes: List[Tuple[str, str, Dict[str, Any]]] = []
         self._state_manager: Optional[StateManager] = None
-        self._blueprint_sync: Optional[BlueprintSynchronizer] = None
         self._git_manager: Optional[GitManager] = None
-        self._blueprint_comparator: Optional[BlueprintComparator] = None
         self._cached_design_blueprint: Optional[Dict[str, Any]] = None
         self._cached_code_blueprint: Optional[Dict[str, Any]] = None
         self._health_metrics_populated: bool = False
@@ -194,11 +183,6 @@ class ManifestViewApp(App[None]):
             self._state_manager = StateManager(self.manifest_dir)
         return self._state_manager
 
-    def _get_blueprint_sync(self) -> BlueprintSynchronizer:
-        if self._blueprint_sync is None:
-            self._blueprint_sync = BlueprintSynchronizer()
-        return self._blueprint_sync
-
     def _get_git_manager(self) -> GitManager:
         if self._git_manager is None:
             self._git_manager = GitManager(
@@ -207,25 +191,30 @@ class ManifestViewApp(App[None]):
             )
         return self._git_manager
 
-    def _get_blueprint_comparator(self) -> BlueprintComparator:
-        if self._blueprint_comparator is None:
-            self._blueprint_comparator = BlueprintComparator()
-        return self._blueprint_comparator
+    def _get_design_and_code_for_status(self) -> tuple:
+        """Design and code blueprints from current view data."""
+        return (self._get_cached_design_blueprint(), self._get_cached_code_blueprint())
+
+    def _get_implementation_status(self) -> tuple:
+        """Comp status and status_info from view data (entity_model pipeline)."""
+        vd = self._view_data
+        comp_status = (vd.get("comp_status") or {}).copy()
+        status_info = {"node_statuses": comp_status}
+        return (comp_status, status_info)
+
+    def _get_conflicts(self) -> list:
+        """Blueprint conflicts from view data (entity_model pipeline)."""
+        return list(self._view_data.get("conflicts") or [])
 
     def _ensure_diagram_components(self) -> None:
-        """Populate diagram from get_entities_for_view; layered spec and selectable nodes."""
-        # Clear diagram state first so we never serve stale data when cycling or refreshing.
+        """Populate diagram from view data; layered spec and selectable nodes."""
         self._diagram_selectable_nodes = []
         self._diagram_layered_spec = None
         self._diagram_component_list = []
         try:
-            view_data = get_entities_for_view(
-                self.manifest_dir,
-                self._cached_design_blueprint,
-                self._cached_code_blueprint,
-            )
-            blueprint = view_data["blueprint"]
-            code_blueprint = view_data["code_blueprint"]
+            view_data = self._view_data or {}
+            blueprint = view_data.get("blueprint") or {}
+            code_blueprint = view_data.get("code_blueprint") or {}
             comp_status = view_data["comp_status"]
             view_schema = view_data.get("view_schema") or {}
             # Use comparison output for diagram when available.
@@ -345,21 +334,7 @@ class ManifestViewApp(App[None]):
         kind, nid, data = nodes[idx]
         if kind == "root":
             return False
-        top_down = self._get_cached_design_blueprint()
-        bottom_up = self._get_cached_code_blueprint()
-        if not top_down and not bottom_up:
-            try:
-                top_down = BlueprintLoader.load_blueprint(
-                    self.manifest_dir, with_metadata=True, default_source="llm_design"
-                )
-                bottom_up = BlueprintLoader.load_code_blueprint(self.manifest_dir)
-            except Exception as e:
-                logger.debug("_selected_node_is_deviating load failed: %s", e)
-                return False
-        status_info = self._get_blueprint_sync().calculate_implementation_status(
-            top_down, bottom_up
-        )
-        comp_status = status_info.get("node_statuses", {})
+        comp_status, _ = self._get_implementation_status()
         return comp_status.get(nid) == "deviation"
 
     def action_select_prev_node(self) -> None:
@@ -408,22 +383,16 @@ class ManifestViewApp(App[None]):
             return "Select an entity with [n] Next / [p] Prev."
         kind, nid, data = nodes[self._selected_node_index - 1]
         comp = dict(data)
-        from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_CODE_FILE
-        path = self.manifest_dir / BLUEPRINT_CODE_FILE
-        if path.exists():
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    code_data = json.load(f)
-                for c in code_data.get("entities", []) or []:
-                    if isinstance(c, dict) and c.get("id") == nid:
-                        r = c.get("reality") or {}
-                        comp.update(c)
-                        comp["file"] = r.get("symbol", comp.get("file"))
-                        comp["methods"] = r.get("methods", comp.get("methods"))
-                        comp["type"] = r.get("type", comp.get("type"))
-                        break
-            except Exception as e:
-                logger.debug("Could not merge blueprint_code for node %s: %s", nid, e)
+        code_data = self._get_cached_code_blueprint()
+        if code_data:
+            for c in code_data.get("entities", []) or []:
+                if isinstance(c, dict) and c.get("id") == nid:
+                    r = c.get("reality") or {}
+                    comp.update(c)
+                    comp["file"] = r.get("symbol", comp.get("file"))
+                    comp["methods"] = r.get("methods", comp.get("methods"))
+                    comp["type"] = r.get("type", comp.get("type"))
+                    break
         lines = [
             f"Component: {comp.get('name') or nid}",
             f"  id: {nid}",
@@ -471,53 +440,9 @@ class ManifestViewApp(App[None]):
     def _load_files_view(self) -> Union[str, RenderableType]:
         """Source tree: project root (manifest_dir.parent) with dirs and files, dot by status."""
         try:
-            project_root = self.manifest_dir.parent
-            root_label = project_root.name or "root"
+            comp_status, _ = self._get_implementation_status()
             bottom_up = self._get_cached_code_blueprint()
-            top_down = self._get_cached_design_blueprint()
-            status_info = self._get_blueprint_sync().calculate_implementation_status(
-                top_down, bottom_up
-            )
-            comp_status = status_info.get("node_statuses", {})
-            components = _entities_for_display(bottom_up.get("entities", []))
-            dirs: Dict[str, List[Tuple[str, Dict[str, Any], str]]] = {}
-            for c in components:
-                if not isinstance(c, dict):
-                    continue
-                fp = (c.get("file") or "?").replace("\\", "/")
-                parts = fp.split("/")
-                dir_name = parts[0] if len(parts) > 1 else "."
-                if dir_name not in dirs:
-                    dirs[dir_name] = []
-                dirs[dir_name].append((parts[-1] if parts else "?", c, comp_status.get(c.get("id") or "", "planned")))
-            S = "■"
-            lines = [
-                "[dim]Source Tree[/]",
-                f"[dim]Project root: {project_root}[/]",
-                "",
-                f"[white]{root_label}/[/]",
-            ]
-            dir_list = sorted(dirs.items())
-            for i, (d, items) in enumerate(dir_list):
-                prefix = "└── " if i == len(dir_list) - 1 else "├── "
-                lines.append(f"[{ACCENT_BLUE}]{prefix}{S}[/] {d}/")
-                for j, (fname, comp, st) in enumerate(items[:12]):
-                    st_tag = _status_color_tag(st)
-                    sub_prefix = "    " if i == len(dir_list) - 1 else "│   "
-                    lines.append(f"[dim]{sub_prefix}└── {fname}[/] ..... [{st_tag}]{S}[/]")
-                    for meth in (comp.get("methods") or [])[:4]:
-                        m_tag = _status_color_tag(st)
-                        lines.append(f"[dim]{sub_prefix}    ├── [/][cyan]{meth}()[/] [{m_tag}]{S}[/]")
-            if not dirs:
-                for c in components[:20]:
-                    if not isinstance(c, dict):
-                        continue
-                    cid = c.get("id")
-                    name = (c.get("name") or cid or "?")[:28]
-                    st = comp_status.get(cid or "", "planned")
-                    tag = _status_color_tag(st)
-                    lines.append(f"  [{tag}]{S}[/] {name}")
-            return "\n".join(lines)
+            return build_files_view_content(comp_status, bottom_up, self.manifest_dir.parent)
         except Exception as e:
             logger.debug("Files view load failed: %s", e)
             return f"Files load failed: {e}"
@@ -550,14 +475,7 @@ class ManifestViewApp(App[None]):
                 except Exception as e:
                     logger.debug("Timeline: could not get git commits: %s", e)
             events.sort(key=lambda x: x[0], reverse=True)
-            lines = ["[dim]Project Changes Timeline[/]", ""]
-            lines.append("[dim]DESIGN = commits touching .manifest design docs  CODE = repo commits[/]")
-            lines.append("")
-            for ts, side, msg, color in events[:25]:
-                lines.append(f"[dim]{ts}[/]  [{color}]{side}[/]  {msg}")
-            if not events:
-                lines.append("No design or code events (need git repo).")
-            return "\n".join(lines)
+            return build_timeline_view_content(events)
         except Exception as e:
             logger.debug("Timeline load failed: %s", e)
             return f"Timeline load failed: {e}"
@@ -567,10 +485,7 @@ class ManifestViewApp(App[None]):
         lines = []
         try:
             if self.inspector_mode == InspectorMode.DEVIATION:
-                top_down = self._get_cached_design_blueprint()
-                bottom_up = self._get_cached_code_blueprint()
-                comparator = self._get_blueprint_comparator()
-                conflicts = comparator.compare_blueprints(top_down, bottom_up)
+                conflicts = self._get_conflicts()
                 lines.append(f"Deviation (mismatches): {len(conflicts)}")
                 for conflict in conflicts[:20]:
                     severity = conflict.severity.value
@@ -580,12 +495,7 @@ class ManifestViewApp(App[None]):
                 if len(conflicts) > 20:
                     lines.append(f"  ... and {len(conflicts) - 20} more")
             elif self.inspector_mode == InspectorMode.VISUAL:
-                top_down = self._get_cached_design_blueprint()
-                bottom_up = self._get_cached_code_blueprint()
-                status_info = self._get_blueprint_sync().calculate_implementation_status(
-                    top_down, bottom_up
-                )
-                comp_status = status_info.get("node_statuses", {})
+                comp_status, _ = self._get_implementation_status()
                 healthy_n = sum(1 for s in comp_status.values() if s == "healthy")
                 planned_n = sum(1 for s in comp_status.values() if s == "planned")
                 partial_n = sum(1 for s in comp_status.values() if s == "partial")
@@ -633,18 +543,9 @@ class ManifestViewApp(App[None]):
         return Panel("Unknown view", title="View", border_style="red")
 
     def _get_sidebar_health(self) -> str:
-        """Project Health: deviation % from blueprint sync; code quality/coverage/size from state (updated by bottom-up)."""
+        """Project Health: deviation % from blueprint sync; code quality/coverage/size from state."""
         try:
-            top_down = self._get_cached_design_blueprint()
-            bottom_up = self._get_cached_code_blueprint()
-            status_info = self._get_blueprint_sync().calculate_implementation_status(
-                top_down, bottom_up
-            )
-            comp_status = status_info.get("node_statuses", {})
-            total = len(comp_status) or 1
-            deviation_count = sum(1 for s in comp_status.values() if s in ("deviation", "partial"))
-            pct = int(100 * deviation_count / total)
-            dev_color = "yellow" if pct > 0 else "green"
+            comp_status, _ = self._get_implementation_status()
             metrics = {}
             state_file = self.manifest_dir / STATE_FILE
             if state_file.exists():
@@ -654,7 +555,6 @@ class ManifestViewApp(App[None]):
                     metrics = state.get("health_metrics") or {}
                 except Exception as e:
                     logger.debug("Could not load state.json health_metrics: %s", e)
-            # If quality/coverage are blank and slow metrics not disabled, populate once (ruff + pytest).
             skip_slow = os.environ.get("MANIFEST_VIEW_SKIP_SLOW_METRICS", "").strip() == "1"
             if not self._health_metrics_populated and not skip_slow:
                 blank = (metrics.get("code_quality") in (None, "—")) or (metrics.get("test_coverage") is None)
@@ -668,26 +568,7 @@ class ManifestViewApp(App[None]):
                     except Exception as e:
                         logger.debug("One-time health populate failed: %s", e)
                     self._health_metrics_populated = True
-            quality_str = metrics.get("code_quality") or "—"
-            q = str(quality_str).lower()
-            if q in ("excellent", "good", "ok"):
-                quality_tag = "green"
-            elif "issues" in q:
-                n = re.search(r"(\d+)\s*issues", q)
-                quality_tag = "yellow" if (n and int(n.group(1)) <= 20) else "red"
-            else:
-                quality_tag = "dim"
-            cov_val = metrics.get("test_coverage")
-            cov_str = f"{cov_val}%" if cov_val is not None else "—"
-            size_str = metrics.get("binary_size") or "—"
-            return (
-                "[bold cyan]Project Health[/]\n"
-                "[dim]─────────────────────[/]\n"
-                f"  Total Deviation:  [{dev_color}]{pct}%[/]\n"
-                f"  Code Quality:     [{quality_tag}]{quality_str}[/]\n"
-                f"  Test Coverage:   [{ACCENT_BLUE}]{cov_str}[/]\n"
-                f"  Binary Size:     [dim]{size_str}[/]"
-            )
+            return get_sidebar_health_text(comp_status, metrics)
         except Exception as e:
             logger.debug("Sidebar health failed: %s", e)
             return "[bold cyan]Project Health[/]\n[dim]─────────────────────[/]\n  (—)"
@@ -701,7 +582,7 @@ class ManifestViewApp(App[None]):
             ViewType.HISTORY: "Timeline",
             ViewType.INSPECTOR: "Inspector",
         }.get(self.current_view, "—")
-        return f"View: {name}"
+        return get_sidebar_viz_text(name)
 
     def _get_shadow_results_for_node(self, nid: str) -> Tuple[str, str]:
         """Last Output and Shadow Trace for node from state (shadow-* channels). Returns (last_output, trace)."""
@@ -802,17 +683,22 @@ class ManifestViewApp(App[None]):
         header += "\n\n"
 
         if self._right_panel_differences:
-            return self._get_info_hub_diff_view(header, nid, data, deviating)
+            design_ent, code_ent = self._get_entities_by_id(nid)
+            return build_info_hub_diff_view(header, nid, data, deviating, design_ent, code_ent)
 
         if kind == "up":
             return header + "\n\n  [dim]Press Backspace to go back.[/]"
         if kind == "root":
             root_entity = self._get_root_entity_for_inspector()
             view_ent = self._get_view_entity_by_id(PROJECT_ROOT_ID)
-            return self._get_info_hub_node(header, PROJECT_ROOT_ID, root_entity, deviating, view_ent)
+            return build_info_hub_node_content(
+                header, PROJECT_ROOT_ID, root_entity, deviating, view_ent, self._id_to_display_name_map()
+            )
         entity = data if (data.get("intent") is not None and data.get("reality") is not None) else self._get_entity_for_inspector(nid)
         view_ent = self._get_view_entity_by_id(nid)
-        return self._get_info_hub_node(header, nid, entity, deviating, view_ent)
+        return build_info_hub_node_content(
+            header, nid, entity, deviating, view_ent, self._id_to_display_name_map()
+        )
 
     def _id_to_display_name_map(self) -> Dict[str, str]:
         """Build map entity id -> display name (same as diagram labels) from current view data."""
@@ -826,14 +712,6 @@ class ManifestViewApp(App[None]):
                     out[eid] = name.strip() or eid
         return out
 
-    def _inspection_section(self, title: str, body: str) -> str:
-        """One inspection section: title, rule, then content. Blank line between each row for readability."""
-        rule = f"[{INSPECTOR_ACCENT}]" + "─" * INSPECTOR_RULE_LENGTH + "[/]"
-        # Separate each line with a blank line so rows are easy to distinguish
-        lines = [line.strip() for line in body.split("\n") if line.strip()]
-        indented = "\n  \n  ".join(lines)
-        return f"\n\n[bold {INSPECTOR_ACCENT}]{title}[/]\n{rule}\n  {indented}\n"
-
     def _get_view_entity_by_id(self, nid: str) -> Optional[Dict[str, Any]]:
         """Return view_schema entity for nid (same keys as blueprint; values plan/actual/deviates)."""
         view_schema = (self._view_data or {}).get("view_schema") or {}
@@ -841,37 +719,6 @@ class ManifestViewApp(App[None]):
             if (e.get("id") or "") == nid:
                 return e
         return None
-
-    def _deviates_at(self, view_entity: Optional[Dict[str, Any]], path: Tuple[str, ...]) -> bool:
-        """True if view_entity has a pair at path with deviates=True."""
-        if not view_entity:
-            return False
-        cur: Any = view_entity
-        for key in path:
-            cur = cur.get(key) if isinstance(cur, dict) else None
-            if cur is None:
-                return False
-        return bool(cur.get("deviates")) if isinstance(cur, dict) else False
-
-    def _deviation_box(self, deviates: bool) -> str:
-        """Color-coded box for deviation status: red for deviates, green for aligned."""
-        if deviates:
-            return " [red reverse] ⚠ [/]"
-        return " [green reverse] ✓ [/]"
-
-    def _deviations_from_view_entity(self, view_entity: Dict[str, Any], prefix: str = "") -> List[str]:
-        """List of field paths where plan ≠ actual (deviates=True). Used when conflicts give no messages."""
-        out: List[str] = []
-        for key, val in (view_entity or {}).items():
-            if key in ("plan", "actual", "deviates"):
-                continue
-            path = f"{prefix}.{key}" if prefix else key
-            if isinstance(val, dict):
-                if val.get("deviates") is True:
-                    out.append(path)
-                else:
-                    out.extend(self._deviations_from_view_entity(val, path))
-        return out[:20]
 
     def _get_root_entity_for_inspector(self) -> Dict[str, Any]:
         """Root (System Core) as entity; same shape as other entities."""
@@ -900,226 +747,6 @@ class ManifestViewApp(App[None]):
             "dependencies": [],
             "outgoing_contracts": [],
         }
-
-    def _format_for_display(self, val: Any, max_len: int = 200, max_items: int = 12) -> str:
-        """Format value for Inspector: no raw [] or {}; use — for empty, readable list/dict."""
-        if val is None:
-            return "—"
-        if isinstance(val, str):
-            s = val.strip()
-            if not s:
-                return "—"
-            return (s[:max_len] + "…") if len(s) > max_len else s
-        if isinstance(val, (int, float, bool)):
-            return str(val)
-        if isinstance(val, list):
-            if not val:
-                return "—"
-            parts = []
-            for i, item in enumerate(val[:max_items]):
-                if isinstance(item, dict):
-                    parts.append("{" + ", ".join(f"{k}: {self._format_for_display(v, 60, 3)}" for k, v in list(item.items())[:4]) + "}")
-                else:
-                    parts.append(self._format_for_display(item, 80, 3))
-            out = ", ".join(parts)
-            if len(val) > max_items:
-                out += f" … +{len(val) - max_items}"
-            return (out[:max_len] + "…") if len(out) > max_len else out
-        if isinstance(val, dict):
-            if not val:
-                return "—"
-            parts = [f"{k}: {self._format_for_display(v, 60, 3)}" for k, v in list(val.items())[:max_items]]
-            out = "; ".join(parts)
-            if len(val) > max_items:
-                out += " …"
-            return (out[:max_len] + "…") if len(out) > max_len else out
-        s = str(val).strip()
-        return (s[:max_len] + "…") if len(s) > max_len else s
-
-    def _get_info_hub_node(
-        self,
-        header: str,
-        nid: str,
-        data: Dict[str, Any],
-        deviating: bool,
-        view_entity: Optional[Dict[str, Any]] = None,
-    ) -> str:
-        """Inspector: Identity, Spec (per-line deviation box), Outgoing contracts. Use [D] DIFF for plan vs code."""
-        def _fmt(val: Any, max_len: int = 200) -> str:
-            return self._format_for_display(val, max_len=max_len)
-
-        def _cap(s: str) -> str:
-            if not s:
-                return s
-            return " ".join(w.capitalize() for w in s.replace("_", " ").strip().split())
-
-        def _box(path: Tuple[str, ...]) -> str:
-            return self._deviation_box(self._deviates_at(view_entity, path))
-
-        def _spec_line(
-            label: str,
-            plan_val: Any,
-            actual_val: Any,
-            path: Tuple[str, ...],
-            fmt_len: int = 200,
-        ) -> Tuple[str, bool]:
-            """One spec line: red only when this field has an alert (deviates_at). Returns (line, has_deviation)."""
-            p = _fmt(plan_val, fmt_len)
-            a = _fmt(actual_val, fmt_len)
-            has_alert = self._deviates_at(view_entity, path)
-            if p == "—" and a == "—":
-                return f"{_cap(label)}: —", False
-            if p == "—":
-                return f"{_cap(label)}: {a}", False
-            if a == "—":
-                return f"{_cap(label)}: {p}", False
-            if p == a:
-                return f"{_cap(label)}: {p}", has_alert
-            if has_alert:
-                return f"{_cap(label)}: {p}  ⚠ actual: [red]{a}[/]", True
-            return f"{_cap(label)}: {p}  (actual: {a})", False
-
-        intent = data.get("intent") or {}
-        reality = data.get("reality") or {}
-        narrative = intent.get("narrative") or {}
-        blueprint = intent.get("blueprint") or {}
-        bp_topology = blueprint.get("topology") or {}
-        protocol_i = intent.get("protocol") or {}
-        protocol_r = reality.get("protocol") or {}
-        profile_i = intent.get("profile") or {}
-        profile_r = reality.get("profile") or {}
-        gov = intent.get("governance") or {}
-        reality_deps = reality.get("dependencies") or []
-        traits = reality.get("traits") or []
-        topology_actual = reality.get("topology_actual") or {}
-        children_ids = data.get("children") or []
-        id_to_name = self._id_to_display_name_map()
-        children_display = [id_to_name.get(cid, cid) for cid in children_ids]
-        contracts = data.get("outgoing_contracts") or []
-
-        # Identity: each line with deviation box (id has no plan/actual, so no box)
-        identity_lines = [
-            f"[white]{_cap('id')}[/]: {nid}",
-            f"[white]{_cap('children')}[/]: {', '.join(children_display) or '—'}{_box(('children',))}",
-            f"[white]{_cap('dependencies')}[/]: {', '.join((data.get('dependencies') or [])[:12]) or '—'}{_box(('dependencies',))}",
-        ]
-        identity_body = "\n".join(identity_lines)
-        topology_summary = "—"
-        if isinstance(bp_topology, dict) and bp_topology:
-            dims = bp_topology.get("dimensions") or {}
-            topology_summary = "dimensions " + self._format_for_display(dims, 80) if dims else "present"
-        topology_actual_summary = "—"
-        if isinstance(topology_actual, dict) and topology_actual:
-            topology_actual_summary = _fmt(topology_actual.get("type")) or "present"
-
-        spec_lines: List[str] = []
-        any_spec_deviation = False
-        # Role and mission: only red if view marks this path as deviating (no red on whole section)
-        def _role_mission_line(label: str, val: Any, path: Tuple[str, ...], fmt_len: int = 200) -> str:
-            raw = _fmt(val, fmt_len)
-            return f"{_cap(label)}: {raw}{_box(path)}"
-        spec_lines.append(_role_mission_line("role", narrative.get("role"), ("intent", "narrative", "role"), 80))
-        spec_lines.append(_role_mission_line("mission", narrative.get("mission"), ("intent", "narrative", "mission"), 240))
-        spec_lines.append(f"{_cap('blueprint')}")
-        spec_lines.append(f"  — {_cap('type')}: {_fmt(blueprint.get('type'), 20)}{_box(('intent', 'blueprint', 'type'))}")
-        spec_lines.append(f"  — {_cap('topology')}: {topology_summary}{_box(('intent', 'blueprint', 'topology'))}")
-        spec_lines.append(f"{_cap('protocol')}")
-        ln, dev = _spec_line("input", protocol_i.get("input"), protocol_r.get("input"), ("intent", "protocol", "input"))
-        spec_lines.append(f"  — {ln}{_box(('intent', 'protocol', 'input'))}")
-        any_spec_deviation = any_spec_deviation or dev
-        ln, dev = _spec_line("output", protocol_i.get("output"), protocol_r.get("output"), ("intent", "protocol", "output"))
-        spec_lines.append(f"  — {ln}{_box(('intent', 'protocol', 'output'))}")
-        any_spec_deviation = any_spec_deviation or dev
-        spec_lines.append(f"{_cap('profile')}")
-        for key in ("language", "platform", "io_model", "state_model"):
-            pi = profile_i.get(key)
-            pr = profile_r.get(key)
-            ln, dev = _spec_line(key, pi, pr, ("intent", "profile", key))
-            spec_lines.append(f"  — {ln}{_box(('intent', 'profile', key))}")
-            any_spec_deviation = any_spec_deviation or dev
-        spec_lines.append(f"{_cap('governance')}")
-        spec_lines.append(f"  — {_cap('rules')}: {_fmt(gov.get('rules'))}{_box(('intent', 'governance', 'rules'))}")
-        spec_lines.append(f"  — {_cap('assertions')}: {_fmt(gov.get('assertions'))}{_box(('intent', 'governance', 'assertions'))}")
-        spec_lines.append(f"{_cap('symbol')}: {_fmt(reality.get('symbol'), 120)}{_box(('reality', 'symbol'))}")
-        spec_lines.append(f"{_cap('dependencies')} (code): {', '.join(reality_deps[:12]) or '—'}{_box(('reality', 'dependencies'))}")
-        spec_lines.append(f"{_cap('traits')}: {', '.join(traits[:10]) or '—'}{_box(('reality', 'traits'))}")
-        spec_lines.append(f"{_cap('topology_actual')}: {topology_actual_summary}{_box(('reality', 'topology_actual'))}")
-        spec_lines.append(f"{_cap('preview')}: {_fmt(reality.get('preview'), 160)}{_box(('reality', 'preview'))}")
-
-        spec_body = "\n".join(spec_lines)
-
-        contract_lines = [f"→ {c.get('to') or '—'} [{c.get('type') or 'dependency'}] {c.get('file') or ''} {', '.join((c.get('symbols') or [])[:4])}" for c in (contracts or [])[:10]]
-        contracts_body = "\n".join(contract_lines) if contract_lines else "—"
-        contracts_body += "  " + _box(("outgoing_contracts",))
-
-        section_sep = "\n"
-        parts = [
-            header.strip(),
-            self._inspection_section("Identity", identity_body),
-            self._inspection_section("Spec", spec_body),
-            self._inspection_section("Outgoing contracts", contracts_body),
-        ]
-        if deviating or any_spec_deviation:
-            parts.append(self._inspection_section("Deviation", "Plan and code differ. [bold][D] DIFF[/] to compare."))
-        return section_sep.join(parts)
-
-    def _get_info_hub_diff_view(self, header: str, nid: str, data: Dict[str, Any], deviating: bool) -> Union[str, RenderableType]:
-        """Diff view: Plan vs Code as a Rich table; only differing values in red."""
-        design_ent, code_ent = self._get_entities_by_id(nid)
-        plan = design_ent or data
-        actual = code_ent or data
-        plan_intent = plan.get("intent") or {}
-        plan_narr = plan_intent.get("narrative") or {}
-        plan_reality = plan.get("reality") or {}
-        actual_intent = actual.get("intent") or {}
-        actual_narr = actual_intent.get("narrative") or {}
-        actual_reality = actual.get("reality") or {}
-        max_cell = 28
-
-        def _s(v: Any, w: int = 28) -> str:
-            formatted = self._format_for_display(v, max_len=w, max_items=5)
-            return formatted[:w].replace("\n", " ")
-
-        plan_protocol = plan_intent.get("protocol") or {}
-        actual_protocol = actual_intent.get("protocol") or {}
-        plan_profile = plan_intent.get("profile") or {}
-        actual_profile = actual_intent.get("profile") or {}
-        plan_gov = plan_intent.get("governance") or {}
-        actual_gov = actual_intent.get("governance") or {}
-        rows = [
-            ("Role", _s(plan_narr.get("role")), _s(actual_narr.get("role"))),
-            ("Mission", _s(plan_narr.get("mission")), _s(actual_narr.get("mission"))),
-            ("Type", _s(plan_intent.get("blueprint", {}).get("type")), _s(actual_intent.get("blueprint", {}).get("type"))),
-            ("Protocol input", _s(plan_protocol.get("input")), _s(actual_protocol.get("input"))),
-            ("Protocol output", _s(plan_protocol.get("output")), _s(actual_protocol.get("output"))),
-            ("Language", _s(plan_profile.get("language")), _s(actual_profile.get("language"))),
-            ("Platform", _s(plan_profile.get("platform")), _s(actual_profile.get("platform"))),
-            ("Governance rules", _s(plan_gov.get("rules")), _s(actual_gov.get("rules"))),
-            ("Symbol", _s(plan_reality.get("symbol")), _s(actual_reality.get("symbol"))),
-            ("Dependencies", _s(plan_reality.get("dependencies")), _s(actual_reality.get("dependencies"))),
-            ("Traits", _s(plan_reality.get("traits")), _s(actual_reality.get("traits"))),
-        ]
-        table = Table(
-            show_header=True,
-            show_lines=True,
-            header_style="bold cyan",
-            box=_DIFF_TABLE_BOX,
-            padding=(0, 1),
-        )
-        table.add_column("Field", style="dim", width=18)
-        table.add_column("Plan", style="dim", max_width=max_cell, overflow="ellipsis")
-        table.add_column("Code", style="dim", max_width=max_cell, overflow="ellipsis")
-        for label, d_val, a_val in rows:
-            d_str = (d_val or "—")[:max_cell].replace("\n", " ")
-            a_str = (a_val or "—")[:max_cell].replace("\n", " ")
-            match = (d_val or "—") == (a_val or "—")
-            plan_cell = Text(d_str) if match else Text(d_str)
-            code_cell = Text(a_str) if match else Text(a_str, style="red")
-            table.add_row(label, plan_cell, code_cell)
-        parts: List[RenderableType] = [Text.from_markup(header.strip()), table]
-        if deviating:
-            parts.append(Text("⚠ Plan and code differ.", style="dim"))
-        return Group(*parts)
 
     def compose(self) -> ComposeResult:
         with Container(id="header-strip"):
@@ -1162,34 +789,10 @@ class ManifestViewApp(App[None]):
 
     def _get_header_strip_content(self) -> Union[str, RenderableType]:
         """Header: Manifest View, Planning/Differences, STATUS (implementation status), TIME."""
-        planning_active = not self._right_panel_differences
-        diff_active = self._right_panel_differences
-        now = datetime.now().strftime("%H:%M:%S")
-        planning = "[bold white][ Planning ][/]" if planning_active else "[dim][ Planning ][/]"
-        diff = "[bold red underline][ Differences ][/]" if diff_active else "[dim][ Differences ][/]"
-        # Overall implementation status from diagram component statuses (healthy/partial/deviation/planned)
-        comp_status = self._diagram_comp_status or {}
-        if comp_status:
-            deviation_n = sum(1 for s in comp_status.values() if s == "deviation")
-            partial_n = sum(1 for s in comp_status.values() if s == "partial")
-            healthy_n = sum(1 for s in comp_status.values() if s == "healthy")
-            planned_n = sum(1 for s in comp_status.values() if s == "planned")
-            if deviation_n > 0:
-                status_label, status_tag = "Deviation", "red"
-            elif partial_n > 0:
-                status_label, status_tag = "Partial", "yellow"
-            elif healthy_n == len(comp_status) and len(comp_status) > 0:
-                status_label, status_tag = "Healthy", "green"
-            elif planned_n == len(comp_status):
-                status_label, status_tag = "Planned", "grey70"
-            else:
-                status_label, status_tag = "Partial", "yellow"
-            status_markup = f"[{status_tag}]{status_label}[/]"
-        else:
-            status_markup = "[dim]—[/]"
-        return (
-            f"[bold {ACCENT_BLUE}]Manifest View[/]  {planning}  {diff}     "
-            f"STATUS: {status_markup}  TIME: [dim]{now}[/]"
+        return build_header_strip_content(
+            self._diagram_comp_status or {},
+            self._right_panel_differences,
+            datetime.now().strftime("%H:%M:%S"),
         )
 
     def _refresh_header_metrics(self) -> None:
@@ -1202,18 +805,7 @@ class ManifestViewApp(App[None]):
 
     def _get_tab_bar_content(self) -> str:
         """Tab bar: Diagram, Files, Timeline; current one highlighted."""
-        tabs = [
-            ("1:DIAGRAM", ViewType.DIAGRAM),
-            ("2:FILES", ViewType.FILES),
-            ("3:TIMELINE", ViewType.TIMELINE),
-        ]
-        parts = []
-        for label, vt in tabs:
-            if self.current_view == vt or (vt == ViewType.TIMELINE and self.current_view == ViewType.HISTORY):
-                parts.append(f"[bold {ACCENT_BLUE}]{label}[/]")
-            else:
-                parts.append(f"[dim]{label}[/]")
-        return "  ".join(parts)
+        return build_tab_bar_content(self.current_view.value)
 
     def _refresh_main_content(self) -> None:
         """Refresh tab bar and main content."""
@@ -1239,14 +831,15 @@ class ManifestViewApp(App[None]):
             logger.debug("Sidebar refresh failed: %s", e)
 
     def refresh_view(self) -> None:
-        """Refresh all. Load design + code blueprints once per refresh and reuse in this cycle."""
+        """Refresh all. Load view data via entity_model once per cycle; reuse for diagram, sidebar, content."""
         try:
-            self._cached_design_blueprint = BlueprintLoader.load_blueprint(
-                self.manifest_dir, with_metadata=True, default_source="llm_design"
-            )
-            self._cached_code_blueprint = BlueprintLoader.load_code_blueprint(self.manifest_dir)
+            view_data = get_entities_for_view(self.manifest_dir)
+            self._view_data = view_data
+            self._cached_design_blueprint = view_data.get("blueprint") or {}
+            self._cached_code_blueprint = view_data.get("code_blueprint") or {}
         except Exception as e:
-            logger.debug("refresh_view cache load failed: %s", e)
+            logger.debug("refresh_view load failed: %s", e)
+            self._view_data = {}
             self._cached_design_blueprint = {}
             self._cached_code_blueprint = {}
         self._ensure_diagram_components()

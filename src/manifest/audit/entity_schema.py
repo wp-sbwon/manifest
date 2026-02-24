@@ -188,15 +188,24 @@ def contracts_from_entities(entities: List[Dict[str, Any]]) -> List[Dict[str, An
 PROJECT_ROOT_ID = "PROJECT_ROOT"
 
 
-def entity_display_name(e: Dict[str, Any]) -> str:
-    """Display name: role, symbol, name, or id."""
+def entity_display_name(e: Dict[str, Any], prefer_name_first: bool = False) -> str:
+    """Display name: role, symbol, name, or id. If prefer_name_first, name is tried before role."""
     if not e:
         return ""
     n = (e.get("intent") or {}).get("narrative") or {}
-    role = n.get("role") if isinstance(n, dict) else ""
+    role = (n.get("role") or "").strip() if isinstance(n, dict) else ""
+    name = (e.get("name") or "").strip()
+    symbol = (e.get("reality") or {}).get("symbol") or ""
+    if isinstance(symbol, str):
+        symbol = symbol.strip()
+    else:
+        symbol = ""
+    fallback = (e.get("id") or "").strip()
+    if prefer_name_first:
+        return name or role or symbol or fallback or ""
     if role:
         return role
-    return (e.get("reality") or {}).get("symbol") or e.get("name") or e.get("id") or ""
+    return symbol or name or fallback or ""
 
 
 def non_root_entities(blueprint: Dict[str, Any]) -> List[Dict[str, Any]]:

@@ -2,7 +2,7 @@
 
 from typing import Dict, Any, List, Optional, Set, Tuple
 
-from manifest.audit.entity_schema import PROJECT_ROOT_ID
+from manifest.audit.entity_schema import PROJECT_ROOT_ID, entity_display_name
 from manifest.view.constants import DEFAULT_DIAGRAM_TITLE
 
 
@@ -19,17 +19,8 @@ def is_app_component(node: Dict[str, Any]) -> bool:
 
 
 def _node_label(node: Dict[str, Any]) -> str:
-    """Label for node: name, or intent.narrative.role, or reality.symbol, or id."""
-    name = (node.get("name") or "").strip()
-    if name:
-        return name
-    role = ((node.get("intent") or {}).get("narrative") or {}).get("role") or ""
-    if role:
-        return role.strip()
-    symbol = (node.get("reality") or {}).get("symbol") or ""
-    if symbol:
-        return symbol.strip()
-    return (node.get("id") or "?").strip()
+    """Label for diagram node (name preferred)."""
+    return entity_display_name(node, prefer_name_first=True) or (node.get("id") or "?").strip()
 
 
 def _status_for(comp_status: Dict[str, str], comp_id: str) -> str:
@@ -120,8 +111,8 @@ def build_diagram_spec(
     filter_app_only: bool = True,
 ) -> Dict[str, Any]:
     """
-    Layer 1: direct children of root_id (structured). Layer 2: under each L1 node, a row of its children.
-    Edges from outgoing_contracts (flow/dependency) between L1 nodes. Returns spec with nodes[].row, edges.
+    Root's direct children as main row; each node's children as a sub-row.
+    Edges from outgoing_contracts. Returns spec with nodes[].row, edges.
     """
     id_to_node = {n.get("id"): n for n in nodes if n.get("id")}
     root = id_to_node.get(root_id)

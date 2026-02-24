@@ -2,7 +2,7 @@
 Stateless view content builders for Manifest View.
 
 Pure functions that take manifest_dir, blueprint, or other data and return
-strings or Rich renderables. Used by app.py for Diagram, Files, Mission,
+strings or Rich renderables. Used by app.py for Diagram, Files,
 Inspector, and sidebar content. Keeps app.py focused on lifecycle and state.
 """
 from pathlib import Path
@@ -70,40 +70,55 @@ def blueprint_component_names(manifest_dir: Path) -> Dict[str, str]:
         return {}
 
 
-def blueprint_features_by_component(blueprint: Dict[str, Any]) -> Dict[str, List[str]]:
-    """Map component id to feature names that reference it."""
-    comp_to_features: Dict[str, List[str]] = {}
+def blueprint_parent_names_by_component(blueprint: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Map component id to parent entity display names that list it as a child."""
+    comp_to_parents: Dict[str, List[str]] = {}
     for e in top_layer_entities(blueprint):
         name = entity_display_name(e) or e.get("name") or e.get("id") or "?"
         for cid in e.get("children") or []:
-            comp_to_features.setdefault(cid, []).append(name)
-    return comp_to_features
+            comp_to_parents.setdefault(cid, []).append(name)
+    return comp_to_parents
 
 
-def feature_status_from_entities(
+def parent_aggregate_status_from_children(
     blueprint: Dict[str, Any],
     entity_status: Dict[str, str],
 ) -> Dict[str, str]:
-    """Status per feature id (healthy, planned, partial, deviation)."""
+    """Aggregate status per parent entity id (root's children) from its children's statuses."""
     out: Dict[str, str] = {}
     for e in top_layer_entities(blueprint):
-        fid = e.get("id")
-        ent_ids = list(e.get("children") or [])
-        if not fid:
+        parent_id = e.get("id")
+        child_ids = list(e.get("children") or [])
+        if not parent_id:
             continue
-        if not ent_ids:
-            out[fid] = "planned"
+        if not child_ids:
             continue
-        statuses = [entity_status.get(eid, "planned") for eid in ent_ids]
+        statuses = [entity_status.get(eid, "planned") for eid in child_ids]
         if any(s == "deviation" for s in statuses):
-            out[fid] = "deviation"
+            out[parent_id] = "deviation"
         elif all(s == "healthy" for s in statuses):
-            out[fid] = "healthy"
+            out[parent_id] = "healthy"
         elif all(s == "planned" for s in statuses):
-            out[fid] = "planned"
+            out[parent_id] = "planned"
         else:
-            out[fid] = "partial"
+            out[parent_id] = "partial"
     return out
+
+
+def root_status_from_children(blueprint: Dict[str, Any], entity_status: Dict[str, str]) -> str:
+    """Root status from its direct children (same aggregation as parent_aggregate)."""
+    child_entities = top_layer_entities(blueprint)
+    child_ids = [e.get("id") for e in child_entities if e.get("id")]
+    if not child_ids:
+        return "planned"
+    statuses = [entity_status.get(eid, "planned") for eid in child_ids]
+    if any(s == "deviation" for s in statuses):
+        return "deviation"
+    if all(s == "healthy" for s in statuses):
+        return "healthy"
+    if all(s == "planned" for s in statuses):
+        return "planned"
+    return "partial"
 
 
 def box(name: str, width: int) -> Tuple[str, str, str]:

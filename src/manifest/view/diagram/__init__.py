@@ -7,11 +7,13 @@ from manifest.view.diagram.builder import (
     is_app_component,
 )
 from manifest.view.diagram.render import render_diagram
+from manifest.view.diagram.text_tree import build_blueprint_text_tree
 
 __all__ = [
     "load_diagram_config",
     "build_diagram_spec",
     "build_flat_diagram_spec",
+    "build_blueprint_text_tree",
     "is_app_component",
     "render_diagram",
 ]

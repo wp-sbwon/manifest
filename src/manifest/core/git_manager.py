@@ -66,6 +66,28 @@ class GitManager:
 
         return commits
 
+    def get_commits_for_paths(
+        self,
+        paths: List[str],
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Commits that touched any of the given paths (relative to project_root)."""
+        if not self.is_available() or not paths:
+            return []
+        commits = []
+        try:
+            for commit in self.repo.iter_commits(max_count=limit, paths=paths):
+                commits.append({
+                    "hash": commit.hexsha,
+                    "author": commit.author.name,
+                    "message": commit.message.strip(),
+                    "timestamp": commit.committed_datetime.isoformat(),
+                    "short_hash": commit.hexsha[:8],
+                })
+        except Exception as e:
+            logger.debug("get_commits_for_paths failed: %s", e)
+        return commits
+
     def create_commit(self, message: str, files: Optional[List[str]] = None) -> Optional[str]:
         """Create a new commit."""
         if not self.is_available():

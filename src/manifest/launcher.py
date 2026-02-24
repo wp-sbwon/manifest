@@ -1,9 +1,4 @@
-"""
-Manifest launcher: starts View TUI and OpenCode (terminal chat).
-
-Requires OpenCode. No container runtime. Uses tmp/ as project dir when
-MANIFEST_DEV=1 and cwd is the manifest repo.
-"""
+"""Start View TUI and OpenCode. Uses tmp/ as project dir when MANIFEST_DEV=1 in repo."""
 import os
 import sys
 import shutil
@@ -16,12 +11,10 @@ DEV_PROJECT_DIR_NAME = "tmp"
 
 
 def _is_manifest_repo(path: Path) -> bool:
-    """True if path looks like the manifest repo (dev environment)."""
     return (path / "src" / "manifest").is_dir()
 
 
 def _get_project_dir() -> Path:
-    """Project dir: MANIFEST_PROJECT_DIR, or tmp/ when MANIFEST_DEV=1 in manifest repo, else cwd."""
     if os.environ.get("MANIFEST_PROJECT_DIR"):
         p = Path(os.environ.get("MANIFEST_PROJECT_DIR", "")).resolve()
         p.mkdir(parents=True, exist_ok=True)
@@ -35,7 +28,6 @@ def _get_project_dir() -> Path:
 
 
 def _get_manifest_dir() -> Path:
-    """.manifest for the session project."""
     d = _get_project_dir() / ".manifest"
     d.mkdir(parents=True, exist_ok=True)
     return d
@@ -57,7 +49,6 @@ def _is_opencode_available() -> bool:
 
 
 def _start_view(manifest_dir: Path) -> None:
-    """Start View TUI. On macOS open new Terminal window; else background with log."""
     if os.environ.get("MANIFEST_VIEW_NO_WINDOW"):
         return
     cwd = os.getcwd()
@@ -98,7 +89,6 @@ def _start_view(manifest_dir: Path) -> None:
 
 
 def _get_opencode_config_path() -> Optional[Path]:
-    """Path to opencode.json. Prefer cwd, then repo root."""
     for candidate in [Path.cwd() / "opencode.json", Path(__file__).resolve().parent.parent.parent / "opencode.json"]:
         if candidate.exists():
             return candidate.resolve()
@@ -106,7 +96,6 @@ def _get_opencode_config_path() -> Optional[Path]:
 
 
 def _run_opencode() -> int:
-    """Exec OpenCode in project dir with architect agent."""
     path = _get_opencode_path()
     if not path:
         sys.stderr.write("opencode not found on PATH.\n")
@@ -128,7 +117,6 @@ def _run_opencode() -> int:
 
 
 def main() -> int:
-    """Entry: start View then OpenCode."""
     if not _is_opencode_available():
         sys.stderr.write("OpenCode is required but not found.\n")
         return 1

@@ -34,7 +34,7 @@ def render_diagram(
         layout_topology = {}
 
     if not nodes:
-        return "  (no nodes)"
+        return "  No nodes"
 
     title = spec.get("title") or config.get("title") or DEFAULT_DIAGRAM_TITLE
     box_width = config.get("box_width") or 28

@@ -176,8 +176,5 @@ def validate_blueprint_file(path: Path) -> Tuple[bool, List[str]]:
 
 
 def validate_blueprint_code_file(path: Path) -> Tuple[bool, List[str]]:
-    """
-    Same as validate_blueprint_file (same schema for plan and actual).
-    Returns (valid, list of error messages).
-    """
+    """Alias for validate_blueprint_file (same schema for design and code)."""
     return validate_blueprint_file(path)

@@ -367,37 +367,25 @@ class BlueprintSynchronizer:
     ) -> Dict[str, Any]:
         """
         Calculate implementation status for components (planned/deviation/healthy/extra).
-        Feature completion derived from top_down (root's children = features). New schema only.
+        Parent completion: % of children healthy per root's direct children (no explicit type).
         """
-        def _by_id_and_name(entities: List[Dict[str, Any]]):
-            by_id: Dict[str, Dict[str, Any]] = {}
-            by_name: Dict[str, Dict[str, Any]] = {}
-            for ent in entities:
-                if (ent.get("id") or "") == PROJECT_ROOT_ID:
-                    continue
-                eid = ent.get("id", "")
-                name = self.comparator._entity_display_name(ent)
-                if eid:
-                    by_id[eid] = ent
-                if name:
-                    by_name[name] = ent
-            return by_id, by_name
+        def _by_id(entities: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+            return {
+                ent["id"]: ent
+                for ent in (entities or [])
+                if (ent.get("id") or "") != PROJECT_ROOT_ID
+            }
 
         td_entities = top_down.get("entities") or []
         bu_entities = bottom_up.get("entities") or []
-        td_components_by_id, td_components_by_name = _by_id_and_name(td_entities)
-        bu_components_by_id, bu_components_by_name = _by_id_and_name(bu_entities)
+        td_components_by_id = _by_id(td_entities)
+        bu_components_by_id = _by_id(bu_entities)
 
         node_statuses: Dict[str, str] = {}
         node_deviations: Dict[str, List[str]] = {}
 
         for comp_id, td_comp in td_components_by_id.items():
-            comp_name = self.comparator._entity_display_name(td_comp)
-
             bu_comp = bu_components_by_id.get(comp_id)
-            if not bu_comp and comp_name:
-                bu_comp = bu_components_by_name.get(comp_name)
-
             if not bu_comp:
                 node_statuses[comp_id] = "planned"
             else:
@@ -406,32 +394,29 @@ class BlueprintSynchronizer:
                     c for c in conflicts
                     if c.severity in [Severity.ERROR, Severity.WARNING]
                 ]
-
                 if significant_conflicts:
                     node_statuses[comp_id] = "deviation"
                     node_deviations[comp_id] = [c.message for c in significant_conflicts]
                 else:
                     node_statuses[comp_id] = "healthy"
 
-        for comp_id, bu_comp in bu_components_by_id.items():
-            comp_name = self.comparator._entity_display_name(bu_comp)
+        for comp_id in bu_components_by_id:
             if comp_id not in td_components_by_id:
-                if comp_name not in td_components_by_name:
-                    node_statuses[comp_id] = "extra"
+                node_statuses[comp_id] = "extra"
 
-        # Feature completion from top-down blueprint (top-layer entities = features)
-        feature_completions: Dict[str, float] = {}
+        # Parent completion: % of children healthy per root's direct child (e.g. module)
+        parent_completions: Dict[str, float] = {}
         for entity in top_layer_entities(top_down):
-            feature_id = entity.get("id", "")
-            feature_entity_ids = list(entity.get("children") or [])
+            parent_id = entity.get("id", "")
+            child_ids = list(entity.get("children") or [])
 
-            if not feature_entity_ids:
-                feature_completions[feature_id] = 0.0
+            if not child_ids:
+                parent_completions[parent_id] = 0.0
                 continue
 
             healthy_count = 0
-            total_count = len(feature_entity_ids)
-            for ent_id in feature_entity_ids:
+            total_count = len(child_ids)
+            for ent_id in child_ids:
                 status = node_statuses.get(ent_id, "planned")
                 if status == "healthy":
                     healthy_count += 1
@@ -440,14 +425,14 @@ class BlueprintSynchronizer:
 
             if total_count > 0:
                 completion = (healthy_count / total_count) * 100
-                feature_completions[feature_id] = round(completion, 1)
+                parent_completions[parent_id] = round(completion, 1)
             else:
-                feature_completions[feature_id] = 0.0
+                parent_completions[parent_id] = 0.0
 
         return {
             "node_statuses": node_statuses,
             "node_deviations": node_deviations,
-            "feature_completions": feature_completions
+            "parent_completions": parent_completions
         }
 
     def update_blueprint_with_status(
@@ -455,10 +440,10 @@ class BlueprintSynchronizer:
         blueprint: Dict[str, Any],
         status_info: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Update blueprint entities with implementation status and feature completion."""
+        """Update blueprint entities with implementation status and parent completion."""
         component_statuses = status_info.get("node_statuses", {})
         component_deviations = status_info.get("node_deviations", {})
-        feature_completions = status_info.get("feature_completions", {})
+        parent_completions = status_info.get("parent_completions", {})
 
         entities_list = blueprint.get("entities") or []
         for ent in entities_list:
@@ -469,9 +454,9 @@ class BlueprintSynchronizer:
                     ent["deviation_details"] = component_deviations[ent_id]
 
         for entity in top_layer_entities(blueprint):
-            feature_id = entity.get("id", "")
-            if feature_id in feature_completions:
-                entity["completion_percentage"] = feature_completions[feature_id]
+            parent_id = entity.get("id", "")
+            if parent_id in parent_completions:
+                entity["completion_percentage"] = parent_completions[parent_id]
             completion = entity.get("completion_percentage", 0)
             if completion == 100:
                 entity["status"] = "done"

@@ -1,26 +1,129 @@
 """
-Integrated view schema: plan vs actual per field, validation attached.
+View schema: same keys as blueprint/blueprint_code; values are pair + deviation status.
 """
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_VIEW_FILE
-from manifest.audit.entity_schema import PROJECT_ROOT_ID
+from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_intent, empty_reality
 from manifest.core.logger import get_logger
+from manifest.io.json_io import read_json_or_default
 
 logger = get_logger(__name__)
 
 
-def _pair(plan_val: Any, actual_val: Any) -> Dict[str, Any]:
-    return {"plan": plan_val if plan_val is not None else "", "actual": actual_val if actual_val is not None else ""}
+def _nested_get(d: Dict[str, Any], path: Tuple[str, ...]) -> Any:
+    """Get value at path (tuple of keys); return None if missing."""
+    for k in path:
+        d = (d or {}).get(k)
+        if d is None:
+            return None
+    return d
 
 
-def _pair_nested(plan_d: Dict[str, Any], actual_d: Dict[str, Any], keys: List[str]) -> Dict[str, Any]:
+def _nested_set(d: Dict[str, Any], path: Tuple[str, ...], value: Any) -> None:
+    """Set value at path; create nested dicts as needed."""
+    for k in path[:-1]:
+        if k not in d:
+            d[k] = {}
+        d = d[k]
+    d[path[-1]] = value
+
+
+def _pair_nested(
+    design_d: Dict[str, Any],
+    code_d: Dict[str, Any],
+    empty_d: Dict[str, Any],
+    key_paths: List[Tuple[str, ...]],
+) -> Dict[str, Any]:
+    """Build nested dict: each leaf is _pair_deviates(design_val, code_val) for the path."""
     out: Dict[str, Any] = {}
-    for k in keys:
-        out[k] = _pair(plan_d.get(k) if isinstance(plan_d, dict) else None, actual_d.get(k) if isinstance(actual_d, dict) else None)
+    for path in key_paths:
+        d_val = _nested_get(design_d, path) if design_d else None
+        c_val = _nested_get(code_d, path) if code_d else None
+        empty_val = _nested_get(empty_d, path) if empty_d else None
+        plan_val = d_val if d_val is not None else empty_val
+        actual_val = c_val if c_val is not None else empty_val
+        _nested_set(out, path, _pair_deviates(plan_val, actual_val))
     return out
+
+
+def _values_equal(a: Any, b: Any) -> bool:
+    """Deep equality for plan vs actual (JSON-like values)."""
+    if a is b:
+        return True
+    if type(a) != type(b):
+        return False
+    if a is None or b is None:
+        return a == b
+    if isinstance(a, (str, int, float, bool)):
+        return a == b
+    if isinstance(a, list):
+        return len(a) == len(b) and all(_values_equal(x, y) for x, y in zip(a, b))
+    if isinstance(a, dict):
+        keys = set(a) | set(b)
+        return all(_values_equal(a.get(k), b.get(k)) for k in keys)
+    return a == b
+
+
+def _pair_deviates(plan_val: Any, actual_val: Any) -> Dict[str, Any]:
+    """Single value as in blueprint, but stored as plan/actual + deviates."""
+    p = plan_val if plan_val is not None else ""
+    a = actual_val if actual_val is not None else ""
+    if isinstance(p, dict) and isinstance(a, dict) and not p and not a:
+        p, a = {}, {}
+    return {"plan": p, "actual": a, "deviates": not _values_equal(p, a)}
+
+
+_INTENT_KEY_PATHS: List[Tuple[str, ...]] = [
+    ("narrative", "role"),
+    ("narrative", "mission"),
+    ("blueprint", "type"),
+    ("blueprint", "topology"),
+    ("protocol", "input"),
+    ("protocol", "output"),
+    ("profile", "language"),
+    ("profile", "platform"),
+    ("profile", "io_model"),
+    ("profile", "state_model"),
+    ("governance", "rules"),
+    ("governance", "assertions"),
+]
+
+_REALITY_KEY_PATHS: List[Tuple[str, ...]] = [
+    ("symbol",),
+    ("protocol", "input"),
+    ("protocol", "output"),
+    ("profile", "language"),
+    ("profile", "platform"),
+    ("profile", "io_model"),
+    ("profile", "state_model"),
+    ("dependencies",),
+    ("traits",),
+    ("topology_actual",),
+    ("preview",),
+]
+
+
+def _intent_view(design: Dict[str, Any], code: Dict[str, Any]) -> Dict[str, Any]:
+    """Intent with same keys as blueprint intent; each leaf is pair+deviates."""
+    return _pair_nested(
+        design.get("intent") or {},
+        code.get("intent") or {},
+        empty_intent(),
+        _INTENT_KEY_PATHS,
+    )
+
+
+def _reality_view(design: Dict[str, Any], code: Dict[str, Any]) -> Dict[str, Any]:
+    """Reality with same keys as blueprint reality; each leaf is pair+deviates."""
+    return _pair_nested(
+        design.get("reality") or {},
+        code.get("reality") or {},
+        empty_reality(),
+        _REALITY_KEY_PATHS,
+    )
 
 
 def build_view_schema(
@@ -29,7 +132,7 @@ def build_view_schema(
     comp_status: Dict[str, str],
     conflicts: List[Any],
 ) -> Dict[str, Any]:
-    """Build view schema: plan/actual pairs and validation per entity."""
+    """Build view schema: same keys as blueprint/blueprint_code; values are plan/actual + deviates."""
     design_entities = {e.get("id"): e for e in (design.get("entities") or []) if e.get("id")}
     code_entities = {e.get("id"): e for e in (code.get("entities") or []) if e.get("id")}
     all_ids = set(design_entities) | set(code_entities)
@@ -39,67 +142,23 @@ def build_view_schema(
     for eid in sorted(all_ids, key=lambda x: (0 if x == root_id else 1, x)):
         de = design_entities.get(eid) or {}
         ce = code_entities.get(eid) or {}
-        intent_d = de.get("intent") or {}
-        intent_c = ce.get("intent") or {}
-        reality_d = de.get("reality") or {}
-        reality_c = ce.get("reality") or {}
-
-        narrative_d = intent_d.get("narrative") or {}
-        narrative_c = intent_c.get("narrative") or {}
-        view_intent = {
-            "narrative": {
-                "role": _pair(narrative_d.get("role"), narrative_c.get("role")),
-                "mission": _pair(narrative_d.get("mission"), narrative_c.get("mission")),
-            },
-            "blueprint": {
-                "type": _pair(intent_d.get("blueprint", {}).get("type"), intent_c.get("blueprint", {}).get("type")),
-                "topology": _pair(intent_d.get("blueprint", {}).get("topology"), intent_c.get("blueprint", {}).get("topology")),
-            },
-            "protocol": {
-                "input": _pair(intent_d.get("protocol", {}).get("input"), intent_c.get("protocol", {}).get("input")),
-                "output": _pair(intent_d.get("protocol", {}).get("output"), intent_c.get("protocol", {}).get("output")),
-            },
-            "profile": _pair_nested(
-                intent_d.get("profile") or {},
-                intent_c.get("profile") or {},
-                ["language", "platform", "io_model", "state_model"],
-            ),
-            "governance": {
-                "rules": _pair(intent_d.get("governance", {}).get("rules"), intent_c.get("governance", {}).get("rules")),
-                "assertions": _pair(intent_d.get("governance", {}).get("assertions"), intent_c.get("governance", {}).get("assertions")),
-            },
-        }
-        view_reality = {
-            "symbol": _pair(reality_d.get("symbol"), reality_c.get("symbol")),
-            "protocol": {
-                "input": _pair(reality_d.get("protocol", {}).get("input"), reality_c.get("protocol", {}).get("input")),
-                "output": _pair(reality_d.get("protocol", {}).get("output"), reality_c.get("protocol", {}).get("output")),
-            },
-            "profile": _pair_nested(
-                reality_d.get("profile") or {},
-                reality_c.get("profile") or {},
-                ["language", "platform", "io_model", "state_model"],
-            ),
-            "dependencies": _pair(reality_d.get("dependencies"), reality_c.get("dependencies")),
-            "traits": _pair(reality_d.get("traits"), reality_c.get("traits")),
-            "topology_actual": _pair(reality_d.get("topology_actual"), reality_c.get("topology_actual")),
-            "preview": _pair(reality_d.get("preview"), reality_c.get("preview")),
-        }
+        children_pd = _pair_deviates(de.get("children"), ce.get("children"))
+        deps_pd = _pair_deviates(de.get("dependencies"), ce.get("dependencies"))
+        contracts_pd = _pair_deviates(de.get("outgoing_contracts"), ce.get("outgoing_contracts"))
         deviations = [
             c.message for c in conflicts
             if getattr(c, "node_id", None) == eid
             or (getattr(c, "top_down_node") or {}).get("id") == eid
             or (getattr(c, "bottom_up_node") or {}).get("id") == eid
         ]
-        status = comp_status.get(eid, "planned") if eid != root_id else "planned"
-        children = de.get("children") if de.get("children") is not None else ce.get("children")
-        outgoing_contracts = de.get("outgoing_contracts") if de.get("outgoing_contracts") is not None else ce.get("outgoing_contracts")
+        status = comp_status.get(eid, "planned")
         view_entities.append({
             "id": eid,
-            "children": children if isinstance(children, list) else [],
-            "outgoing_contracts": outgoing_contracts if isinstance(outgoing_contracts, list) else [],
-            "intent": view_intent,
-            "reality": view_reality,
+            "children": children_pd,
+            "dependencies": deps_pd,
+            "intent": _intent_view(de, ce),
+            "reality": _reality_view(de, ce),
+            "outgoing_contracts": contracts_pd,
             "validation": {"status": status, "deviations": deviations},
         })
 
@@ -124,14 +183,10 @@ def write_view_schema(manifest_dir: Path, view_schema: Dict[str, Any]) -> bool:
         return False
 
 
+_EMPTY_VIEW_SCHEMA: Dict[str, Any] = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": []}
+
+
 def load_view_schema(manifest_dir: Path) -> Dict[str, Any]:
     """Load blueprint_view.json or return empty structure."""
     path = Path(manifest_dir) / BLUEPRINT_VIEW_FILE
-    if not path.exists():
-        return {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": []}
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception as e:
-        logger.warning("Failed to load view schema: %s", e)
-        return {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": []}
+    return read_json_or_default(path, _EMPTY_VIEW_SCHEMA, logger=logger)

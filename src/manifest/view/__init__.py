@@ -1,1 +1,1 @@
-"""Minimal TUI: Diagram, Files, Health, Inspector. Reads blueprint via io + schema."""
+"""TUI: Diagram, Files, Health, Inspector."""

@@ -19,7 +19,6 @@ try:
 except ImportError:
     HTTPX_AVAILABLE = False
 
-# Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
@@ -156,9 +155,8 @@ def check_workflow_status(
         }
 
 
-# Run all non-archived tests (test_startup, test_entity_schema_validation, test_blueprint_io, test_architect).
 CI_TEST_CMD = [
-    "pytest", "tests/", "-v", "--ignore=tests/archive",
+    "pytest", "tests/", "-v",
 ]
 CI_TEST_TIMEOUT_SEC = 90
 

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from manifest.audit.code.deviation_auditor import Severity
-from manifest.audit.entity_schema import PROJECT_ROOT_ID, contracts_from_entities
+from manifest.audit.entity_schema import PROJECT_ROOT_ID, contracts_from_entities, entity_display_name
 
 
 class ConflictType(Enum):
@@ -70,71 +70,48 @@ class BlueprintComparator:
 
         return conflicts
 
-    @staticmethod
-    def _entity_display_name(ent: Dict[str, Any]) -> str:
-        """Display name for matching: role, symbol, name, or id."""
-        if not ent:
-            return ""
-        n = (ent.get("intent") or {}).get("narrative") or {}
-        if isinstance(n, dict):
-            role = n.get("role") or ""
-        else:
-            role = ""
-        if role:
-            return role
-        reality = ent.get("reality") or {}
-        return reality.get("symbol") or ent.get("name") or ent.get("id") or ""
-
     def compare_entities(
         self,
         top_down_entities: List[Dict[str, Any]],
         bottom_up_entities: List[Dict[str, Any]]
     ) -> List[BlueprintConflict]:
-        """Compare entities between blueprints."""
+        """Compare entities by id (design and code share same schema and ids)."""
         conflicts = []
         td_list = [e for e in (top_down_entities or []) if (e.get("id") or "") != PROJECT_ROOT_ID]
         bu_list = [e for e in (bottom_up_entities or []) if (e.get("id") or "") != PROJECT_ROOT_ID]
 
-        top_down_by_name: Dict[str, Dict[str, Any]] = {}
-        bottom_up_by_name: Dict[str, Dict[str, Any]] = {}
+        td_by_id: Dict[str, Dict[str, Any]] = {e.get("id"): e for e in td_list if e.get("id")}
+        bu_by_id: Dict[str, Dict[str, Any]] = {e.get("id"): e for e in bu_list if e.get("id")}
 
-        for ent in td_list:
-            name = self._entity_display_name(ent)
-            if name:
-                top_down_by_name[name] = ent
-
-        for ent in bu_list:
-            name = self._entity_display_name(ent)
-            if name:
-                bottom_up_by_name[name] = ent
-
-        for name, td_ent in top_down_by_name.items():
-            if name not in bottom_up_by_name:
+        for eid, td_ent in td_by_id.items():
+            bu_ent = bu_by_id.get(eid)
+            name = entity_display_name(td_ent) or eid
+            if bu_ent is None:
                 file_path = (td_ent.get("reality") or {}).get("symbol") or td_ent.get("file")
                 conflicts.append(BlueprintConflict(
                     severity=Severity.IN_PROGRESS,
                     type=ConflictType.MISSING_ENTITY,
-                    message=f"Entity '{name}' specified in design but not found in code (implementation in progress)",
+                    message=f"Entity '{name}' specified in design but not found in code",
                     top_down_node=td_ent,
-                    node_id=td_ent.get("id"),
+                    node_id=eid,
                     file_path=file_path
                 ))
             else:
-                bu_ent = bottom_up_by_name[name]
                 conflicts.extend(self._compare_methods(td_ent, bu_ent))
                 conflicts.extend(self._compare_attributes(td_ent, bu_ent))
                 conflicts.extend(self._compare_structural_fields(td_ent, bu_ent))
                 conflicts.extend(self._compare_metadata_fields(td_ent, bu_ent))
 
-        for name, bu_ent in bottom_up_by_name.items():
-            if name not in top_down_by_name:
+        for eid, bu_ent in bu_by_id.items():
+            if eid not in td_by_id:
+                name = entity_display_name(bu_ent) or eid
                 file_path = (bu_ent.get("reality") or {}).get("symbol") or bu_ent.get("file")
                 conflicts.append(BlueprintConflict(
                     severity=Severity.WARNING,
                     type=ConflictType.EXTRA_ENTITY,
-                    message=f"Entity '{name}' exists in code but not in design blueprint",
+                    message=f"Entity '{name}' exists in code but not in design",
                     bottom_up_node=bu_ent,
-                    node_id=bu_ent.get("id"),
+                    node_id=eid,
                     file_path=file_path
                 ))
 
@@ -150,8 +127,8 @@ class BlueprintComparator:
         td_methods = set((top_down.get("reality") or {}).get("methods", top_down.get("methods", [])))
         bu_methods = set((bottom_up.get("reality") or {}).get("methods", bottom_up.get("methods", [])))
 
-        td_name = self._entity_display_name(top_down)
-        bu_name = self._entity_display_name(bottom_up)
+        td_name = entity_display_name(top_down)
+        bu_name = entity_display_name(bottom_up)
         bu_file = (bottom_up.get("reality") or {}).get("symbol", bottom_up.get("file"))
 
         missing = td_methods - bu_methods
@@ -190,7 +167,7 @@ class BlueprintComparator:
         td_attrs = set((top_down.get("reality") or {}).get("attributes", top_down.get("attributes", [])))
         bu_attrs = set((bottom_up.get("reality") or {}).get("attributes", bottom_up.get("attributes", [])))
 
-        td_name = self._entity_display_name(top_down)
+        td_name = entity_display_name(top_down)
         bu_file = (bottom_up.get("reality") or {}).get("symbol", bottom_up.get("file"))
 
         missing = td_attrs - bu_attrs
@@ -294,8 +271,8 @@ class BlueprintComparator:
     ) -> List[BlueprintConflict]:
         """Compare structural fields (id, name, type, file) between nodes."""
         conflicts = []
-        td_name = self._entity_display_name(top_down)
-        bu_name = self._entity_display_name(bottom_up)
+        td_name = entity_display_name(top_down)
+        bu_name = entity_display_name(bottom_up)
         td_file = (top_down.get("reality") or {}).get("symbol", top_down.get("file", ""))
         bu_file = (bottom_up.get("reality") or {}).get("symbol", bottom_up.get("file", ""))
 
