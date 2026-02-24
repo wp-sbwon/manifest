@@ -4,7 +4,8 @@ from pathlib import Path
 import pytest
 
 from manifest.audit.entity_schema import PROJECT_ROOT_ID
-from manifest.view.entity_model import _entity_has_any_deviates, get_entities_for_view
+from manifest.audit.blueprint.view_schema import entity_has_any_deviates
+from manifest.view.entity_model import get_entities_for_view
 
 
 def test_root_status_not_planned_and_no_healthy_with_deviations(tmp_path: Path) -> None:
@@ -26,7 +27,7 @@ def test_root_status_not_planned_and_no_healthy_with_deviations(tmp_path: Path) 
     for ve in view_schema.get("entities") or []:
         eid = ve.get("id") or ""
         status = (ve.get("validation") or {}).get("status") or "planned"
-        has_deviates = _entity_has_any_deviates(ve)
+        has_deviates = entity_has_any_deviates(ve)
         assert not (status == "healthy" and has_deviates), (
             f"Entity {eid} is healthy but has field-level deviations (red alerts)."
         )
@@ -50,6 +51,6 @@ def test_system_core_and_cli_no_spurious_alerts(tmp_path: Path) -> None:
         status = (ve.get("validation") or {}).get("status") or "planned"
         if status != "healthy":
             continue
-        assert not _entity_has_any_deviates(ve), (
+        assert not entity_has_any_deviates(ve), (
             f"{eid} is marked healthy but has deviation alerts (e.g. profile, platform)."
         )

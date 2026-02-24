@@ -14,7 +14,14 @@ from .blueprint_metadata import load_blueprint_with_metadata, save_blueprint_wit
 from .blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
 from .blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
 from .design_identity import validate_and_align_design_identity
-from .view_schema import build_view_schema, write_view_schema, load_view_schema
+from .view_schema import (
+    build_view_schema,
+    entity_has_any_deviates,
+    load_view_schema,
+    to_single_value,
+    unwrap_list_field,
+    write_view_schema,
+)
 
 __all__ = [
     "BLUEPRINT_DESIGN_FILE",
@@ -30,6 +37,9 @@ __all__ = [
     "ConflictReport",
     "validate_and_align_design_identity",
     "build_view_schema",
-    "write_view_schema",
+    "entity_has_any_deviates",
     "load_view_schema",
+    "to_single_value",
+    "unwrap_list_field",
+    "write_view_schema",
 ]

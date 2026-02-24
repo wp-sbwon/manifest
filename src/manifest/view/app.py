@@ -165,21 +165,19 @@ class ManifestViewApp(App[None]):
         self._diagram_root_stack: List[str] = []
         self._diagram_layered_spec: Optional[Dict[str, Any]] = None
         self._diagram_selectable_nodes: List[Tuple[str, str, Dict[str, Any]]] = []
-        self._cached_design_blueprint: Optional[Dict[str, Any]] = None
-        self._cached_code_blueprint: Optional[Dict[str, Any]] = None
         self._health_metrics_populated: bool = False
 
-    def _get_cached_design_blueprint(self) -> Dict[str, Any]:
-        """Design blueprint for current refresh cycle; empty dict if not yet loaded."""
-        return self._cached_design_blueprint if self._cached_design_blueprint is not None else {}
+    def _get_design_blueprint(self) -> Dict[str, Any]:
+        """Design blueprint from view data; empty dict if not yet loaded."""
+        return (self._view_data or {}).get("blueprint") or {}
 
-    def _get_cached_code_blueprint(self) -> Dict[str, Any]:
-        """Code blueprint for current refresh cycle; empty dict if not yet loaded."""
-        return self._cached_code_blueprint if self._cached_code_blueprint is not None else {}
+    def _get_code_blueprint(self) -> Dict[str, Any]:
+        """Code blueprint from view data; empty dict if not yet loaded."""
+        return (self._view_data or {}).get("code_blueprint") or {}
 
     def _get_design_and_code_for_status(self) -> tuple:
         """Design and code blueprints from current view data."""
-        return (self._get_cached_design_blueprint(), self._get_cached_code_blueprint())
+        return (self._get_design_blueprint(), self._get_code_blueprint())
 
     def _get_implementation_status(self) -> tuple:
         """Comp status and status_info from view data (entity_model pipeline)."""
@@ -218,7 +216,7 @@ class ManifestViewApp(App[None]):
 
             if entities and root_id:
                 if self._diagram_root_id == PROJECT_ROOT_ID:
-                    design = self._get_cached_design_blueprint()
+                    design = self._get_design_blueprint()
                     root_entity = get_root_entity(design) if design else None
                     diagram_title = entity_display_name(root_entity) if root_entity else DEFAULT_PROJECT_LABEL
                 else:
@@ -238,7 +236,7 @@ class ManifestViewApp(App[None]):
                 )
                 self._diagram_layered_spec = spec
                 selectable: List[Tuple[str, str, Dict[str, Any]]] = []
-                design = self._get_cached_design_blueprint()
+                design = self._get_design_blueprint()
                 root_entity = get_root_entity(design) if design else None
                 root_display_name = entity_display_name(root_entity) if root_entity else DEFAULT_ROOT_LABEL
                 root_desc = mission_from_blueprint(design, DEFAULT_ROOT_DESC)
@@ -266,7 +264,7 @@ class ManifestViewApp(App[None]):
             else:
                 self._diagram_layered_spec = None
                 self._diagram_component_list = []
-                design = self._get_cached_design_blueprint()
+                design = self._get_design_blueprint()
                 root_entity = get_root_entity(design) if design else None
                 root_display_name = entity_display_name(root_entity) if root_entity else DEFAULT_ROOT_LABEL
                 root_desc = mission_from_blueprint(design, DEFAULT_ROOT_DESC)
@@ -295,7 +293,7 @@ class ManifestViewApp(App[None]):
             return self._diagram_selectable_nodes
         nodes: List[Tuple[str, str, Dict[str, Any]]] = []
         try:
-            design = self._get_cached_design_blueprint()
+            design = self._get_design_blueprint()
             root_entity = get_root_entity(design) if design else None
             root_display_name = entity_display_name(root_entity) if root_entity else DEFAULT_ROOT_LABEL
             root_desc = mission_from_blueprint(design, DEFAULT_ROOT_DESC)
@@ -369,7 +367,7 @@ class ManifestViewApp(App[None]):
             return "Select an entity with [n] Next / [p] Prev."
         kind, nid, data = nodes[self._selected_node_index - 1]
         comp = dict(data)
-        code_data = self._get_cached_code_blueprint()
+        code_data = self._get_code_blueprint()
         if code_data:
             for c in code_data.get("entities", []) or []:
                 if isinstance(c, dict) and c.get("id") == nid:
@@ -427,7 +425,7 @@ class ManifestViewApp(App[None]):
         """Source tree: project root (manifest_dir.parent) with dirs and files, dot by status."""
         try:
             comp_status, _ = self._get_implementation_status()
-            bottom_up = self._get_cached_code_blueprint()
+            bottom_up = self._get_code_blueprint()
             return build_files_view_content(comp_status, bottom_up, self.manifest_dir.parent)
         except Exception as e:
             logger.debug("Files view load failed: %s", e)
@@ -537,7 +535,7 @@ class ManifestViewApp(App[None]):
     def _get_diagram_label_for_node(self, kind: str, nid: str, data: Dict[str, Any]) -> str:
         """Label for right panel: match diagram (entity/node name)."""
         if kind == "root":
-            design = self._get_cached_design_blueprint()
+            design = self._get_design_blueprint()
             root_entity = get_root_entity(design) if design else None
             return (entity_display_name(root_entity) or "System Core").strip()
         if kind == "up":
@@ -550,7 +548,7 @@ class ManifestViewApp(App[None]):
             if symbol:
                 return symbol.strip()
             return (data.get("name") or nid or "?").strip()
-        blueprint = self._get_cached_design_blueprint()
+        blueprint = self._get_design_blueprint()
         for e in top_layer_entities(blueprint):
             comp_ids = list(e.get("children") or [])
             if nid not in comp_ids:
@@ -562,8 +560,8 @@ class ManifestViewApp(App[None]):
 
     def _get_entities_by_id(self, nid: str) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
         """Resolve node by id from design and code blueprints."""
-        top = self._get_cached_design_blueprint()
-        bottom = self._get_cached_code_blueprint()
+        top = self._get_design_blueprint()
+        bottom = self._get_code_blueprint()
         design_ent = next((e for e in (top.get("entities") or []) if isinstance(e, dict) and (e.get("id") or "") == nid), None)
         code_ent = next((e for e in (bottom.get("entities") or []) if isinstance(e, dict) and (e.get("id") or "") == nid), None)
         return design_ent, code_ent
@@ -643,8 +641,8 @@ class ManifestViewApp(App[None]):
 
     def _get_root_entity_for_inspector(self) -> Dict[str, Any]:
         """Root (System Core) as entity; same shape as other entities."""
-        design = self._get_cached_design_blueprint()
-        code = self._get_cached_code_blueprint()
+        design = self._get_design_blueprint()
+        code = self._get_code_blueprint()
         root_design = get_root_entity(design) if design else None
         root_code = get_root_entity(code) if code else None
         if root_design:
@@ -754,15 +752,10 @@ class ManifestViewApp(App[None]):
     def refresh_view(self) -> None:
         """Refresh all. Load view data via entity_model once per cycle; reuse for diagram, sidebar, content."""
         try:
-            view_data = get_entities_for_view(self.manifest_dir)
-            self._view_data = view_data
-            self._cached_design_blueprint = view_data.get("blueprint") or {}
-            self._cached_code_blueprint = view_data.get("code_blueprint") or {}
+            self._view_data = get_entities_for_view(self.manifest_dir)
         except Exception as e:
             logger.debug("refresh_view load failed: %s", e)
             self._view_data = {}
-            self._cached_design_blueprint = {}
-            self._cached_code_blueprint = {}
         self._ensure_diagram_components()
         self._refresh_sidebar()
         self._refresh_main_content()

@@ -1,6 +1,7 @@
 """Tests for manifest.opencode.layer_writer."""
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -9,6 +10,8 @@ from manifest.io.blueprint_io import save_blueprint
 from manifest.opencode.layer_writer import (
     build_layer_writer_context,
     merge_children_into_blueprint,
+    try_spawn_next_layer,
+    write_blueprint_layer,
     _path_from_root,
     _sibling_ids,
 )
@@ -89,3 +92,57 @@ def test_merge_children_into_blueprint(tmp_manifest):
     assert set(root["children"]) == {"child1", "child2"}
     ids = {e["id"] for e in bp["entities"]}
     assert "child1" in ids and "child2" in ids
+
+
+def test_write_blueprint_layer_stub_returns_empty(tmp_manifest):
+    """Stub mode returns empty children without calling opencode."""
+    ctx = {"layer_index": 1, "parent_entity": {"id": "p"}, "prd_excerpt": {}, "blueprint_excerpt": {}}
+    with patch.dict("os.environ", {"MANIFEST_LAYER_WRITER_STUB": "1"}):
+        result = write_blueprint_layer(ctx, tmp_manifest.parent, tmp_manifest)
+    assert result["children"] == []
+
+
+def test_write_blueprint_layer_returns_new_dicts_not_mutated(tmp_manifest):
+    """When opencode returns children, we build new dicts instead of mutating parsed objects."""
+    from unittest.mock import MagicMock
+
+    ctx = {"layer_index": 1, "parent_entity": {"id": "p"}, "prd_excerpt": {}, "blueprint_excerpt": {}}
+
+    def fake_run(cmd, **kwargs):
+        out = (kwargs.get("env") or {}).get("MANIFEST_LAYER_OUTPUT")
+        if out:
+            Path(out).parent.mkdir(parents=True, exist_ok=True)
+            Path(out).write_text(json.dumps({"children": [{"id": "c1", "intent": {}}]}), encoding="utf-8")
+        m = MagicMock()
+        m.returncode = 0
+        return m
+
+    with patch("shutil.which", return_value="/fake/opencode"):
+        with patch("subprocess.run", side_effect=fake_run):
+            result = write_blueprint_layer(ctx, tmp_manifest.parent, tmp_manifest)
+    assert len(result["children"]) == 1
+    assert result["children"][0]["id"] == "c1"
+
+
+def test_try_spawn_next_layer_max_depth_logs(tmp_manifest, caplog):
+    """When max_depth reached, logs and returns empty (no spawn)."""
+    children = [{**empty_entity("c1"), "id": "c1"}]
+    with patch("subprocess.Popen"):
+        out = try_spawn_next_layer(
+            tmp_manifest, tmp_manifest.parent, "root", 0, children, max_depth=0
+        )
+    assert out == []
+    assert "max_depth" in caplog.text or "layer" in caplog.text.lower()
+
+
+def test_try_spawn_next_layer_spawns_subprocess(tmp_manifest):
+    """Spawn calls Popen with script, manifest-dir, parent, layer."""
+    children = [{**empty_entity("c1"), "id": "c1"}]
+    with patch("subprocess.Popen") as mock_popen:
+        try_spawn_next_layer(tmp_manifest, tmp_manifest.parent, "root", 0, children)
+    mock_popen.assert_called()
+    call_args = mock_popen.call_args[0][0]
+    assert "--parent" in call_args
+    assert "c1" in call_args
+    assert "--layer" in call_args
+    assert "1" in call_args

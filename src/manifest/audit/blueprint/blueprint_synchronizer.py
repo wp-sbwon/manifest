@@ -23,6 +23,10 @@ from manifest.audit import doc_set
 
 logger = get_logger(__name__)
 
+# Weight for deviation when computing parent completion (0–100%).
+# Deviation counts as half-complete: implemented but mismatches design.
+DEVIATION_COMPLETION_WEIGHT = 0.5
+
 
 @dataclass
 class ConflictReport:
@@ -103,12 +107,23 @@ class BlueprintSynchronizer:
         self.conflicts_dir.mkdir(parents=True, exist_ok=True)
         self.comparator = BlueprintComparator()
 
-    def compare_all_docs(self, manifest_dir: Optional[Path] = None) -> Dict[str, Any]:
-        """Compare design and code blueprints. Returns implementation progress and deviation conflicts."""
+    def compare_all_docs(
+        self,
+        manifest_dir: Optional[Path] = None,
+        design_blueprint: Optional[Dict[str, Any]] = None,
+        code_blueprint: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Compare design and code blueprints. Returns implementation progress and deviation conflicts.
+
+        Uses pre-loaded blueprints if provided; otherwise loads from manifest_dir.
+        Prefer passing blueprints from get_entities_for_view to avoid duplicate disk reads.
+        """
         manifest_dir = manifest_dir or self.manifest_dir
-        top_blueprint = doc_set.load_top_down(manifest_dir, "blueprint")
-        bottom_blueprint = doc_set.load_bottom_up(manifest_dir, "blueprint")
-        blueprint_conflicts = self.comparator.compare_blueprints(top_blueprint, bottom_blueprint)
+        if design_blueprint is None:
+            design_blueprint = doc_set.load_top_down(manifest_dir, "blueprint")
+        if code_blueprint is None:
+            code_blueprint = doc_set.load_bottom_up(manifest_dir, "blueprint")
+        blueprint_conflicts = self.comparator.compare_blueprints(design_blueprint, code_blueprint)
         implementation_progress = [c for c in blueprint_conflicts if c.severity == Severity.IN_PROGRESS]
         deviation_conflicts = [c for c in blueprint_conflicts if c.severity in [Severity.ERROR, Severity.WARNING]]
         info_conflicts = [c for c in blueprint_conflicts if c.severity == Severity.INFO]
@@ -421,7 +436,7 @@ class BlueprintSynchronizer:
                 if status == "healthy":
                     healthy_count += 1
                 elif status == "deviation":
-                    healthy_count += 0.5
+                    healthy_count += DEVIATION_COMPLETION_WEIGHT
 
             if total_count > 0:
                 completion = (healthy_count / total_count) * 100

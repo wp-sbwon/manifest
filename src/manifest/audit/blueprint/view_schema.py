@@ -186,6 +186,43 @@ def write_view_schema(manifest_dir: Path, view_schema: Dict[str, Any]) -> bool:
 _EMPTY_VIEW_SCHEMA: Dict[str, Any] = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": []}
 
 
+def to_single_value(val: Any, use_actual: bool = False) -> Any:
+    """Convert plan/actual/deviates pairs to a single value; use_actual chooses which side."""
+    if isinstance(val, dict) and ("plan" in val or "actual" in val):
+        v = val.get("actual" if use_actual else "plan") or val.get("plan") or val.get("actual")
+        return to_single_value(v, use_actual) if isinstance(v, dict) else v
+    if isinstance(val, dict):
+        return {k: to_single_value(v, use_actual) for k, v in val.items()}
+    if isinstance(val, list):
+        return [to_single_value(item, use_actual) for item in val]
+    return val
+
+
+def entity_has_any_deviates(obj: Any) -> bool:
+    """True if any nested pair has deviates=True (view entity or subtree)."""
+    if isinstance(obj, dict):
+        if obj.get("deviates") is True:
+            return True
+        for k, v in obj.items():
+            if k in ("plan", "actual"):
+                continue
+            if entity_has_any_deviates(v):
+                return True
+        return False
+    if isinstance(obj, list):
+        return any(entity_has_any_deviates(item) for item in obj)
+    return False
+
+
+def unwrap_list_field(ve: Dict[str, Any], key: str, use_actual: bool = False) -> List[Any]:
+    """Unwrap a view entity field that may be {plan, actual, deviates} to a list."""
+    raw = ve.get(key)
+    if isinstance(raw, list):
+        return raw
+    unwrapped = to_single_value(raw or {}, use_actual)
+    return unwrapped if isinstance(unwrapped, list) else []
+
+
 def load_view_schema(manifest_dir: Path) -> Dict[str, Any]:
     """Load blueprint_view.json or return empty structure."""
     path = Path(manifest_dir) / BLUEPRINT_VIEW_FILE

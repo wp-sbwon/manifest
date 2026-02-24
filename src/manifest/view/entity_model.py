@@ -7,54 +7,16 @@ from typing import Dict, Any, List, Set, Optional
 from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
 from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator
-from manifest.audit.blueprint.view_schema import build_view_schema, write_view_schema
+from manifest.audit.blueprint.view_schema import (
+    build_view_schema,
+    entity_has_any_deviates,
+    to_single_value,
+    unwrap_list_field,
+    write_view_schema,
+)
 from manifest.audit.entity_schema import PROJECT_ROOT_ID
 from manifest.audit.entity_validation import validate_blueprint_data
 from manifest.view.views_content import parent_aggregate_status_from_children, root_status_from_children
-
-
-def _unwrap_plan_actual(obj: Any) -> Any:
-    """Return plan or actual from a pair dict; otherwise return obj."""
-    if isinstance(obj, dict) and ("plan" in obj or "actual" in obj):
-        return obj.get("plan") if obj.get("plan") is not None else obj.get("actual")
-    return obj
-
-
-def _to_single_value(val: Any, use_actual: bool = False) -> Any:
-    """Convert plan/actual/deviates pairs to a single value; use_actual chooses which side."""
-    if isinstance(val, dict) and ("plan" in val or "actual" in val):
-        v = val.get("actual" if use_actual else "plan") or val.get("plan") or val.get("actual")
-        return _to_single_value(v, use_actual) if isinstance(v, dict) else v
-    if isinstance(val, dict):
-        return {k: _to_single_value(v, use_actual) for k, v in val.items()}
-    if isinstance(val, list):
-        return [_to_single_value(item, use_actual) for item in val]
-    return val
-
-
-def _entity_has_any_deviates(obj: Any) -> bool:
-    """True if any nested pair has deviates=True (view entity or subtree)."""
-    if isinstance(obj, dict):
-        if obj.get("deviates") is True:
-            return True
-        for k, v in obj.items():
-            if k in ("plan", "actual"):
-                continue
-            if _entity_has_any_deviates(v):
-                return True
-        return False
-    if isinstance(obj, list):
-        return any(_entity_has_any_deviates(item) for item in obj)
-    return False
-
-
-def _unwrap_list_field(ve: Dict[str, Any], key: str, use_actual: bool = False) -> List[Any]:
-    """Unwrap a view entity field that may be {plan, actual, deviates} to a list."""
-    raw = ve.get(key)
-    if isinstance(raw, list):
-        return raw
-    unwrapped = _to_single_value(raw or {}, use_actual)
-    return unwrapped if isinstance(unwrapped, list) else []
 
 
 def entities_and_comp_status_from_view_schema(view_schema: Dict[str, Any]) -> tuple:
@@ -65,17 +27,17 @@ def entities_and_comp_status_from_view_schema(view_schema: Dict[str, Any]) -> tu
         eid = ve.get("id") or ""
         val = ve.get("validation") or {}
         comp_status[eid] = val.get("status") or "planned"
-        intent_single = _to_single_value(ve.get("intent") or {}, use_actual=False)
-        reality_single = _to_single_value(ve.get("reality") or {}, use_actual=True)
+        intent_single = to_single_value(ve.get("intent") or {}, use_actual=False)
+        reality_single = to_single_value(ve.get("reality") or {}, use_actual=True)
         if not isinstance(intent_single, dict):
             intent_single = {}
         if not isinstance(reality_single, dict):
             reality_single = {}
         entities_out.append({
             "id": eid,
-            "children": _unwrap_list_field(ve, "children", use_actual=False),
-            "dependencies": _unwrap_list_field(ve, "dependencies", use_actual=False),
-            "outgoing_contracts": _unwrap_list_field(ve, "outgoing_contracts", use_actual=False),
+            "children": unwrap_list_field(ve, "children", use_actual=False),
+            "dependencies": unwrap_list_field(ve, "dependencies", use_actual=False),
+            "outgoing_contracts": unwrap_list_field(ve, "outgoing_contracts", use_actual=False),
             "intent": intent_single,
             "reality": reality_single,
         })
@@ -138,7 +100,7 @@ def _build_view_schema_with_overrides(
     view_schema = build_view_schema(design, code, comp_status, conflicts)
     for ve in view_schema.get("entities") or []:
         eid = ve.get("id")
-        if not eid or not _entity_has_any_deviates(ve):
+        if not eid or not entity_has_any_deviates(ve):
             continue
         current = comp_status.get(eid, "planned")
         if current in ("healthy", "partial"):

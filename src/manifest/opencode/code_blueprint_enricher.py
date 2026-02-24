@@ -159,10 +159,14 @@ def enrich_code_blueprint(
             except FileNotFoundError:
                 raise RuntimeError("opencode binary not found on PATH after resolution.")
             except RuntimeError as e:
-                if "exited with code" in str(e) and attempt < MAX_RETRIES - 1:
+                is_transient = "exited with code" in str(e)
+                if is_transient and attempt < MAX_RETRIES - 1:
                     last_error = e
                     delay = RETRY_DELAYS[attempt]
                     logger.info("Retrying in %ds after exit failure (attempt %d/%d)", delay, attempt + 2, MAX_RETRIES)
                     time.sleep(delay)
                 else:
                     raise
+        if last_error is not None:
+            raise last_error
+        raise RuntimeError("Enrichment failed after retries")

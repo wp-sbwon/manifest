@@ -3,7 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from manifest.view.entity_model import get_entities_for_view, _entity_has_any_deviates
+from manifest.audit.blueprint.view_schema import entity_has_any_deviates
+from manifest.view.entity_model import get_entities_for_view
 from manifest.audit.entity_schema import PROJECT_ROOT_ID
 
 
@@ -34,7 +35,7 @@ def test_tmp_view_shows_how_much_done_no_contradiction() -> None:
     view_schema = data.get("view_schema") or {}
     for ve in view_schema.get("entities") or []:
         status = (ve.get("validation") or {}).get("status", "planned")
-        has_deviates = _entity_has_any_deviates(ve)
+        has_deviates = entity_has_any_deviates(ve)
         assert not (status == "healthy" and has_deviates), (
             "User must not see entity as healthy while it has deviation alerts (how much is done must be consistent)."
         )

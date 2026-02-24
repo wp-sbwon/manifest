@@ -180,13 +180,14 @@ def write_blueprint_layer(
         if not isinstance(children, list):
             children = []
 
+        normalized_children: List[Dict[str, Any]] = []
         for c in children:
             if isinstance(c, dict) and "id" in c:
-                normalized = {**empty_entity(c.get("id", "")), **c}
-                c.clear()
-                c.update(normalized)
+                normalized_children.append({**empty_entity(c.get("id", "")), **c})
+            elif isinstance(c, dict):
+                normalized_children.append(dict(c))
 
-        return {"children": children}
+        return {"children": normalized_children}
 
 
 def merge_children_into_blueprint(
@@ -236,6 +237,9 @@ def merge_children_into_blueprint(
     return save_blueprint(manifest_dir, data)
 
 
+DEFAULT_MAX_CONCURRENCY = 4
+
+
 def try_spawn_next_layer(
     manifest_dir: Path,
     project_root: Path,
@@ -244,18 +248,21 @@ def try_spawn_next_layer(
     children: List[Dict[str, Any]],
     *,
     max_depth: Optional[int] = None,
+    max_concurrency: Optional[int] = None,
     spawn_script: Optional[Path] = None,
 ) -> List[Tuple[str, int]]:
     """
     After a layer completes, spawn tasks for each child.
 
-    For each child entity, spawns run_doc_layer_writer.py. Returns list of
-    (child_id, next_layer_index) for spawned tasks.
+    For each child entity, spawns run_doc_layer_writer.py. Limits concurrent
+    processes via max_concurrency (env MANIFEST_LAYER_MAX_CONCURRENCY).
+    Returns list of (child_id, next_layer_index) for spawned tasks.
     """
     manifest_dir = Path(manifest_dir)
     project_root = Path(project_root)
     next_layer = layer_index + 1
     if max_depth is not None and next_layer > max_depth:
+        logger.info("Layer writer: max_depth=%s reached, not spawning layer %d", max_depth, next_layer)
         return []
 
     repo_root = Path(__file__).resolve().parent.parent.parent.parent
@@ -264,26 +271,48 @@ def try_spawn_next_layer(
         logger.warning("run_doc_layer_writer.py not found; skipping spawn")
         return []
 
-    spawned: List[Tuple[str, int]] = []
+    limit = max_concurrency
+    if limit is None:
+        limit = int(os.environ.get("MANIFEST_LAYER_MAX_CONCURRENCY", str(DEFAULT_MAX_CONCURRENCY)))
+    limit = max(1, limit)
+
+    child_ids: List[str] = []
     for c in children:
         if not isinstance(c, dict):
             continue
         cid = (c.get("id") or "").strip()
-        if not cid or cid == PROJECT_ROOT_ID:
-            continue
+        if cid and cid != PROJECT_ROOT_ID:
+            child_ids.append(cid)
+
+    spawned: List[Tuple[str, int]] = []
+    procs: List[subprocess.Popen] = []
+    for i, cid in enumerate(child_ids):
+        if len(procs) >= limit:
+            for p in procs:
+                try:
+                    p.wait(timeout=300)
+                except subprocess.TimeoutExpired:
+                    logger.warning("Layer writer process timed out (300s), continuing")
+            procs = []
         try:
             env = os.environ.copy()
             env["PYTHONPATH"] = str(repo_root / "src")
-            subprocess.Popen(
+            proc = subprocess.Popen(
                 ["python", str(script), "--manifest-dir", str(manifest_dir), "--parent", cid, "--layer", str(next_layer)],
                 cwd=str(project_root),
                 env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+            procs.append(proc)
             spawned.append((cid, next_layer))
         except Exception as e:
             logger.warning("Spawn layer writer for %s failed: %s", cid, e)
+    for p in procs:
+        try:
+            p.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            pass
     return spawned
 
 
