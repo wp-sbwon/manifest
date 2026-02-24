@@ -72,43 +72,42 @@ def _validate_and_collect_errors(design: Dict[str, Any], code: Dict[str, Any]) -
     return errors
 
 
-def _compute_comp_status(design: Dict[str, Any], code: Dict[str, Any]) -> Dict[str, str]:
-    """Sync design/code and aggregate status; return comp_status."""
-    sync = BlueprintSynchronizer()
-    status_info = sync.calculate_implementation_status(design, code)
-    comp_status: Dict[str, str] = dict(status_info.get("node_statuses", {}) or {})
-    agg = parent_aggregate_status_from_children(design, comp_status)
-    for pid, s in agg.items():
-        if comp_status.get(pid) != "deviation":
-            comp_status[pid] = s
-    comp_status[PROJECT_ROOT_ID] = root_status_from_children(design, comp_status)
-    return comp_status
-
-
 def _compare_blueprints(design: Dict[str, Any], code: Dict[str, Any]) -> List[Any]:
     """Compare design and code blueprints; return list of conflicts."""
     return BlueprintComparator().compare_blueprints(design, code)
 
 
-def _build_view_schema_with_overrides(
+def _compute_comp_status_and_view_schema(
     design: Dict[str, Any],
     code: Dict[str, Any],
-    comp_status: Dict[str, str],
     conflicts: List[Any],
-) -> Dict[str, Any]:
-    """Build view schema and set status to deviation where entity has field-level deviates."""
+) -> tuple:
+    """
+    Single source for status computation. Order: base (sync) -> parent aggregation
+    -> view schema -> field-level deviation override.
+    Returns (comp_status, view_schema).
+    """
+    sync = BlueprintSynchronizer()
+    status_info = sync.calculate_implementation_status(design, code)
+    comp_status: Dict[str, str] = dict(status_info.get("node_statuses", {}) or {})
+
+    agg = parent_aggregate_status_from_children(design, comp_status)
+    for pid, s in agg.items():
+        if comp_status.get(pid) != "deviation":
+            comp_status[pid] = s
+    comp_status[PROJECT_ROOT_ID] = root_status_from_children(design, comp_status)
+
     view_schema = build_view_schema(design, code, comp_status, conflicts)
     for ve in view_schema.get("entities") or []:
         eid = ve.get("id")
         if not eid or not entity_has_any_deviates(ve):
             continue
-        current = comp_status.get(eid, "planned")
-        if current in ("healthy", "partial"):
+        if comp_status.get(eid) in ("healthy", "partial"):
             comp_status[eid] = "deviation"
             v = ve.get("validation") or {}
             v["status"] = "deviation"
             ve["validation"] = v
-    return view_schema
+    return comp_status, view_schema
 
 
 def _build_validation_by_id(
@@ -145,9 +144,8 @@ def get_entities_for_view(
     manifest_dir = Path(manifest_dir)
     design, code = _load_design_and_code(manifest_dir, design_blueprint, code_blueprint)
     schema_validation_errors = _validate_and_collect_errors(design, code)
-    comp_status = _compute_comp_status(design, code)
     conflicts = _compare_blueprints(design, code)
-    view_schema = _build_view_schema_with_overrides(design, code, comp_status, conflicts)
+    comp_status, view_schema = _compute_comp_status_and_view_schema(design, code, conflicts)
     write_view_schema(manifest_dir, view_schema)
     validation_by_id = _build_validation_by_id(design, code, comp_status, conflicts)
     return {

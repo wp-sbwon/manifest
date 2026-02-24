@@ -17,3 +17,6 @@ INSPECTOR_RULE_LENGTH = 44
 
 # Default diagram title when spec/config have no title
 DEFAULT_DIAGRAM_TITLE = "ARCHITECTURE FLOW"
+
+# Max nodes in flat tree diagram (avoids overloaded layouts). Override via diagram_config.json "max_tree_nodes".
+DEFAULT_MAX_TREE_NODES = 14

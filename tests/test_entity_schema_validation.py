@@ -173,6 +173,22 @@ def test_validate_blueprint_data_valid():
     assert errors == []
 
 
+def test_validate_blueprint_data_referential_integrity():
+    """Children and dependencies must reference existing entity ids."""
+    data = {
+        "version": "1.0",
+        "root_id": PROJECT_ROOT_ID,
+        "entities": [
+            {"id": PROJECT_ROOT_ID, "children": ["ghost"], "dependencies": [], "intent": empty_intent(), "reality": empty_reality(), "outgoing_contracts": []},
+            {"id": "comp-a", "children": [], "dependencies": ["missing-dep"], "intent": empty_intent(), "reality": empty_reality(), "outgoing_contracts": []},
+        ],
+    }
+    valid, errors = validate_blueprint_data(data)
+    assert valid is False
+    assert any("ghost" in e or "non-existent" in e for e in errors)
+    assert any("missing-dep" in e or "non-existent" in e for e in errors)
+
+
 def test_validate_blueprint_data_invalid_entity():
     # normalize_for_schema fills missing keys; use invalid type so validation still fails
     data = {

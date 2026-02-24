@@ -17,6 +17,7 @@ from dataclasses import dataclass, field, asdict
 
 from manifest.core.logger import get_logger
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
+from manifest.audit.blueprint.status_enums import ConflictWorkflowStatus, ImplementationStatus
 from manifest.audit.code.deviation_auditor import Severity
 from manifest.audit.entity_schema import PROJECT_ROOT_ID, top_layer_entities
 from manifest.audit import doc_set
@@ -54,10 +55,47 @@ class ConflictReport:
     top_down_blueprint: Dict[str, Any]
     bottom_up_blueprint: Dict[str, Any]
     timestamp: str
-    status: str = "pending"  # "pending", "planner_review", "user_approval", "resolved", "rejected"
+    status: str = ConflictWorkflowStatus.PENDING.value
     planner_flag: Optional[str] = None  # "necessary", "violation"
     user_decision: Optional[str] = None  # "approved", "rejected"
     resolution_note: Optional[str] = None
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "ConflictReport":
+        """Reconstruct ConflictReport from dict (e.g. JSON)."""
+        from manifest.audit.blueprint.blueprint_comparator import ConflictType
+
+        conflicts = []
+        for c_dict in data.get("conflicts", []):
+            conflict_type_str = c_dict.get("type", "method_mismatch")
+            try:
+                conflict_type = ConflictType(conflict_type_str)
+            except ValueError:
+                conflict_type = next(
+                    (ct for ct in ConflictType if ct.value == conflict_type_str),
+                    ConflictType.METHOD_MISMATCH,
+                )
+            conflict = BlueprintConflict(
+                severity=Severity(c_dict["severity"]),
+                type=conflict_type,
+                message=c_dict.get("message", ""),
+                top_down_node=c_dict.get("top_down_node"),
+                bottom_up_node=c_dict.get("bottom_up_node"),
+                file_path=c_dict.get("file_path"),
+                node_id=c_dict.get("node_id"),
+            )
+            conflicts.append(conflict)
+        return cls(
+            task_id=data.get("task_id", ""),
+            conflicts=conflicts,
+            top_down_blueprint=data.get("top_down_blueprint", {}),
+            bottom_up_blueprint=data.get("bottom_up_blueprint", {}),
+            timestamp=data.get("timestamp", ""),
+            status=data.get("status", ConflictWorkflowStatus.PENDING.value),
+            planner_flag=data.get("planner_flag"),
+            user_decision=data.get("user_decision"),
+            resolution_note=data.get("resolution_note"),
+        )
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the conflict report to a dictionary.
@@ -222,49 +260,9 @@ class BlueprintSynchronizer:
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-
-            # Reconstruct conflicts
-            conflicts = []
-            for c_dict in data.get("conflicts", []):
-                # Convert string type to ConflictType enum
-                conflict_type_str = c_dict["type"]
-                if isinstance(conflict_type_str, str):
-                    try:
-                        conflict_type = ConflictType(conflict_type_str)
-                    except ValueError:
-                        conflict_type = next(
-                            (ct for ct in ConflictType if ct.value == conflict_type_str),
-                            ConflictType.METHOD_MISMATCH
-                        )
-                else:
-                    conflict_type = conflict_type_str
-
-                conflict = BlueprintConflict(
-                    severity=Severity(c_dict["severity"]),
-                    type=conflict_type,
-                    message=c_dict["message"],
-                    top_down_node=c_dict.get("top_down_node"),
-                    bottom_up_node=c_dict.get("bottom_up_node"),
-                    file_path=c_dict.get("file_path"),
-                    node_id=c_dict.get("node_id")
-                )
-                conflicts.append(conflict)
-
-            report = ConflictReport(
-                task_id=data.get("task_id", ""),
-                conflicts=conflicts,
-                top_down_blueprint=data.get("top_down_blueprint", {}),
-                bottom_up_blueprint=data.get("bottom_up_blueprint", {}),
-                timestamp=data.get("timestamp", ""),
-                status=data.get("status", "pending"),
-                planner_flag=data.get("planner_flag"),
-                user_decision=data.get("user_decision"),
-                resolution_note=data.get("resolution_note")
-            )
-
-            return report
+            return ConflictReport.from_dict(data)
         except Exception as e:
-            logger.debug("build_conflict_report failed: %s", e)
+            logger.debug("load_conflict_report failed: %s", e)
             return None
 
     def resend_to_worker_squad(
@@ -330,7 +328,13 @@ class BlueprintSynchronizer:
         user_decision: Optional[str] = None,
         resolution_note: Optional[str] = None
     ) -> bool:
-        """Update conflict report status."""
+        """Update conflict report status. Rejects illegal transitions (e.g. resolved -> pending)."""
+        if ConflictWorkflowStatus.is_terminal(report.status):
+            logger.warning("Cannot transition from terminal status %s", report.status)
+            return False
+        if not ConflictWorkflowStatus.can_transition(report.status, status):
+            logger.warning("Invalid transition %s -> %s", report.status, status)
+            return False
         report.status = status
         if planner_flag:
             report.planner_flag = planner_flag
@@ -402,7 +406,7 @@ class BlueprintSynchronizer:
         for comp_id, td_comp in td_components_by_id.items():
             bu_comp = bu_components_by_id.get(comp_id)
             if not bu_comp:
-                node_statuses[comp_id] = "planned"
+                node_statuses[comp_id] = ImplementationStatus.PLANNED.value
             else:
                 conflicts = self.comparator.compare_entities([td_comp], [bu_comp])
                 significant_conflicts = [
@@ -410,14 +414,14 @@ class BlueprintSynchronizer:
                     if c.severity in [Severity.ERROR, Severity.WARNING]
                 ]
                 if significant_conflicts:
-                    node_statuses[comp_id] = "deviation"
+                    node_statuses[comp_id] = ImplementationStatus.DEVIATION.value
                     node_deviations[comp_id] = [c.message for c in significant_conflicts]
                 else:
-                    node_statuses[comp_id] = "healthy"
+                    node_statuses[comp_id] = ImplementationStatus.HEALTHY.value
 
         for comp_id in bu_components_by_id:
             if comp_id not in td_components_by_id:
-                node_statuses[comp_id] = "extra"
+                node_statuses[comp_id] = ImplementationStatus.EXTRA.value
 
         # Parent completion: % of children healthy per root's direct child (e.g. module)
         parent_completions: Dict[str, float] = {}
@@ -432,10 +436,10 @@ class BlueprintSynchronizer:
             healthy_count = 0
             total_count = len(child_ids)
             for ent_id in child_ids:
-                status = node_statuses.get(ent_id, "planned")
-                if status == "healthy":
+                status = node_statuses.get(ent_id, ImplementationStatus.PLANNED.value)
+                if status == ImplementationStatus.HEALTHY.value:
                     healthy_count += 1
-                elif status == "deviation":
+                elif status == ImplementationStatus.DEVIATION.value:
                     healthy_count += DEVIATION_COMPLETION_WEIGHT
 
             if total_count > 0:

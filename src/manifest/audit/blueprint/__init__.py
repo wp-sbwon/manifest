@@ -13,6 +13,7 @@ from .blueprint_loader import BlueprintLoader
 from .blueprint_metadata import load_blueprint_with_metadata, save_blueprint_with_metadata
 from .blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
 from .blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
+from .status_enums import ConflictWorkflowStatus, ImplementationStatus
 from .design_identity import validate_and_align_design_identity
 from .view_schema import (
     build_view_schema,
@@ -35,6 +36,8 @@ __all__ = [
     "ConflictType",
     "BlueprintSynchronizer",
     "ConflictReport",
+    "ConflictWorkflowStatus",
+    "ImplementationStatus",
     "validate_and_align_design_identity",
     "build_view_schema",
     "entity_has_any_deviates",

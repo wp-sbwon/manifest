@@ -4,7 +4,7 @@ Mechanical validation for blueprint data.
 Normalize null to ""/[]/{}; ensure required keys. Use on read and before write.
 """
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from manifest.audit.entity_schema import empty_intent, empty_reality, empty_outgoing_contracts
 
@@ -79,8 +79,19 @@ def normalize_for_schema(data: Dict[str, Any]) -> Dict[str, Any]:
     return data
 
 
-def _validate_entity(data: Any, path: str) -> List[str]:
-    """Validate one entity; return list of error messages."""
+def _entity_ids(data: Dict[str, Any]) -> set:
+    """Set of entity ids in blueprint (excluding empty)."""
+    ids = set()
+    for ent in data.get("entities") or []:
+        if isinstance(ent, dict):
+            eid = ent.get("id")
+            if eid and isinstance(eid, str) and eid.strip():
+                ids.add(eid.strip())
+    return ids
+
+
+def _validate_entity(data: Any, path: str, valid_ids: Optional[set] = None) -> List[str]:
+    """Validate one entity; return list of error messages. valid_ids: set of entity ids for referential checks."""
     errors: List[str] = []
     if not isinstance(data, dict):
         errors.append(f"{path}: entity must be an object")
@@ -114,6 +125,15 @@ def _validate_entity(data: Any, path: str) -> List[str]:
                     errors.append(f"{path}.outgoing_contracts[{i}]: missing 'to'")
                 if "type" not in oc:
                     errors.append(f"{path}.outgoing_contracts[{i}]: missing 'type'")
+    if valid_ids:
+        for i, cid in enumerate(data.get("children") or []):
+            ref = (cid if isinstance(cid, str) else "").strip()
+            if ref and ref not in valid_ids:
+                errors.append(f"{path}.children[{i}]: references non-existent entity '{ref}'")
+        for i, dep in enumerate(data.get("dependencies") or []):
+            ref = (dep if isinstance(dep, str) else (dep.get("id") or dep.get("to") or "") if isinstance(dep, dict) else "").strip()
+            if ref and ref not in valid_ids:
+                errors.append(f"{path}.dependencies[{i}]: references non-existent entity")
     # No nulls
     for key in ("id", "children", "dependencies", "intent", "reality", "outgoing_contracts"):
         if key in data and data[key] is None:
@@ -131,7 +151,7 @@ def validate_entity(data: Dict[str, Any]) -> Tuple[bool, List[str]]:
 
 
 def _validate_blueprint_root(data: Dict[str, Any]) -> List[str]:
-    """Validate root and all entities."""
+    """Validate root and all entities. Checks referential integrity (children, dependencies, outgoing_contracts)."""
     errors: List[str] = []
     if not isinstance(data, dict):
         return ["root must be an object"]
@@ -141,8 +161,12 @@ def _validate_blueprint_root(data: Dict[str, Any]) -> List[str]:
         errors.append("missing 'entities'")
     elif not isinstance(data["entities"], list):
         errors.append("'entities' must be an array")
+    valid_ids = _entity_ids(data)
+    root_id = (data.get("root_id") or "").strip()
+    if root_id:
+        valid_ids = valid_ids | {root_id}
     for i, ent in enumerate(data.get("entities") or []):
-        errors.extend(_validate_entity(ent, f"entities[{i}]"))
+        errors.extend(_validate_entity(ent, f"entities[{i}]", valid_ids=valid_ids))
     return errors
 
 

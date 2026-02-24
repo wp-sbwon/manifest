@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+from manifest.view.constants import DEFAULT_MAX_TREE_NODES
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -25,6 +26,7 @@ def _get_package_default_config() -> Dict[str, Any]:
         _DEFAULT_CONFIG = {
             "title": "ARCHITECTURE FLOW",
             "box_width": 28,
+            "max_tree_nodes": DEFAULT_MAX_TREE_NODES,
             "colors": {
                 "entity": "#58a6ff",
                 "child": "#7ee8fa",
@@ -49,6 +51,7 @@ def load_diagram_config(manifest_dir: Optional[Path] = None) -> Dict[str, Any]:
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
+            loaded["max_tree_nodes"] = loaded.get("max_tree_nodes", default.get("max_tree_nodes", DEFAULT_MAX_TREE_NODES))
             colors = loaded.get("colors") or {}
             if not colors or not isinstance(colors, dict):
                 loaded["colors"] = default.get("colors") or {}
@@ -64,4 +67,6 @@ def load_diagram_config(manifest_dir: Optional[Path] = None) -> Dict[str, Any]:
             return loaded
         except Exception as e:
             logger.debug("Could not load diagram config from %s: %s", config_path, e)
-    return default.copy()
+    out = default.copy()
+    out.setdefault("max_tree_nodes", DEFAULT_MAX_TREE_NODES)
+    return out

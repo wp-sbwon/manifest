@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 
 from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity, empty_intent, empty_reality
-from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer
+from manifest.audit.blueprint.blueprint_synchronizer import BlueprintSynchronizer, ConflictReport
+from manifest.audit.blueprint.status_enums import ConflictWorkflowStatus
 
 
 def _entity(eid: str, children: list = None, role: str = "", symbol: str = "") -> dict:
@@ -28,3 +29,41 @@ def test_compare_all_docs_accepts_preloaded_blueprints() -> None:
     assert "blueprint" in result
     assert "implementation_progress" in result["blueprint"]
     assert "deviation_conflicts" in result["blueprint"]
+
+
+@pytest.mark.unit
+def test_conflict_report_from_dict_roundtrip() -> None:
+    """ConflictReport.from_dict reconstructs from to_dict output."""
+    design = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [_entity(PROJECT_ROOT_ID)]}
+    code = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [_entity(PROJECT_ROOT_ID)]}
+    report = ConflictReport(
+        task_id="t1",
+        conflicts=[],
+        top_down_blueprint=design,
+        bottom_up_blueprint=code,
+        timestamp="2025-01-01T00:00:00",
+        status=ConflictWorkflowStatus.PLANNER_REVIEW.value,
+    )
+    d = report.to_dict()
+    restored = ConflictReport.from_dict(d)
+    assert restored.task_id == report.task_id
+    assert restored.status == report.status
+
+
+@pytest.mark.unit
+def test_update_conflict_status_rejects_invalid_transition() -> None:
+    """update_conflict_status rejects illegal transitions (e.g. resolved -> pending)."""
+    design = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [_entity(PROJECT_ROOT_ID)]}
+    code = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [_entity(PROJECT_ROOT_ID)]}
+    report = ConflictReport(
+        task_id="t1",
+        conflicts=[],
+        top_down_blueprint=design,
+        bottom_up_blueprint=code,
+        timestamp="2025-01-01T00:00:00",
+        status=ConflictWorkflowStatus.RESOLVED.value,
+    )
+    with tempfile.TemporaryDirectory() as tmp:
+        sync = BlueprintSynchronizer(manifest_dir=Path(tmp))
+        ok = sync.update_conflict_status(report, ConflictWorkflowStatus.PENDING.value)
+        assert ok is False

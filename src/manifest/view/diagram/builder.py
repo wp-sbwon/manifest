@@ -3,7 +3,10 @@
 from typing import Dict, Any, List, Optional, Set, Tuple
 
 from manifest.audit.entity_schema import PROJECT_ROOT_ID, entity_display_name
-from manifest.view.constants import DEFAULT_DIAGRAM_TITLE
+from manifest.core.logger import get_logger
+from manifest.view.constants import DEFAULT_DIAGRAM_TITLE, DEFAULT_MAX_TREE_NODES
+
+logger = get_logger(__name__)
 
 
 def is_app_component(node: Dict[str, Any]) -> bool:
@@ -50,8 +53,9 @@ def _tree_order(
     contracts: List[Dict[str, Any]],
     root_id: str,
     filter_app_only: bool = True,
+    max_nodes: int = DEFAULT_MAX_TREE_NODES,
 ) -> List[Dict[str, Any]]:
-    """Order nodes by tree: root_id then children recursively."""
+    """Order nodes by tree: root_id then children recursively. Capped at max_nodes for layout sanity."""
     id_to_node = {n.get("id"): n for n in nodes if n.get("id")}
     ordered: List[Dict[str, Any]] = []
     seen: Set[str] = set()
@@ -71,7 +75,10 @@ def _tree_order(
     for nid, node in id_to_node.items():
         if nid not in seen and (not filter_app_only or is_app_component(node)):
             ordered.append(node)
-    return ordered[:14]
+    if len(ordered) > max_nodes:
+        logger.info("Diagram: capping at %d nodes (had %d); set diagram_config max_tree_nodes to override.", max_nodes, len(ordered))
+        return ordered[:max_nodes]
+    return ordered
 
 
 def _flat_spec_from_tree(
@@ -81,9 +88,10 @@ def _flat_spec_from_tree(
     root_id: str = PROJECT_ROOT_ID,
     title: Optional[str] = DEFAULT_DIAGRAM_TITLE,
     filter_app_only: bool = True,
+    max_nodes: int = DEFAULT_MAX_TREE_NODES,
 ) -> Dict[str, Any]:
     """Build flat diagram spec from tree (root_id, children)."""
-    ordered = _tree_order(nodes, contracts, root_id, filter_app_only=filter_app_only)
+    ordered = _tree_order(nodes, contracts, root_id, filter_app_only=filter_app_only, max_nodes=max_nodes)
     return build_flat_diagram_spec(ordered, comp_status, title=title or DEFAULT_DIAGRAM_TITLE)
 
 
