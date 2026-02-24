@@ -26,8 +26,9 @@ venv/
 ENV/
 env/
 
-# IDE / Editor
+# IDE / Editor / Project rules (legacy; orchestrator/workers removed)
 .cursor/
+.rules/
 .vscode/
 .idea/
 *.swp
