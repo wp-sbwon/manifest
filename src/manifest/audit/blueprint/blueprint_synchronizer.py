@@ -25,7 +25,7 @@ from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
 logger = get_logger(__name__)
 
 # Weight for deviation when computing parent completion (0–100%).
-# Deviation counts as full implementation (implemented but mismatches design).
+# 1.0 because a deviated component is fully implemented (code exists but mismatches design).
 DEVIATION_COMPLETION_WEIGHT = 1.0
 
 

@@ -46,5 +46,5 @@ class ConflictReportStorage:
                     path.unlink()
                     removed += 1
             except OSError as e:
-                logger.debug("prune skip %s: %s", path, e)
+                logger.warning("prune skip %s: %s", path, e)
         return removed
