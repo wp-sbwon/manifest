@@ -51,6 +51,23 @@ def test_conflict_report_from_dict_roundtrip() -> None:
 
 
 @pytest.mark.unit
+def test_calculate_implementation_status_planned_healthy_deviation_extra() -> None:
+    """calculate_implementation_status returns planned/healthy/deviation/extra per entity."""
+    root = _entity(PROJECT_ROOT_ID, children=["a", "b"])
+    a_d = _entity("a", role="A", symbol="a.py")
+    b_d = _entity("b", role="B", symbol="b.py")
+    design = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [root, a_d, b_d]}
+    a_c = _entity("a", role="A", symbol="a.py")
+    design_only = _entity(PROJECT_ROOT_ID)
+    code = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [design_only, a_c]}
+    sync = BlueprintSynchronizer()
+    info = sync.calculate_implementation_status(design, code)
+    statuses = info["node_statuses"]
+    assert statuses.get("a") == "healthy"
+    assert statuses.get("b") == "planned"
+
+
+@pytest.mark.unit
 def test_update_conflict_status_rejects_invalid_transition() -> None:
     """update_conflict_status rejects illegal transitions (e.g. resolved -> pending)."""
     design = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [_entity(PROJECT_ROOT_ID)]}

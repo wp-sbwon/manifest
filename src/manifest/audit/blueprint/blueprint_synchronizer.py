@@ -9,7 +9,6 @@ and user approval.
 The synchronizer detects mismatches, creates conflict reports, and coordinates
 the resolution process through multiple stages.
 """
-import json
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -17,6 +16,7 @@ from dataclasses import dataclass, field, asdict
 
 from manifest.core.logger import get_logger
 from manifest.audit.blueprint.blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
+from manifest.audit.blueprint.conflict_report_storage import ConflictReportStorage
 from manifest.audit.blueprint.status_enums import ConflictWorkflowStatus, ImplementationStatus
 from manifest.audit.code.deviation_auditor import Severity
 from manifest.audit.entity_schema import PROJECT_ROOT_ID, top_layer_entities
@@ -142,7 +142,7 @@ class BlueprintSynchronizer:
         """
         self.manifest_dir = manifest_dir or Path(".manifest")
         self.conflicts_dir = conflicts_dir or (self.manifest_dir / "conflicts")
-        self.conflicts_dir.mkdir(parents=True, exist_ok=True)
+        self._storage = ConflictReportStorage(self.conflicts_dir)
         self.comparator = BlueprintComparator()
 
     def compare_all_docs(
@@ -245,25 +245,12 @@ class BlueprintSynchronizer:
 
     def save_conflict_report(self, report: ConflictReport) -> Path:
         """Save conflict report to file."""
-        timestamp = report.timestamp.replace(":", "-").replace(".", "-")
-        task_id = report.task_id or "unknown"
-        filename = f"conflict_{timestamp}_{task_id}.json"
-        file_path = self.conflicts_dir / filename
-
-        with open(file_path, "w", encoding="utf-8") as f:
-            json.dump(report.to_dict(), f, indent=2, ensure_ascii=False)
-
-        return file_path
+        return self._storage.save(report.to_dict())
 
     def load_conflict_report(self, file_path: Path) -> Optional[ConflictReport]:
         """Load conflict report from file."""
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            return ConflictReport.from_dict(data)
-        except Exception as e:
-            logger.debug("load_conflict_report failed: %s", e)
-            return None
+        data = self._storage.load(file_path)
+        return ConflictReport.from_dict(data) if data else None
 
     def resend_to_worker_squad(
         self,
@@ -343,7 +330,7 @@ class BlueprintSynchronizer:
         if resolution_note:
             report.resolution_note = resolution_note
 
-        self.save_conflict_report(report)
+        self._storage.save(report.to_dict())
         return True
 
     def sync_blueprints(

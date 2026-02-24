@@ -1,14 +1,23 @@
 """
 Git Manager - Handles Git operations and integration with Manifest.
 """
+import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from datetime import datetime
+
 from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Default timeout for bottom-up docs subprocess (seconds). Override via MANIFEST_BOTTOM_UP_TIMEOUT.
+DEFAULT_BOTTOM_UP_TIMEOUT = 300
+
+# Track spawned bottom-up processes for visibility (process objects, cleared after completion).
+_bottom_up_processes: List[subprocess.Popen] = []
+_bottom_up_lock = threading.Lock()
 
 try:
     import git
@@ -108,24 +117,47 @@ class GitManager:
             return None
 
     def _trigger_bottom_up_docs_after_commit(self) -> None:
-        """Trigger bottom-up doc generation in background."""
-        try:
-            root = Path(getattr(self.repo, "working_tree_dir", None) or self.project_root)
-            script = root / "scripts" / "run_bottom_up_docs.py"
-            if not script.exists():
-                return
-            env = {**__import__("os").environ}
-            env["PYTHONPATH"] = str(root / "src") + (f":{env['PYTHONPATH']}" if env.get("PYTHONPATH") else "")
-            subprocess.Popen(
-                [sys.executable, str(script), "--project-root", str(root)],
-                cwd=str(root),
-                env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-        except Exception as e:
-            logger.debug("Could not start bottom-up docs after commit: %s", e)
+        """Trigger bottom-up doc generation in background. Runs in thread with timeout."""
+        def _run() -> None:
+            timeout = int(os.environ.get("MANIFEST_BOTTOM_UP_TIMEOUT", str(DEFAULT_BOTTOM_UP_TIMEOUT)))
+            try:
+                root = Path(getattr(self.repo, "working_tree_dir", None) or self.project_root)
+                script = root / "scripts" / "run_bottom_up_docs.py"
+                if not script.exists():
+                    return
+                env = {**os.environ}
+                env["PYTHONPATH"] = str(root / "src") + (f":{env['PYTHONPATH']}" if env.get("PYTHONPATH") else "")
+                proc = subprocess.Popen(
+                    [sys.executable, str(script), "--project-root", str(root)],
+                    cwd=str(root),
+                    env=env,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                with _bottom_up_lock:
+                    _bottom_up_processes.append(proc)
+                try:
+                    proc.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    logger.warning("Bottom-up docs timed out after %ds, killing", timeout)
+                    proc.kill()
+                    proc.wait()
+                finally:
+                    with _bottom_up_lock:
+                        if proc in _bottom_up_processes:
+                            _bottom_up_processes.remove(proc)
+            except Exception as e:
+                logger.debug("Could not start bottom-up docs after commit: %s", e)
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+
+    @staticmethod
+    def get_pending_bottom_up_count() -> int:
+        """Number of bottom-up doc processes currently running (for monitoring)."""
+        with _bottom_up_lock:
+            return len([p for p in _bottom_up_processes if p.poll() is None])
 
     def generate_commit_message(self, task: Dict[str, Any]) -> str:
         """Generate a commit message from task details."""

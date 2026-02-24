@@ -1,18 +1,11 @@
 """
 State persistence and management for Manifest.
 
-This module handles all state persistence operations including session state,
-mission tree, task checklist, chat history, PRD, and Sprint data. State is
-stored in JSON format in the .manifest directory and can be loaded/saved
-synchronously or asynchronously.
-
-The StateManager serves as the central state repository and delegates
-specific operations to specialized managers (TaskManager, PRDManager, etc.)
-for better separation of concerns.
+Core state: mission tree, task checklist, chat history. State is stored in JSON
+in .manifest. Delegates to SprintManager (sprints), PRDManager, TaskManager.
 """
 import json
 import aiofiles
-import subprocess
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
@@ -227,44 +220,32 @@ class StateManager:
         self._state["last_action"] = action
         self._state["timestamp"] = datetime.now().isoformat()
 
+    def _prepare_state_for_persist(self) -> str:
+        """Update timestamp, ensure dir exists; return JSON string to persist."""
+        self._state["timestamp"] = datetime.now().isoformat()
+        self.manifest_dir.mkdir(parents=True, exist_ok=True)
+        return json.dumps(self._state, indent=2)
+
     async def save_state(self) -> bool:
-        """Save current state to disk asynchronously.
-
-        Updates the timestamp before saving and creates the manifest directory
-        if it doesn't exist. Uses aiofiles for non-blocking I/O.
-
-        Returns:
-            True if save was successful, False otherwise. Errors are logged
-            but not raised.
-        """
+        """Save current state to disk asynchronously."""
         try:
-            self._state["timestamp"] = datetime.now().isoformat()
-            self.manifest_dir.mkdir(parents=True, exist_ok=True)
+            content = self._prepare_state_for_persist()
             async with aiofiles.open(self.state_file, "w") as f:
-                await f.write(json.dumps(self._state, indent=2))
+                await f.write(content)
             return True
         except Exception as e:
-            logger.error(f"Error saving state: {e}", exc_info=True)
+            logger.error("Error saving state: %s", e, exc_info=True)
             return False
 
     def save_state_sync(self) -> bool:
-        """Save current state to disk synchronously.
-
-        Updates the timestamp before saving and creates the manifest directory
-        if it doesn't exist. This is a blocking operation.
-
-        Returns:
-            True if save was successful, False otherwise. Errors are logged
-            but not raised.
-        """
+        """Save current state to disk synchronously. Same content as save_state()."""
         try:
-            self._state["timestamp"] = datetime.now().isoformat()
-            self.manifest_dir.mkdir(parents=True, exist_ok=True)
+            content = self._prepare_state_for_persist()
             with open(self.state_file, "w") as f:
-                json.dump(self._state, f, indent=2)
+                f.write(content)
             return True
         except Exception as e:
-            logger.error(f"Error saving state: {e}", exc_info=True)
+            logger.error("Error saving state: %s", e, exc_info=True)
             return False
 
     def get_next_action_prompt(self) -> Optional[str]:
@@ -353,176 +334,25 @@ class StateManager:
         prd_manager = PRDManager(self)
         return await prd_manager.load_prd_async()
 
-    # Sprint Management
+    # Sprint Management - Delegated to SprintManager
     def get_sprints_dir(self) -> Path:
-        """Get the directory where sprint files are stored.
-
-        Returns:
-            Path object pointing to the sprints subdirectory.
-        """
-        return self.manifest_dir / "sprints"
+        return self._sprint_manager().get_sprints_dir()
 
     def save_sprint(self, sprint_data: Dict[str, Any]) -> bool:
-        """Save sprint data to a file.
-
-        Sprint files are stored as sprint-{id}.json in the sprints directory.
-        The sprint data structure is normalized to ensure test fields exist
-        before saving.
-
-        Args:
-            sprint_data: Dictionary containing sprint data. Must include an "id"
-                field to determine the filename.
-
-        Returns:
-            True if save was successful, False otherwise. Errors are logged.
-        """
-        try:
-            # Normalize sprint data structure to ensure test fields exist
-            sprint_data = self._ensure_sprint_test_structure(sprint_data)
-
-            sprints_dir = self.get_sprints_dir()
-            sprints_dir.mkdir(parents=True, exist_ok=True)
-            sprint_id = sprint_data.get("id", "unknown")
-            sprint_file = sprints_dir / f"sprint-{sprint_id}.json"
-            with open(sprint_file, "w", encoding="utf-8") as f:
-                json.dump(sprint_data, f, indent=2, ensure_ascii=False)
-            return True
-        except Exception as e:
-            logger.error(f"Error saving Sprint: {e}", exc_info=True)
-            return False
+        return self._sprint_manager().save_sprint(sprint_data)
 
     async def save_sprint_async(self, sprint_data: Dict[str, Any]) -> bool:
-        """Save sprint data to a file asynchronously.
-
-        Sprint files are stored as sprint-{id}.json in the sprints directory.
-        Uses aiofiles for non-blocking I/O.
-
-        Args:
-            sprint_data: Dictionary containing sprint data. Must include an "id"
-                field to determine the filename.
-
-        Returns:
-            True if save was successful, False otherwise. Errors are logged.
-        """
-        try:
-            # Normalize sprint data structure to ensure test fields exist
-            sprint_data = self._ensure_sprint_test_structure(sprint_data)
-
-            sprints_dir = self.get_sprints_dir()
-            sprints_dir.mkdir(parents=True, exist_ok=True)
-            sprint_id = sprint_data.get("id", "unknown")
-            sprint_file = sprints_dir / f"sprint-{sprint_id}.json"
-            async with aiofiles.open(sprint_file, "w", encoding="utf-8") as f:
-                await f.write(json.dumps(sprint_data, indent=2, ensure_ascii=False))
-            return True
-        except Exception as e:
-            logger.error(f"Error saving Sprint: {e}", exc_info=True)
-            return False
+        return await self._sprint_manager().save_sprint_async(sprint_data)
 
     def load_sprint(self, sprint_id: str) -> Optional[Dict[str, Any]]:
-        """Load sprint data from file.
-
-        Args:
-            sprint_id: Identifier of the sprint to load.
-
-        Returns:
-            Dictionary containing sprint data if found, None if file doesn't
-            exist or loading fails. Errors are logged.
-        """
-        sprints_dir = self.get_sprints_dir()
-        sprint_file = sprints_dir / f"sprint-{sprint_id}.json"
-        if not sprint_file.exists():
-            return None
-
-        try:
-            with open(sprint_file, "r", encoding="utf-8") as f:
-                sprint_data = json.load(f)
-                # Normalize sprint structure
-                return self._ensure_sprint_test_structure(sprint_data)
-        except Exception as e:
-            logger.error(f"Error loading Sprint: {e}", exc_info=True)
-            return None
-
-    def _ensure_sprint_test_structure(self, sprint_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Ensure sprint data has required test structure (integration_tests, e2e_tests).
-
-        Args:
-            sprint_data: Sprint data dictionary to normalize.
-
-        Returns:
-            Modified sprint_data dictionary with test structures ensured.
-            The input dictionary is modified in place, but also returned
-            for convenience.
-        """
-        # Initialize integration_tests section if missing
-        if "integration_tests" not in sprint_data:
-            sprint_data["integration_tests"] = {
-                "status": "pending",
-                "test_files": [],
-                "test_cases": [],
-                "test_skeleton": "",
-                "test_plan": "",
-                "written_at": None,
-                "execution_results": []
-            }
-        else:
-            # Fill in any missing fields in existing integration_tests
-            integration_tests = sprint_data["integration_tests"]
-            if "status" not in integration_tests:
-                integration_tests["status"] = "pending"
-            if "test_files" not in integration_tests:
-                integration_tests["test_files"] = []
-            if "test_cases" not in integration_tests:
-                integration_tests["test_cases"] = []
-            if "execution_results" not in integration_tests:
-                integration_tests["execution_results"] = []
-
-        # Initialize e2e_tests section if missing
-        if "e2e_tests" not in sprint_data:
-            sprint_data["e2e_tests"] = {
-                "status": "pending",
-                "test_files": [],
-                "test_cases": [],
-                "test_skeleton": "",
-                "test_plan": "",
-                "written_at": None,
-                "execution_results": []
-            }
-        else:
-            # Fill in any missing fields in existing e2e_tests
-            e2e_tests = sprint_data["e2e_tests"]
-            if "status" not in e2e_tests:
-                e2e_tests["status"] = "pending"
-            if "test_files" not in e2e_tests:
-                e2e_tests["test_files"] = []
-            if "test_cases" not in e2e_tests:
-                e2e_tests["test_cases"] = []
-            if "execution_results" not in e2e_tests:
-                e2e_tests["execution_results"] = []
-
-        return sprint_data
+        return self._sprint_manager().load_sprint(sprint_id)
 
     def list_sprints(self) -> List[str]:
-        """List all sprint IDs found in the sprints directory.
+        return self._sprint_manager().list_sprints()
 
-        Scans the sprints directory for files matching the pattern sprint-*.json
-        and extracts the sprint ID from each filename.
-
-        Returns:
-            Sorted list of sprint ID strings. Returns empty list if sprints
-            directory doesn't exist.
-        """
-        sprints_dir = self.get_sprints_dir()
-        if not sprints_dir.exists():
-            return []
-
-        sprint_ids = []
-        for sprint_file in sprints_dir.glob("sprint-*.json"):
-            # Extract ID from filename: sprint-{id}.json -> {id}
-            sprint_id = sprint_file.stem.replace("sprint-", "")
-            sprint_ids.append(sprint_id)
-
-        return sorted(sprint_ids)
+    def _sprint_manager(self):
+        from manifest.core.sprint_manager import SprintManager
+        return SprintManager(self.manifest_dir)
 
     # Task Management - Delegated to TaskManager
     def create_task(
