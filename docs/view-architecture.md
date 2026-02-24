@@ -8,6 +8,7 @@ Directory layout and responsibilities for the Manifest View TUI. See [view-app](
 view/
   app.py                 # Textual app: lifecycle, layout, keybindings, data → content → widgets
   constants.py           # Default labels, inspector accent, diagram title
+  data_access.py         # Timeline events, chat/shadow state, health metrics (wraps GitManager, StateManager)
   entity_model.py        # View pipeline: get_entities_for_view, view schema, comp_status
   file_watcher.py        # Watch .manifest for changes, trigger refresh
   views_content.py       # Shared display helpers (status_label, entities_for_display, etc.)
@@ -28,6 +29,7 @@ view/
 | **view/content/** | Pure or near-pure content: take dicts/lists (e.g. comp_status, blueprints, view_entity) and return strings or Rich types. No I/O, no app state. |
 | **views_content.py** | Helpers used by app and content (e.g. status_color_tag, entities_for_display). |
 | **entity_model.py** | Load/validate/compare blueprints, build view schema, write blueprint_view.json. |
+| **data_access.py** | Timeline (git), chat/shadow state, health metrics. app.py imports from data_access, not core. |
 
 ## Content API
 

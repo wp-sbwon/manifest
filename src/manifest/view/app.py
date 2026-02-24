@@ -1,5 +1,4 @@
 """Manifest View: Diagram, Files, Timeline. D=Differences, Tab=next, S=refresh."""
-import json
 import os
 import sys
 from datetime import datetime
@@ -20,16 +19,19 @@ from textual.containers import VerticalScroll, Container, Horizontal
 from textual.widgets import Static, Header, Footer
 from textual.binding import Binding
 
-from manifest.core.state_manager import StateManager
-from manifest.core.git_manager import GitManager
 from manifest.core.logger import get_logger
+from manifest.view.data_access import (
+    get_health_metrics,
+    get_inspector_shadow_channels,
+    get_shadow_results_for_node,
+    get_timeline_events,
+)
 from manifest.view.file_watcher import ViewFileWatcher
 from manifest.view.entity_model import (
     get_entities_for_view,
     entities_and_comp_status_from_view_schema,
 )
 from manifest.core.paths import default_manifest_dir
-from manifest.core.constants import STATE_FILE
 from manifest.view.diagram import (
     load_diagram_config,
     build_diagram_spec,
@@ -63,7 +65,6 @@ from manifest.view.content import (
     get_sidebar_viz_text,
 )
 from manifest.view.views_content import (
-    ACCENT_BLUE,
     blueprint_component_names as _blueprint_component_names,
     component_type_color as _component_type_color,
     entities_for_display as _entities_for_display,
@@ -164,8 +165,6 @@ class ManifestViewApp(App[None]):
         self._diagram_root_stack: List[str] = []
         self._diagram_layered_spec: Optional[Dict[str, Any]] = None
         self._diagram_selectable_nodes: List[Tuple[str, str, Dict[str, Any]]] = []
-        self._state_manager: Optional[StateManager] = None
-        self._git_manager: Optional[GitManager] = None
         self._cached_design_blueprint: Optional[Dict[str, Any]] = None
         self._cached_code_blueprint: Optional[Dict[str, Any]] = None
         self._health_metrics_populated: bool = False
@@ -177,19 +176,6 @@ class ManifestViewApp(App[None]):
     def _get_cached_code_blueprint(self) -> Dict[str, Any]:
         """Code blueprint for current refresh cycle; empty dict if not yet loaded."""
         return self._cached_code_blueprint if self._cached_code_blueprint is not None else {}
-
-    def _get_state_manager(self) -> StateManager:
-        if self._state_manager is None:
-            self._state_manager = StateManager(self.manifest_dir)
-        return self._state_manager
-
-    def _get_git_manager(self) -> GitManager:
-        if self._git_manager is None:
-            self._git_manager = GitManager(
-                self.manifest_dir.parent,
-                search_parent_directories=False,
-            )
-        return self._git_manager
 
     def _get_design_and_code_for_status(self) -> tuple:
         """Design and code blueprints from current view data."""
@@ -450,31 +436,7 @@ class ManifestViewApp(App[None]):
     def _load_timeline_view(self) -> Union[str, RenderableType]:
         """Timeline: DESIGN = git history for .manifest design docs; CODE = rest of repo."""
         try:
-            git_mgr = self._get_git_manager()
-            events: List[Tuple[str, str, str, str]] = []
-            project_root = self.manifest_dir.parent
-            design_doc_names = ["blueprint_design.json", "prd.json", "tasks.json"]
-            design_paths = [
-                str(self.manifest_dir.relative_to(project_root) / name)
-                for name in design_doc_names
-                if (self.manifest_dir / name).exists()
-            ]
-            if git_mgr.is_available():
-                try:
-                    for c in git_mgr.get_commits_for_paths(design_paths, limit=25):
-                        ts = (c.get("timestamp") or "?")[:16].replace("T", " ")
-                        msg = (c.get("message") or "?").replace("\n", " ")[:50]
-                        events.append((ts, "DESIGN", msg, ACCENT_BLUE))
-                except Exception as e:
-                    logger.debug("Timeline: design-doc git history: %s", e)
-                try:
-                    for c in git_mgr.get_latest_commits(limit=25):
-                        ts = (c.get("timestamp") or "?")[:16].replace("T", " ")
-                        msg = (c.get("message") or "?").replace("\n", " ")[:50]
-                        events.append((ts, "CODE", msg, "green"))
-                except Exception as e:
-                    logger.debug("Timeline: could not get git commits: %s", e)
-            events.sort(key=lambda x: x[0], reverse=True)
+            events = get_timeline_events(self.manifest_dir)
             return build_timeline_view_content(events)
         except Exception as e:
             logger.debug("Timeline load failed: %s", e)
@@ -510,13 +472,10 @@ class ManifestViewApp(App[None]):
             else:
                 lines.append("Execution trace when orchestrator or agents run.")
             lines.append("")
-            state_mgr = self._get_state_manager()
-            chat_history = state_mgr.get_state().get("chat_history", {})
-            shadow_channels = [c for c in chat_history if isinstance(c, str) and c.startswith("shadow-")]
+            channels = get_inspector_shadow_channels(self.manifest_dir)
             lines.append("Component / shadow output (what/how modules are doing):")
-            if shadow_channels:
-                for ch in shadow_channels[:8]:
-                    msgs = state_mgr.get_chat_history(ch)
+            if channels:
+                for ch, msgs in channels[:8]:
                     lines.append(f"  [{ch}] ({len(msgs)} msgs)")
                     for m in msgs[-2:]:
                         role = m.get("role", "?")
@@ -546,28 +505,11 @@ class ManifestViewApp(App[None]):
         """Project Health: deviation % from blueprint sync; code quality/coverage/size from state."""
         try:
             comp_status, _ = self._get_implementation_status()
-            metrics = {}
-            state_file = self.manifest_dir / STATE_FILE
-            if state_file.exists():
-                try:
-                    with open(state_file, "r", encoding="utf-8") as f:
-                        state = json.load(f)
-                    metrics = state.get("health_metrics") or {}
-                except Exception as e:
-                    logger.debug("Could not load state.json health_metrics: %s", e)
             skip_slow = os.environ.get("MANIFEST_VIEW_SKIP_SLOW_METRICS", "").strip() == "1"
-            if not self._health_metrics_populated and not skip_slow:
-                blank = (metrics.get("code_quality") in (None, "—")) or (metrics.get("test_coverage") is None)
-                if blank:
-                    try:
-                        from manifest.audit.code.health_from_code import write_health_to_state
-                        if write_health_to_state(self.manifest_dir):
-                            with open(state_file, "r", encoding="utf-8") as f:
-                                state = json.load(f)
-                            metrics = state.get("health_metrics") or {}
-                    except Exception as e:
-                        logger.debug("One-time health populate failed: %s", e)
-                    self._health_metrics_populated = True
+            populate = not self._health_metrics_populated and not skip_slow
+            metrics = get_health_metrics(self.manifest_dir, populate_if_blank=populate)
+            if populate:
+                self._health_metrics_populated = True
             return get_sidebar_health_text(comp_status, metrics)
         except Exception as e:
             logger.debug("Sidebar health failed: %s", e)
@@ -587,28 +529,7 @@ class ManifestViewApp(App[None]):
     def _get_shadow_results_for_node(self, nid: str) -> Tuple[str, str]:
         """Last Output and Shadow Trace for node from state (shadow-* channels). Returns (last_output, trace)."""
         try:
-            state_mgr = self._get_state_manager()
-            chat_history = state_mgr.get_state().get("chat_history", {})
-            if not isinstance(chat_history, dict):
-                return "—", "—"
-            shadow_keys = [k for k in chat_history if isinstance(k, str) and k.startswith("shadow-")]
-            # Prefer channel for this component (e.g. shadow-<nid>)
-            for key in shadow_keys:
-                if nid in key or key == f"shadow-{nid}":
-                    msgs = state_mgr.get_chat_history(key) or []
-                    if not msgs:
-                        return "—", "—"
-                    last = msgs[-1]
-                    last_out = (last.get("content") or "")[:200].replace("\n", " ")
-                    trace = "\n".join((m.get("content") or "")[:120].replace("\n", " ") for m in msgs[-5:])
-                    return last_out or "—", trace or "—"
-            if shadow_keys:
-                msgs = state_mgr.get_chat_history(shadow_keys[0]) or []
-                if msgs:
-                    last = msgs[-1]
-                    last_out = (last.get("content") or "")[:200].replace("\n", " ")
-                    trace = "\n".join((m.get("content") or "")[:120].replace("\n", " ") for m in msgs[-5:])
-                    return last_out or "—", trace or "—"
+            return get_shadow_results_for_node(self.manifest_dir, nid)
         except Exception as e:
             logger.debug("Shadow results failed: %s", e)
         return "—", "—"

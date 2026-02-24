@@ -5,8 +5,12 @@
     "placeholder": "Mission or task for Manifest. /help, /models, /worker-model"
   },
   "agent": {
-    "build": { "disable": true },
-    "plan": { "disable": true },
+    "build": {
+      "disable": true
+    },
+    "plan": {
+      "disable": true
+    },
     "orchestrator": {
       "description": "Manifest orchestrator agent for mission coordination, task management, and workflow orchestration",
       "mode": "primary",
@@ -36,6 +40,17 @@
         "write": true,
         "edit": true,
         "bash": true
+      }
+    },
+    "layer-writer": {
+      "description": "Manifest layer-writer agent. Produces blueprint child entities per layer from parent, PRD, path context. Invoked via run_doc_layer_writer or opencode write-blueprint-layer.",
+      "mode": "subagent",
+      "hidden": true,
+      "prompt": "Produce child entities for the parent in context. Output JSON with children array. Return empty children when no further breakdown.",
+      "tools": {
+        "write": false,
+        "edit": false,
+        "bash": false
       }
     }
   }
