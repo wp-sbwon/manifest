@@ -346,7 +346,6 @@ def build_code_blueprint_from_extraction(project_root: Path, design_blueprint: D
         "root_id": PROJECT_ROOT_ID,
         "entities": code_entities,
         "source": "code_extraction",
-        "from_actual_code": True,
         "ground_truth": True,
         "extraction_method": "ast_parsing",
     }

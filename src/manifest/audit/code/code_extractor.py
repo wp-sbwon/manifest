@@ -793,7 +793,6 @@ class CodeExtractor:
             "root_id": ROOT_ID,
             "entities": entities,
             "source": "code_extraction",
-            "from_actual_code": True,
             "ground_truth": True,
             "last_updated": datetime.utcnow().isoformat(),
             "extraction_method": "ast_parsing",

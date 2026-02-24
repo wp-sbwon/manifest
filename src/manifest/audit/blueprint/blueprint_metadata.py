@@ -47,7 +47,6 @@ def ensure_blueprint_metadata(blueprint: Dict[str, Any], source: str,
         blueprint["version"] = "1.0"
 
     blueprint["source"] = source
-    blueprint["from_actual_code"] = ground_truth
     blueprint["ground_truth"] = ground_truth
 
     if "last_updated" not in blueprint:

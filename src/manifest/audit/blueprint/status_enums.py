@@ -13,9 +13,16 @@ class ImplementationStatus(str, Enum):
     EXTRA = "extra"
 
 
-class ConflictWorkflowStatus(str, Enum):
-    """Conflict report workflow status. Transitions: pending -> planner_review -> user_approval -> resolved|rejected."""
+_TRANSITIONS = {
+    "pending": ["planner_review"],
+    "planner_review": ["user_approval", "rejected"],
+    "user_approval": ["resolved", "rejected"],
+    "resolved": [],
+    "rejected": [],
+}
 
+
+class ConflictWorkflowStatus(str, Enum):
     PENDING = "pending"
     PLANNER_REVIEW = "planner_review"
     USER_APPROVAL = "user_approval"
@@ -24,22 +31,12 @@ class ConflictWorkflowStatus(str, Enum):
 
     @classmethod
     def is_terminal(cls, status: str) -> bool:
-        """True if status is resolved or rejected (no further transitions)."""
         return status in (cls.RESOLVED.value, cls.REJECTED.value)
 
     @classmethod
     def allowed_transitions(cls) -> dict:
-        """Map status -> list of valid next statuses."""
-        return {
-            cls.PENDING.value: [cls.PLANNER_REVIEW.value],
-            cls.PLANNER_REVIEW.value: [cls.USER_APPROVAL.value, cls.REJECTED.value],
-            cls.USER_APPROVAL.value: [cls.RESOLVED.value, cls.REJECTED.value],
-            cls.RESOLVED.value: [],
-            cls.REJECTED.value: [],
-        }
+        return _TRANSITIONS.copy()
 
     @classmethod
     def can_transition(cls, from_status: str, to_status: str) -> bool:
-        """True if transition from_status -> to_status is allowed."""
-        allowed = cls.allowed_transitions().get(from_status, [])
-        return to_status in allowed
+        return to_status in _TRANSITIONS.get(from_status, [])

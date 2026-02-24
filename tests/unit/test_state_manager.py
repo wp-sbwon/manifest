@@ -52,3 +52,23 @@ def test_prepare_state_for_persist_includes_chat_history() -> None:
         parsed = json.loads(content)
         assert parsed.get("chat_history", {}).get("main")
         assert parsed["chat_history"]["main"][0]["content"] == "hi"
+
+
+@pytest.mark.unit
+def test_clear_state_resets_to_default() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        mgr = StateManager(Path(tmp))
+        mgr.add_chat_message("main", "user", "hi")
+        mgr.set_health_metrics({"x": 1})
+        mgr.clear_state()
+        assert mgr.get_chat_history() == []
+        assert mgr.get_health_metrics() is None
+
+
+@pytest.mark.unit
+def test_get_state_returns_copy() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        mgr = StateManager(Path(tmp))
+        state = mgr.get_state()
+        state["version"] = "mutated"
+        assert mgr.get_state_version() == "1.0"

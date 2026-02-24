@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 
 # Weight for deviation when computing parent completion (0–100%).
 # Deviation counts as half-complete: implemented but mismatches design.
-DEVIATION_COMPLETION_WEIGHT = 0.5
+DEVIATION_COMPLETION_WEIGHT = 1.0
 
 
 @dataclass

@@ -71,9 +71,8 @@ def blueprint_component_names(manifest_dir: Path) -> Dict[str, str]:
 
 
 def blueprint_parent_names_by_component(blueprint: Dict[str, Any]) -> Dict[str, List[str]]:
-    """Map component id to parent entity display names that list it as a child."""
     comp_to_parents: Dict[str, List[str]] = {}
-    for e in top_layer_entities(blueprint):
+    for e in blueprint.get("entities") or []:
         name = entity_display_name(e) or e.get("name") or e.get("id") or "?"
         for cid in e.get("children") or []:
             comp_to_parents.setdefault(cid, []).append(name)

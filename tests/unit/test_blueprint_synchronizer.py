@@ -68,6 +68,25 @@ def test_calculate_implementation_status_planned_healthy_deviation_extra() -> No
 
 
 @pytest.mark.unit
+def test_calculate_implementation_status_parent_completion_deviation_counts_full() -> None:
+    root = _entity(PROJECT_ROOT_ID, children=["mod"])
+    mod_d = _entity("mod", children=["a", "b"], role="Mod", symbol="mod/")
+    a_d = _entity("a", role="A", symbol="a.py")
+    b_d = _entity("b", role="B", symbol="b.py")
+    design = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [root, mod_d, a_d, b_d]}
+    mod_c = _entity("mod", children=["a", "b"], role="Mod", symbol="mod/")
+    a_c = _entity("a", role="A_Different", symbol="a.py")
+    b_c = _entity("b", role="B", symbol="b.py")
+    code = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [_entity(PROJECT_ROOT_ID, children=["mod"]), mod_c, a_c, b_c]}
+    sync = BlueprintSynchronizer()
+    info = sync.calculate_implementation_status(design, code)
+    assert info["node_statuses"].get("a") == "deviation"
+    assert info["node_statuses"].get("b") == "healthy"
+    completions = info["parent_completions"]
+    assert completions.get("mod") == 100.0
+
+
+@pytest.mark.unit
 def test_update_conflict_status_rejects_invalid_transition() -> None:
     """update_conflict_status rejects illegal transitions (e.g. resolved -> pending)."""
     design = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [_entity(PROJECT_ROOT_ID)]}
