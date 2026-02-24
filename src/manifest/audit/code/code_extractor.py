@@ -16,6 +16,10 @@ from collections import defaultdict
 from typing import Dict, Any, List, Optional, Set, Tuple
 from dataclasses import dataclass, field
 
+from manifest.core.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 @dataclass
 class Component:
@@ -40,9 +44,14 @@ class Component:
     complexity: Optional[str] = None
     notes: Optional[str] = None
     # Actual Code (Manifest View): signature/surface, imports used, I/O detected
-    detected_interface: Optional[str] = None  # e.g. "run(args)" or "MyClass(method_a, method_b)"
-    dependencies: List[str] = field(default_factory=list)  # modules actually imported
-    side_effects: List[str] = field(default_factory=list)  # e.g. "file_write", "logging"
+    detected_interface: Optional[str] = None
+    dependencies: List[str] = field(default_factory=list)
+    side_effects: List[str] = field(default_factory=list)
+    protocol_input: List[Dict[str, str]] = field(default_factory=list)
+    protocol_output: List[Dict[str, str]] = field(default_factory=list)
+    io_model: str = ""
+    state_model: str = ""
+    decorator_traits: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -149,61 +158,6 @@ class CodeExtractor:
                 python_files.append(path)
         return python_files
 
-    def extract_file_structure(self, file_path: Path, root: Path = None) -> List[Component]:
-        """Extract structure from a single Python file.
-
-        Parses the file using AST and extracts all components (classes,
-        functions, variables) found in it. This is useful for analyzing
-        individual files without processing the entire project.
-
-        Args:
-            file_path: Path to the Python file to extract from.
-            root: Optional project root for calculating module paths.
-                Uses self.root if not provided.
-
-        Returns:
-            List of Component objects found in the file. Returns empty
-            list if file can't be parsed or contains no extractable components.
-        """
-        if root is None:
-            root = self.root
-
-        components = []
-        try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                content = f.read()
-
-            tree = ast.parse(content, filename=str(file_path))
-
-            # Calculate module path
-            rel_path = file_path.relative_to(root)
-            module_path = str(rel_path).replace("/", ".").replace("\\", ".").replace(".py", "")
-
-            # Extract entities
-            entities = self._identify_entities(tree, file_path, module_path)
-
-            # Extract metadata
-            for entity in entities:
-                algorithm = self._extract_algorithm_from_code(tree, entity)
-                if algorithm:
-                    entity.algorithm = algorithm
-
-                design_pattern = self._extract_design_pattern_from_structure(tree, entity, entities)
-                if design_pattern:
-                    entity.design_pattern = design_pattern
-
-                complexity = self._analyze_complexity_from_code(tree, entity)
-                if complexity:
-                    entity.complexity = complexity
-
-                components.append(entity)
-
-        except Exception as e:
-            # Return empty list if file can't be parsed
-            pass
-
-        return components
-
     def _extract_file_structure(self, file_path: Path, root: Path):
         """Extract structure from a single Python file."""
         try:
@@ -241,6 +195,8 @@ class CodeExtractor:
                 if side_effects:
                     entity.side_effects = side_effects
 
+                self._extract_protocol_and_profile(tree, entity)
+
             # Extract relationships
             relationships = self._infer_relationships(tree, file_path, module_path, entities)
 
@@ -252,8 +208,7 @@ class CodeExtractor:
             self.contracts.extend(relationships)
 
         except Exception as e:
-            # Skip files that can't be parsed
-            pass
+            logger.warning("Skipping unparseable file %s: %s", file_path, e)
 
     def _identify_entities(self, tree: ast.AST, file_path: Path, module_path: str) -> List[Component]:
         """Identify entities (classes, functions, variables) as components."""
@@ -698,6 +653,53 @@ class CodeExtractor:
                         effects.add("file_io")
         return sorted(effects)
 
+    def _extract_protocol_and_profile(self, tree: ast.AST, entity: Component) -> None:
+        entity_node = None
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef)) and node.name == entity.name:
+                entity_node = node
+                break
+        if not entity_node:
+            return
+        fn = entity_node
+        if isinstance(entity_node, ast.ClassDef):
+            for item in entity_node.body:
+                if isinstance(item, ast.FunctionDef) and item.name in ("__init__", "__new__"):
+                    fn = item
+                    break
+            else:
+                for item in entity_node.body:
+                    if isinstance(item, ast.FunctionDef):
+                        fn = item
+                        break
+        if not isinstance(fn, ast.FunctionDef):
+            return
+        for dec in fn.decorator_list:
+            if isinstance(dec, ast.Name):
+                entity.decorator_traits.append(dec.id)
+            elif isinstance(dec, ast.Attribute):
+                entity.decorator_traits.append(dec.attr)
+        if getattr(fn, "args", None):
+            for arg in fn.args.args:
+                if arg.arg != "self":
+                    t = ast.unparse(arg.annotation) if hasattr(ast, "unparse") and arg.annotation else ""
+                    entity.protocol_input.append({"name": arg.arg, "type": t})
+        if fn.returns:
+            t = ast.unparse(fn.returns) if hasattr(ast, "unparse") else ""
+            entity.protocol_output.append({"name": "return", "type": t or ""})
+        if isinstance(fn, ast.FunctionDef):
+            async_fn = getattr(ast, "AsyncFunctionDef", None)
+            if async_fn and isinstance(fn, async_fn):
+                entity.io_model = "async"
+            elif any(isinstance(n, ast.Yield) for n in ast.walk(fn)):
+                entity.io_model = "generator"
+        for node in ast.walk(fn):
+            if isinstance(node, ast.Assign):
+                for t in node.targets:
+                    if isinstance(t, ast.Attribute) and isinstance(t.value, ast.Name) and t.value.id == "self":
+                        entity.state_model = "mutable"
+                        break
+
     def _generate_blueprint(self) -> Dict[str, Any]:
         """Generate blueprint dict: version, root_id, entities with outgoing_contracts."""
         from datetime import datetime
@@ -751,12 +753,22 @@ class CodeExtractor:
                 else (f"{comp.name}({', '.join(comp.methods or [])})" if comp.type == "class" else f"{comp.name}()")
             )
             traits = list(getattr(comp, "side_effects", []) or [])
+            traits.extend(getattr(comp, "decorator_traits", []) or [])
             if comp.complexity:
                 traits.append(f"complexity:{comp.complexity}")
+            protocol_input = getattr(comp, "protocol_input", None) or []
+            protocol_output = getattr(comp, "protocol_output", None) or []
+            if not protocol_output and det_iface:
+                protocol_output = [{"name": "signature", "type": "string"}]
             reality = {
                 "symbol": (comp.file or comp.module_path or "")[:500],
-                "protocol": {"input": [], "output": [{"name": "signature", "type": "string"}] if det_iface else []},
-                "profile": {"language": "", "platform": "", "io_model": "", "state_model": ""},
+                "protocol": {"input": protocol_input, "output": protocol_output},
+                "profile": {
+                    "language": "python",
+                    "platform": "",
+                    "io_model": getattr(comp, "io_model", "") or "",
+                    "state_model": getattr(comp, "state_model", "") or "",
+                },
                 "dependencies": comp.dependencies or comp_deps.get(comp.id, []),
                 "traits": traits,
                 "topology_actual": {"type": "", "map": []},

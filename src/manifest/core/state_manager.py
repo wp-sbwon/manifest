@@ -8,6 +8,8 @@ from manifest.core.constants import STATE_FILE
 
 logger = get_logger(__name__)
 
+MAX_HISTORY_PER_CHANNEL = 200
+
 
 class StateManager:
     def __init__(self, manifest_dir: Path = None):
@@ -54,11 +56,14 @@ class StateManager:
             self._state["chat_history"] = {}
         if channel not in self._state["chat_history"]:
             self._state["chat_history"][channel] = []
-        self._state["chat_history"][channel].append({
+        msgs = self._state["chat_history"][channel]
+        msgs.append({
             "role": role,
             "content": content,
             "timestamp": datetime.now().isoformat(),
         })
+        if len(msgs) > MAX_HISTORY_PER_CHANNEL:
+            self._state["chat_history"][channel] = msgs[-MAX_HISTORY_PER_CHANNEL:]
         self._state["timestamp"] = datetime.now().isoformat()
 
     def _prepare_state_for_persist(self) -> str:

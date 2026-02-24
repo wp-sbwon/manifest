@@ -20,12 +20,12 @@ from manifest.audit.blueprint.conflict_report_storage import ConflictReportStora
 from manifest.audit.blueprint.status_enums import ConflictWorkflowStatus, ImplementationStatus
 from manifest.audit.code.deviation_auditor import Severity
 from manifest.audit.entity_schema import PROJECT_ROOT_ID, top_layer_entities
-from manifest.audit import doc_set
+from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
 
 logger = get_logger(__name__)
 
 # Weight for deviation when computing parent completion (0–100%).
-# Deviation counts as half-complete: implemented but mismatches design.
+# Deviation counts as full implementation (implemented but mismatches design).
 DEVIATION_COMPLETION_WEIGHT = 1.0
 
 
@@ -158,9 +158,9 @@ class BlueprintSynchronizer:
         """
         manifest_dir = manifest_dir or self.manifest_dir
         if design_blueprint is None:
-            design_blueprint = doc_set.load_top_down(manifest_dir, "blueprint")
+            design_blueprint = BlueprintLoader.load_blueprint(manifest_dir)
         if code_blueprint is None:
-            code_blueprint = doc_set.load_bottom_up(manifest_dir, "blueprint")
+            code_blueprint = BlueprintLoader.load_code_blueprint(manifest_dir)
         blueprint_conflicts = self.comparator.compare_blueprints(design_blueprint, code_blueprint)
         implementation_progress = [c for c in blueprint_conflicts if c.severity == Severity.IN_PROGRESS]
         deviation_conflicts = [c for c in blueprint_conflicts if c.severity in [Severity.ERROR, Severity.WARNING]]
@@ -210,7 +210,7 @@ class BlueprintSynchronizer:
 
         # Create conflict report
         report = ConflictReport(
-            task_id="",  # Will be set when task is known
+            task_id="",
             conflicts=significant_conflicts,
             top_down_blueprint=top_down,
             bottom_up_blueprint=bottom_up,

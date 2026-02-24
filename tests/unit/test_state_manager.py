@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from manifest.core.state_manager import StateManager
+from manifest.core.state_manager import StateManager, MAX_HISTORY_PER_CHANNEL
 from manifest.core.constants import STATE_FILE
 
 
@@ -63,6 +63,18 @@ def test_clear_state_resets_to_default() -> None:
         mgr.clear_state()
         assert mgr.get_chat_history() == []
         assert mgr.get_health_metrics() is None
+
+
+@pytest.mark.unit
+def test_add_chat_message_prunes_when_over_limit() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        mgr = StateManager(Path(tmp))
+        for i in range(MAX_HISTORY_PER_CHANNEL + 10):
+            mgr.add_chat_message("main", "user", f"msg-{i}")
+        history = mgr.get_chat_history("main")
+        assert len(history) == MAX_HISTORY_PER_CHANNEL
+        assert history[0]["content"] == "msg-10"
+        assert history[-1]["content"] == f"msg-{MAX_HISTORY_PER_CHANNEL + 9}"
 
 
 @pytest.mark.unit
