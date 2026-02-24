@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Set, Union
 
 from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
+from manifest.audit.blueprint.status_enums import ImplementationStatus
 from manifest.audit.entity_schema import (
     PROJECT_ROOT_ID,
     entity_display_name,
@@ -92,15 +93,15 @@ def parent_aggregate_status_from_children(
             continue
         if not child_ids:
             continue
-        statuses = [entity_status.get(eid, "planned") for eid in child_ids]
-        if any(s == "deviation" for s in statuses):
-            out[parent_id] = "deviation"
-        elif all(s == "healthy" for s in statuses):
-            out[parent_id] = "healthy"
-        elif all(s == "planned" for s in statuses):
-            out[parent_id] = "planned"
+        statuses = [entity_status.get(eid, ImplementationStatus.PLANNED.value) for eid in child_ids]
+        if any(s == ImplementationStatus.DEVIATION.value for s in statuses):
+            out[parent_id] = ImplementationStatus.DEVIATION.value
+        elif all(s == ImplementationStatus.HEALTHY.value for s in statuses):
+            out[parent_id] = ImplementationStatus.HEALTHY.value
+        elif all(s == ImplementationStatus.PLANNED.value for s in statuses):
+            out[parent_id] = ImplementationStatus.PLANNED.value
         else:
-            out[parent_id] = "partial"
+            out[parent_id] = ImplementationStatus.PARTIAL.value
     return out
 
 
@@ -109,15 +110,15 @@ def root_status_from_children(blueprint: Dict[str, Any], entity_status: Dict[str
     child_entities = top_layer_entities(blueprint)
     child_ids = [e.get("id") for e in child_entities if e.get("id")]
     if not child_ids:
-        return "planned"
-    statuses = [entity_status.get(eid, "planned") for eid in child_ids]
-    if any(s == "deviation" for s in statuses):
-        return "deviation"
-    if all(s == "healthy" for s in statuses):
-        return "healthy"
-    if all(s == "planned" for s in statuses):
-        return "planned"
-    return "partial"
+        return ImplementationStatus.PLANNED.value
+    statuses = [entity_status.get(eid, ImplementationStatus.PLANNED.value) for eid in child_ids]
+    if any(s == ImplementationStatus.DEVIATION.value for s in statuses):
+        return ImplementationStatus.DEVIATION.value
+    if all(s == ImplementationStatus.HEALTHY.value for s in statuses):
+        return ImplementationStatus.HEALTHY.value
+    if all(s == ImplementationStatus.PLANNED.value for s in statuses):
+        return ImplementationStatus.PLANNED.value
+    return ImplementationStatus.PARTIAL.value
 
 
 def box(name: str, width: int) -> Tuple[str, str, str]:
@@ -138,31 +139,29 @@ def single_line_node(name: str, width: int) -> str:
 
 
 def status_label(status: str) -> str:
-    """Turn status into a display label (Healthy, Planned, etc.)."""
-    if status in ("implemented", "healthy"):
+    if status in (ImplementationStatus.HEALTHY.value, "implemented"):
         return "Healthy"
-    if status in ("design_only", "planned"):
+    if status in (ImplementationStatus.PLANNED.value, "design_only"):
         return "Planned"
-    if status == "partial":
+    if status == ImplementationStatus.PARTIAL.value:
         return "Partial"
-    if status in ("drift", "deviation"):
+    if status in (ImplementationStatus.DEVIATION.value, "drift"):
         return "Deviation"
-    if status == "extra":
+    if status == ImplementationStatus.EXTRA.value:
         return "extra"
     return status
 
 
 def status_color_tag(status: str) -> str:
-    """Return Rich color tag for status."""
-    if status in ("implemented", "healthy"):
+    if status in (ImplementationStatus.HEALTHY.value, "implemented"):
         return "green"
-    if status in ("design_only", "planned"):
+    if status in (ImplementationStatus.PLANNED.value, "design_only"):
         return "grey70"
-    if status == "partial":
+    if status == ImplementationStatus.PARTIAL.value:
         return "yellow"
-    if status in ("drift", "deviation"):
+    if status in (ImplementationStatus.DEVIATION.value, "drift"):
         return "red"
-    if status == "extra":
+    if status == ImplementationStatus.EXTRA.value:
         return "cyan"
     return "white"
 

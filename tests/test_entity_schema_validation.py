@@ -174,7 +174,6 @@ def test_validate_blueprint_data_valid():
 
 
 def test_validate_blueprint_data_referential_integrity():
-    """Children and dependencies must reference existing entity ids."""
     data = {
         "version": "1.0",
         "root_id": PROJECT_ROOT_ID,
@@ -187,6 +186,21 @@ def test_validate_blueprint_data_referential_integrity():
     assert valid is False
     assert any("ghost" in e or "non-existent" in e for e in errors)
     assert any("missing-dep" in e or "non-existent" in e for e in errors)
+
+
+def test_validate_blueprint_data_outgoing_contracts_referential_integrity():
+    data = {
+        "version": "1.0",
+        "root_id": PROJECT_ROOT_ID,
+        "entities": [
+            {"id": PROJECT_ROOT_ID, "children": [], "dependencies": [], "intent": empty_intent(), "reality": empty_reality(), "outgoing_contracts": []},
+            {"id": "comp-a", "children": [], "dependencies": [], "intent": empty_intent(), "reality": empty_reality(),
+             "outgoing_contracts": [{"to": "nonexistent-target", "type": "dependency", "file": "", "symbols": []}]},
+        ],
+    }
+    valid, errors = validate_blueprint_data(data)
+    assert valid is False
+    assert any("nonexistent-target" in e and "outgoing_contracts" in e for e in errors)
 
 
 def test_validate_blueprint_data_invalid_entity():

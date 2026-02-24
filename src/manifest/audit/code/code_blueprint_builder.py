@@ -66,8 +66,15 @@ def _tokens_for_match(s: str) -> set:
 
 
 def _design_id_as_path_segment(design_id: str) -> str:
-    """Turn design_id like arithmetic_engine into path-friendly form."""
     return design_id.replace("_", ".")
+
+
+def _segment_matches(s: str, design_norm: str) -> bool:
+    if not design_norm:
+        return False
+    segments = re.split(r"[\s_\-\.]+", (s or "").lower())
+    norm_segments = [_normalize_for_match(seg) for seg in segments if seg]
+    return design_norm in norm_segments
 
 
 def _find_best_extracted_match(
@@ -98,13 +105,17 @@ def _find_best_extracted_match(
         mod_path = _module_path_from_extracted_id(eid)
         symbol = (e.get("reality") or {}).get("symbol") or ""
 
-        if design_path_seg and mod_path and (design_path_seg in mod_path or design_id in mod_path.replace(".", "_")):
+        mod_segments = mod_path.split(".")
+        mod_segments_underscore = mod_path.replace(".", "_").split("_")
+        if design_path_seg and design_path_seg in mod_segments:
             candidates.append((e, 3, "path"))
-        elif design_norm and design_norm in _normalize_for_match(disp):
+        elif design_id and design_id in mod_segments_underscore:
+            candidates.append((e, 3, "path"))
+        elif design_norm and _segment_matches(disp, design_norm):
             candidates.append((e, 2, "partial_name"))
-        elif design_norm and design_norm in _normalize_for_match(eid):
+        elif design_norm and _segment_matches(eid, design_norm):
             candidates.append((e, 2, "partial_id"))
-        elif design_norm and design_norm in _normalize_for_match(symbol):
+        elif design_norm and _segment_matches(symbol, design_norm):
             candidates.append((e, 2, "partial_symbol"))
         else:
             ext_tokens = _tokens_for_match(eid) | _tokens_for_match(disp) | _tokens_for_match(symbol)

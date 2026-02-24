@@ -57,13 +57,7 @@ class ViewFileWatcher:
             pass
         return False
 
-    def _schedule_callback(self) -> None:
-        with self._lock:
-            if not self._collected:
-                return
-            paths = list(self._collected)
-            self._collected.clear()
-            self._debounce_timer = None
+    def _schedule_callback(self, paths: List[Path]) -> None:
         try:
             self.on_change(paths)
         except Exception as e:
@@ -74,7 +68,16 @@ class ViewFileWatcher:
             self._collected.add(path)
             if self._debounce_timer is not None:
                 self._debounce_timer.cancel()
-            self._debounce_timer = threading.Timer(DEBOUNCE_SECONDS, self._schedule_callback)
+
+            def fire():
+                with self._lock:
+                    paths = list(self._collected)
+                    self._collected.clear()
+                    self._debounce_timer = None
+                if paths:
+                    self._schedule_callback(paths)
+
+            self._debounce_timer = threading.Timer(DEBOUNCE_SECONDS, fire)
             self._debounce_timer.daemon = True
             self._debounce_timer.start()
 

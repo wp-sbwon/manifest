@@ -40,6 +40,21 @@ def test_compare_blueprints_design_only_entity_missing_in_code() -> None:
 
 
 @pytest.mark.unit
+def test_compare_blueprints_name_mismatch() -> None:
+    root_d = _entity(PROJECT_ROOT_ID, children=["cli"])
+    cli_d = _entity("cli", role="CLI Design", symbol="cli.py")
+    design = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [root_d, cli_d]}
+    root_c = _entity(PROJECT_ROOT_ID, children=["cli"])
+    cli_c = _entity("cli", role="CLI Code", symbol="cli.py")
+    code = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [root_c, cli_c]}
+    comparator = BlueprintComparator()
+    conflicts = comparator.compare_blueprints(design, code)
+    name_mismatch = [c for c in conflicts if c.type == ConflictType.NAME_MISMATCH]
+    assert len(name_mismatch) >= 1
+    assert any("name mismatch" in (c.message or "").lower() for c in name_mismatch)
+
+
+@pytest.mark.unit
 def test_compare_blueprints_code_only_entity_extra_in_code() -> None:
     """Code has entity not in design -> EXTRA_ENTITY conflict."""
     root_d = _entity(PROJECT_ROOT_ID)

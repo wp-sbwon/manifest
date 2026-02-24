@@ -59,3 +59,14 @@ def test_token_overlap():
     out = merge_design_and_extraction(design, extracted)
     add_ent = next(e for e in out["entities"] if e["id"] == "add")
     assert add_ent["reality"]["symbol"] == "add" or add_ent["reality"].get("preview")
+
+
+def test_auth_no_false_match_authentication():
+    design = {"entities": [_design_ent("auth"), _design_ent(PROJECT_ROOT_ID)], "root_id": PROJECT_ROOT_ID}
+    extracted = {
+        "entities": [_extracted("comp-src.authentication.service-AuthenticationService", "AuthenticationService", "service.main")],
+        "root_id": PROJECT_ROOT_ID,
+    }
+    out = merge_design_and_extraction(design, extracted)
+    auth_ent = next(e for e in out["entities"] if e["id"] == "auth")
+    assert not (auth_ent["reality"].get("symbol") or auth_ent["reality"].get("preview"))

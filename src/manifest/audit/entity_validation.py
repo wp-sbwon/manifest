@@ -134,6 +134,11 @@ def _validate_entity(data: Any, path: str, valid_ids: Optional[set] = None) -> L
             ref = (dep if isinstance(dep, str) else (dep.get("id") or dep.get("to") or "") if isinstance(dep, dict) else "").strip()
             if ref and ref not in valid_ids:
                 errors.append(f"{path}.dependencies[{i}]: references non-existent entity")
+        for i, oc in enumerate(data.get("outgoing_contracts") or []):
+            if isinstance(oc, dict):
+                to_id = (oc.get("to") or "").strip()
+                if to_id and not to_id.startswith("external-") and to_id not in valid_ids:
+                    errors.append(f"{path}.outgoing_contracts[{i}]: 'to' references non-existent entity '{to_id}'")
     # No nulls
     for key in ("id", "children", "dependencies", "intent", "reality", "outgoing_contracts"):
         if key in data and data[key] is None:

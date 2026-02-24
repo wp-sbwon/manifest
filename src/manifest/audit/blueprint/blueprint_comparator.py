@@ -13,9 +13,9 @@ from manifest.audit.entity_schema import PROJECT_ROOT_ID, contracts_from_entitie
 
 
 class ConflictType(Enum):
-    """Types of blueprint conflicts."""
     MISSING_ENTITY = "missing_entity"
     EXTRA_ENTITY = "extra_entity"
+    NAME_MISMATCH = "name_mismatch"
     METHOD_MISMATCH = "method_mismatch"
     CONTRACT_MISMATCH = "contract_mismatch"
     ZONE_MISMATCH = "zone_mismatch"
@@ -279,7 +279,7 @@ class BlueprintComparator:
         if td_name != bu_name:
             conflicts.append(BlueprintConflict(
                 severity=Severity.ERROR,
-                type=ConflictType.METHOD_MISMATCH,
+                type=ConflictType.NAME_MISMATCH,
                 message=f"Entity name mismatch: design has '{td_name}', code has '{bu_name}'",
                 top_down_node=top_down,
                 bottom_up_node=bottom_up,
