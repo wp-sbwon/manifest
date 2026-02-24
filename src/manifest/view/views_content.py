@@ -1,9 +1,5 @@
 """
-Stateless view content builders for Manifest View.
-
-Pure functions that take manifest_dir, blueprint, or other data and return
-strings or Rich renderables. Used by app.py for Diagram, Files,
-Inspector, and sidebar content. Keeps app.py focused on lifecycle and state.
+Stateless view content builders. Pure functions returning strings or Rich renderables.
 """
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Tuple, Set, Union
@@ -20,12 +16,11 @@ from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-# Re-export for app.py
 ACCENT_BLUE = "bright_blue"
 
 
 def entities_for_display(entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Flat dicts with id, name, file, type, methods for display."""
+    """Flat dicts with id, name, file, type, methods."""
     out: List[Dict[str, Any]] = []
     for e in entities or []:
         if (e.get("id") or "") == PROJECT_ROOT_ID:
@@ -68,15 +63,6 @@ def blueprint_component_names(manifest_dir: Path) -> Dict[str, str]:
     except Exception as e:
         logger.debug("blueprint_component_names failed: %s", e)
         return {}
-
-
-def blueprint_parent_names_by_component(blueprint: Dict[str, Any]) -> Dict[str, List[str]]:
-    comp_to_parents: Dict[str, List[str]] = {}
-    for e in blueprint.get("entities") or []:
-        name = entity_display_name(e) or e.get("name") or e.get("id") or "?"
-        for cid in e.get("children") or []:
-            comp_to_parents.setdefault(cid, []).append(name)
-    return comp_to_parents
 
 
 def parent_aggregate_status_from_children(
@@ -163,12 +149,6 @@ def status_color_tag(status: str) -> str:
     if status == ImplementationStatus.EXTRA.value:
         return "cyan"
     return "white"
-
-
-def progress_bar(pct: float, width: int = 6) -> str:
-    """ASCII bar, e.g. [==  ] for 40%."""
-    fill = max(0, min(100, int(pct))) * width // 100
-    return "[" + "=" * fill + " " * (width - fill) + "]"
 
 
 def status_label_markup(status: str, text: Optional[str] = None) -> str:

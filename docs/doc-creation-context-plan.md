@@ -35,7 +35,7 @@ This plan defines what context each doc layer-writer sub-worker receives, using 
 
 | Layer | Recipient | Trigger |
 |-------|------------|--------|
-| 0 | Single layer-writer **task** (parent = PROJECT_ROOT) | `run_layer_0` → spawn one task for root |
+| 0 | Single layer-writer **task** (parent = PROJECT_ROOT) | `run_doc_layer_writer.py --parent PROJECT_ROOT --layer 0` (or equivalent) |
 | 1 | One task per L1 entity: **cli**, **arithmetic_engine**, **output** | After layer-0 task completes, `try_spawn_next_layer` spawns 3 tasks |
 | 2 | One task per L2 entity under arithmetic_engine: **add**, **sub**, **mul** | After all three layer-1 tasks complete, `try_spawn_next_layer` spawns 3 tasks |
 | 3+ | None in this mock (add/sub/mul have no children; writers return `children: []`) | Branch stops when writer returns no children |
@@ -294,7 +294,7 @@ Each task’s `context` is a single JSON-like dict stored in `doc_layer_writer_t
 ## Implementation notes (unchanged from prior plan)
 
 - **Single helper** `build_layer_writer_context(manifest_dir, parent_entity_id, layer_index, max_depth=None, max_context_tokens=12000)` builds this dict: load blueprint → parent entity, path from root, sibling ids; load PRD → full or excerpt; optionally cap size by trimming prd_excerpt then blueprint_excerpt.
-- **Wire spawn:** `try_spawn_next_layer` and `_run_layer_0_background` call the helper and pass the result as `context` for each task (no more `context={}`).
+- **Wire spawn:** `try_spawn_next_layer` and the layer-0 entry point (e.g. `run_doc_layer_writer.py`) call the helper and pass the result as `context` for each task (no more `context={}`).
 - **Runner:** Uses `task["context"]` as the full structured payload; when adding an LLM, pass `context["parent_entity"]`, `context["prd_excerpt"]`, etc. explicitly. **Stopping:** When the writer returns `children: []`, merge as-is and do not add a placeholder; that branch stops. Optional `max_depth` cap in `try_spawn_next_layer` to avoid spawning beyond layer N.
 
 This document is the plan: the mock tmp project examples above are the **full context** (shape and example content) fed to each “who” in the doc layer-writer pipeline.

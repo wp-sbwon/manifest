@@ -15,13 +15,6 @@ def default_manifest_dir(manifest_dir: Optional[Path] = None) -> Path:
     return (Path.cwd() / ".manifest").resolve()
 
 
-def default_project_root(project_root: Optional[Path] = None) -> Path:
-    """Return project_root if set, else cwd. Always resolved."""
-    if project_root is not None:
-        return Path(project_root).resolve()
-    return Path.cwd().resolve()
-
-
 def is_path_under_base(path: Path, base: Path) -> bool:
     """Return True if resolved path is under base (or equal). Rejects escapes like .. and symlinks outside base."""
     try:
@@ -31,17 +24,3 @@ def is_path_under_base(path: Path, base: Path) -> bool:
         return True
     except (OSError, RuntimeError, ValueError):
         return False
-
-
-def resolve_path_under_base(
-    path: Path,
-    base: Path,
-) -> Optional[Path]:
-    """Resolve path; if it is under base return it, else return None. Use for user/LLM/config-derived paths."""
-    try:
-        resolved = path.resolve()
-        if is_path_under_base(resolved, base.resolve()):
-            return resolved
-    except (OSError, RuntimeError):
-        pass
-    return None

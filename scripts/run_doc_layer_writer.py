@@ -32,17 +32,10 @@ def main() -> int:
         description="Run doc layer-writer: produce children for parent entity and merge into blueprint."
     )
     parser.add_argument("--manifest-dir", required=True, type=Path, help="Path to .manifest directory")
-    parser.add_argument("--parent", help="Parent entity ID (e.g. PROJECT_ROOT, cli)")
-    parser.add_argument("--layer", type=int, help="Layer index (0 = root's children)")
-    parser.add_argument("--layer-0", action="store_true", help="Shorthand: run layer 0 (root's children)")
+    parser.add_argument("--parent", required=True, help="Parent entity ID (e.g. PROJECT_ROOT, cli)")
+    parser.add_argument("--layer", type=int, required=True, help="Layer index (0 = root's children)")
     parser.add_argument("--max-depth", type=int, default=None, help="Max layer depth")
     args = parser.parse_args()
-
-    if args.layer_0:
-        args.parent = "PROJECT_ROOT"
-        args.layer = 0
-    if args.parent is None or args.layer is None:
-        parser.error("--parent and --layer required, or use --layer-0")
 
     manifest_dir = Path(args.manifest_dir).resolve()
     if not manifest_dir.exists():

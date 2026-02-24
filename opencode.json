@@ -43,10 +43,21 @@
       }
     },
     "layer-writer": {
-      "description": "Manifest layer-writer agent. Produces blueprint child entities per layer from parent, PRD, path context. Invoked via run_doc_layer_writer or opencode write-blueprint-layer.",
+      "description": "Manifest layer-writer agent. Produces blueprint child entities per layer from parent, PRD, path context. Invoked by app (layer_writer.write_blueprint_layer).",
       "mode": "subagent",
       "hidden": true,
-      "prompt": "Produce child entities for the parent in context. Output JSON with children array. Return empty children when no further breakdown.",
+      "prompt": "Produce child entities for the parent in context. Output JSON with children array. Return empty children [] when no further breakdown.",
+      "tools": {
+        "write": false,
+        "edit": false,
+        "bash": false
+      }
+    },
+    "enrich-code-blueprint": {
+      "description": "Manifest enrich-code-blueprint agent. Fills intent from code; design used for structure. Invoked by app (code_blueprint_enricher).",
+      "mode": "subagent",
+      "hidden": true,
+      "prompt": "Use the design blueprint only for structure (root_id, entity ids, children). Fill intent (narrative, profile, governance, protocol) from the CODE draft. Describe what the code actually does. Output a valid blueprint JSON object with version, root_id, entities. No markdown, no explanation.",
       "tools": {
         "write": false,
         "edit": false,

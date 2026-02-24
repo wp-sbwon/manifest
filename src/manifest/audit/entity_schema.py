@@ -242,7 +242,7 @@ def root_intent(blueprint: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def mission_from_blueprint(blueprint: Dict[str, Any], default: str = "") -> str:
-    """Root mission text for display. Returns stripped mission or default."""
+    """Root mission text. Returns stripped mission or default."""
     raw = (root_intent(blueprint).get("narrative") or {}).get("mission") or ""
     out = (raw or "").strip()
     return out if out else (default or "")
@@ -297,102 +297,4 @@ def empty_blueprint_root() -> Dict[str, Any]:
         "version": "1.0",
         "root_id": "",
         "entities": [],
-    }
-
-
-# ---------------------------------------------------------------------------
-# JSON Schema export for mechanical validation and docs
-# ---------------------------------------------------------------------------
-
-
-def entity_json_schema() -> Dict[str, Any]:
-    """Return a JSON Schema for one entity (for validation/tooling)."""
-    return {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object",
-        "required": ["id", "children", "dependencies", "intent", "reality", "outgoing_contracts"],
-        "additionalProperties": True,
-        "properties": {
-            "id": {"type": "string"},
-            "children": {"type": "array", "items": {"type": "string"}},
-            "dependencies": {"type": "array", "items": {"type": "string"}},
-            "outgoing_contracts": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "to": {"type": "string"},
-                        "type": {"type": "string"},
-                        "file": {"type": "string"},
-                        "symbols": {"type": "array", "items": {"type": "string"}},
-                    },
-                },
-            },
-            "intent": {
-                "type": "object",
-                "required": ["narrative", "blueprint", "protocol", "profile", "governance"],
-                "properties": {
-                    "narrative": {
-                        "type": "object",
-                        "properties": {"role": {"type": "string"}, "mission": {"type": "string"}},
-                    },
-                    "blueprint": {
-                        "type": "object",
-                        "properties": {
-                            "type": {"type": "string", "enum": ["GRID", "STACK", "FLOW"]},
-                            "topology": {"type": "object"},
-                        },
-                    },
-                    "protocol": {
-                        "type": "object",
-                        "properties": {
-                            "input": {"type": "array", "items": {"type": "object"}},
-                            "output": {"type": "array", "items": {"type": "object"}},
-                        },
-                    },
-                    "profile": {"type": "object"},
-                    "governance": {
-                        "type": "object",
-                        "properties": {
-                            "rules": {"type": "array", "items": {"type": "string"}},
-                            "assertions": {"type": "array", "items": {"type": "string"}},
-                        },
-                    },
-                },
-            },
-            "reality": {
-                "type": "object",
-                "required": [
-                    "symbol", "protocol", "profile", "dependencies", "traits",
-                    "topology_actual", "preview",
-                ],
-                "properties": {
-                    "symbol": {"type": "string"},
-                    "protocol": {"type": "object"},
-                    "profile": {"type": "object"},
-                    "dependencies": {"type": "array", "items": {"type": "string"}},
-                    "traits": {"type": "array", "items": {"type": "string"}},
-                    "topology_actual": {"type": "object"},
-                    "preview": {"type": "string"},
-                },
-            },
-        },
-    }
-
-
-def blueprint_root_json_schema() -> Dict[str, Any]:
-    """Return a JSON Schema for blueprint/blueprint_code root (version, root_id, entities)."""
-    return {
-        "$schema": "http://json-schema.org/draft-07/schema#",
-        "type": "object",
-        "required": ["version", "entities"],
-        "additionalProperties": True,
-        "properties": {
-            "version": {"type": "string"},
-            "root_id": {"type": "string"},
-            "entities": {
-                "type": "array",
-                "items": entity_json_schema(),
-            },
-        },
     }

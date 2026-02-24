@@ -25,23 +25,18 @@ def test_enricher_raises_on_opencode_not_found(tmp_path):
 
 
 def test_enricher_raises_immediately_on_invalid_json(tmp_path):
-    """Non-transient RuntimeError (e.g. invalid JSON) raises immediately, no retry."""
+    """Non-transient RuntimeError (e.g. invalid JSON from opencode stdout) raises immediately, no retry."""
     from manifest.opencode.code_blueprint_enricher import enrich_code_blueprint
 
     design = _valid_blueprint()
     draft = _valid_blueprint()
 
-    def run(cmd, **kwargs):
-        out = kwargs.get("env", {}).get("MANIFEST_ENRICH_OUTPUT", "")
-        if out:
-            Path(out).parent.mkdir(parents=True, exist_ok=True)
-            Path(out).write_text("not valid json {", encoding="utf-8")
-        m = MagicMock()
-        m.returncode = 0
-        return m
+    # opencode --format json stdout: one text part with invalid JSON
+    bad_stdout = '{"type":"text","part":{"text":"not valid json {"}}\n'
+    mock_result = MagicMock(returncode=0, stdout=bad_stdout, stderr="")
 
     with patch("shutil.which", return_value="/fake/opencode"):
-        with patch("subprocess.run", side_effect=run):
+        with patch("manifest.opencode.code_blueprint_enricher.subprocess.run", return_value=mock_result):
             with pytest.raises(RuntimeError, match="invalid JSON"):
                 enrich_code_blueprint(design, draft, tmp_path, tmp_path)
 
@@ -52,36 +47,27 @@ def test_enricher_retries_on_exit_code_then_raises(tmp_path):
 
     design = _valid_blueprint()
     draft = _valid_blueprint()
-    call_count = 0
-
-    def run(cmd, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        raise RuntimeError("opencode enrich-code-blueprint exited with code 1. Last output: x")
+    mock_result = MagicMock(returncode=1, stdout="err", stderr="")
 
     with patch("shutil.which", return_value="/fake/opencode"):
-        with patch("subprocess.run", side_effect=run):
+        with patch("manifest.opencode.code_blueprint_enricher.subprocess.run", return_value=mock_result) as mock_run:
             with patch("time.sleep"):
                 with pytest.raises(RuntimeError, match="exited with code"):
                     enrich_code_blueprint(design, draft, tmp_path, tmp_path)
-    assert call_count == 3
+    assert mock_run.call_count == 3
 
 
 def test_enricher_no_retry_on_non_transient_runtime_error(tmp_path):
-    """RuntimeError without 'exited with code' raises immediately, no retry."""
+    """RuntimeError without 'exited with code' (e.g. no response) raises immediately, no retry."""
     from manifest.opencode.code_blueprint_enricher import enrich_code_blueprint
 
     design = _valid_blueprint()
     draft = _valid_blueprint()
-    call_count = 0
-
-    def run(cmd, **kwargs):
-        nonlocal call_count
-        call_count += 1
-        raise RuntimeError("opencode did not write enriched blueprint")
+    # opencode returns success but no text parts -> "No response from opencode"
+    mock_result = MagicMock(returncode=0, stdout="\n", stderr="")
 
     with patch("shutil.which", return_value="/fake/opencode"):
-        with patch("subprocess.run", side_effect=run):
-            with pytest.raises(RuntimeError, match="did not write"):
+        with patch("manifest.opencode.code_blueprint_enricher.subprocess.run", return_value=mock_result) as mock_run:
+            with pytest.raises(RuntimeError, match="No response"):
                 enrich_code_blueprint(design, draft, tmp_path, tmp_path)
-    assert call_count == 1
+    assert mock_run.call_count == 1

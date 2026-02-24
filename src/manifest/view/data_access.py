@@ -1,7 +1,5 @@
 """
 View data access: timeline events, chat/shadow state, health metrics.
-
-Wraps GitManager and StateManager so app.py does not import core directly.
 """
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -48,43 +46,14 @@ def get_timeline_events(manifest_dir: Path) -> List[Tuple[str, str, str, str]]:
 
 
 def get_inspector_shadow_channels(manifest_dir: Path) -> List[Tuple[str, List[Dict[str, Any]]]]:
-    """
-    Return [(channel_key, msgs), ...] for shadow-* channels from state.
-    """
-    from manifest.core.state_manager import StateManager
-
-    state_mgr = StateManager(manifest_dir)
-    chat_history = state_mgr.get_state().get("chat_history", {})
-    if not isinstance(chat_history, dict):
-        return []
-    shadow_keys = [k for k in chat_history if isinstance(k, str) and k.startswith("shadow-")]
-    out: List[Tuple[str, List[Dict[str, Any]]]] = []
-    for key in shadow_keys:
-        msgs = state_mgr.get_chat_history(key) or []
-        out.append((key, msgs))
-    return out
+    """Return [(channel_key, msgs), ...] for shadow-* channels. Currently returns empty."""
+    return []
 
 
 def get_shadow_results_for_node(manifest_dir: Path, nid: str) -> Tuple[str, str]:
     """
     Last output and trace for node from shadow-* channels. Returns (last_output, trace).
     """
-    channels = get_inspector_shadow_channels(manifest_dir)
-    for key, msgs in channels:
-        if nid in key or key == f"shadow-{nid}":
-            if not msgs:
-                return "—", "—"
-            last = msgs[-1]
-            last_out = (last.get("content") or "")[:200].replace("\n", " ")
-            trace = "\n".join((m.get("content") or "")[:120].replace("\n", " ") for m in msgs[-5:])
-            return last_out or "—", trace or "—"
-    if channels:
-        _, msgs = channels[0]
-        if msgs:
-            last = msgs[-1]
-            last_out = (last.get("content") or "")[:200].replace("\n", " ")
-            trace = "\n".join((m.get("content") or "")[:120].replace("\n", " ") for m in msgs[-5:])
-            return last_out or "—", trace or "—"
     return "—", "—"
 
 

@@ -1,4 +1,4 @@
-"""Invoke opencode backend to fill intent from code (ground truth); design used only for structure."""
+"""Fill blueprint intent from code; design used only for structure."""
 import json
 import os
 import shutil
@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional
 
 from manifest.audit.entity_validation import normalize_for_schema, validate_blueprint_data
 from manifest.core.logger import get_logger
+from manifest.opencode.run_helpers import extract_json_from_text, parse_opencode_stdout
 
 logger = get_logger(__name__)
 
@@ -24,28 +25,33 @@ DEFAULT_TIMEOUT = 300
 MAX_RETRIES = 3
 RETRY_DELAYS = (5, 15, 30)
 
+ENRICH_PROMPT_TEMPLATE = (
+    "Read design blueprint from {design_name} and code draft from {draft_name}. "
+    "Use design for structure (root_id, entity ids, children). "
+    "Fill intent (narrative, profile, governance, protocol) from the code draft. "
+    "Output a valid blueprint JSON object with version, root_id, entities. "
+    "Output ONLY valid JSON, no markdown or explanation."
+)
+
 
 def _run_enrich_once(
     cmd: list,
-    output_path: Path,
     project_root: Path,
-    env: dict,
     timeout: int,
 ) -> Dict[str, Any]:
-    """Run opencode once; raise with actionable error on failure."""
+    """Run opencode once; parse stdout, validate blueprint, return. Raises on failure."""
     result = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
         timeout=timeout,
         cwd=str(project_root),
-        env=env,
     )
     if result.returncode != 0:
         stderr = (result.stdout or "") + (result.stderr or "")
         stderr = stderr.strip()
         msg = (
-            f"opencode enrich-code-blueprint exited with code {result.returncode}. "
+            f"opencode exited with code {result.returncode}. "
             "Check that opencode is installed and the project parses correctly. "
         )
         if stderr:
@@ -53,31 +59,25 @@ def _run_enrich_once(
             msg += f"Last output: {excerpt}"
         raise RuntimeError(msg)
 
-    if not output_path.exists():
+    merged = parse_opencode_stdout(result.stdout or "")
+    if not merged:
         raise RuntimeError(
-            "opencode did not write enriched blueprint. "
-            "The subprocess may have crashed or written to a different path. "
-            "Check opencode logs and ensure it supports enrich-code-blueprint."
+            "No response from opencode. "
+            "Check opencode logs."
         )
 
     try:
-        with open(output_path, "r", encoding="utf-8") as f:
-            raw = json.load(f)
-    except json.JSONDecodeError as e:
-        try:
-            with open(output_path, "r", encoding="utf-8") as f:
-                content = f.read(500)
-        except Exception:
-            content = "(unreadable)"
+        raw = extract_json_from_text(merged)
+    except (json.JSONDecodeError, KeyError) as e:
         raise RuntimeError(
             f"opencode wrote invalid JSON: {e}. "
-            f"Output file preview: {content!r}. "
-            "opencode may have written an error message or partial output. Check opencode logs."
+            f"Output preview: {merged[:200]!r}. "
+            "Check opencode logs."
         )
 
     if not isinstance(raw, dict):
         raise RuntimeError(
-            "opencode output is not a JSON object. "
+            "Enrich output is not a JSON object. "
             "Expected a blueprint with version, root_id, entities."
         )
 
@@ -85,7 +85,7 @@ def _run_enrich_once(
     valid, errors = validate_blueprint_data(out)
     if not valid and errors:
         raise RuntimeError(
-            "opencode output failed blueprint validation: " + "; ".join(errors[:5])
+            "Enrich output failed blueprint validation: " + "; ".join(errors[:5])
         )
     return out
 
@@ -97,9 +97,8 @@ def enrich_code_blueprint(
     manifest_dir: Path,
 ) -> Dict[str, Any]:
     """
-    Fill intent in code_draft via opencode; design for match/structure only, intent from code (ground truth).
-    Retries on transient failures. Validates output before returning.
-    Raises with actionable message if opencode is unavailable or enrichment fails.
+    Fill intent in code_draft from code; design for structure only.
+    Retries on transient failure. Validates and returns blueprint; raises if opencode unavailable or enrichment fails.
     """
     project_root = Path(project_root)
     manifest_dir = Path(manifest_dir)
@@ -116,37 +115,33 @@ def enrich_code_blueprint(
     with tempfile.TemporaryDirectory(prefix="manifest_enrich_") as tmp:
         design_path = Path(tmp) / "design.json"
         draft_path = Path(tmp) / "draft.json"
-        output_path = Path(tmp) / "enriched.json"
-        instructions_path = Path(tmp) / "instructions.txt"
         with open(design_path, "w", encoding="utf-8") as f:
             json.dump(design_blueprint, f, indent=2, ensure_ascii=False)
         with open(draft_path, "w", encoding="utf-8") as f:
             json.dump(code_draft, f, indent=2, ensure_ascii=False)
-        with open(instructions_path, "w", encoding="utf-8") as f:
-            f.write(ENRICH_INSTRUCTIONS.strip())
 
-        env = os.environ.copy()
-        env["MANIFEST_ENRICH_DESIGN"] = str(design_path)
-        env["MANIFEST_ENRICH_DRAFT"] = str(draft_path)
-        env["MANIFEST_ENRICH_OUTPUT"] = str(output_path)
-        env["MANIFEST_ENRICH_INSTRUCTIONS"] = str(instructions_path)
-        env["MANIFEST_ENRICH_INSTRUCTIONS_TEXT"] = ENRICH_INSTRUCTIONS.strip()
+        prompt = ENRICH_PROMPT_TEMPLATE.format(
+            design_name=design_path.name,
+            draft_name=draft_path.name,
+        )
         cmd = [
             opencode_path,
-            str(project_root),
-            "enrich-code-blueprint",
-            "--design", str(design_path),
-            "--draft", str(draft_path),
-            "--output", str(output_path),
+            "run",
+            "--agent", "enrich-code-blueprint",
+            "--dir", str(project_root.resolve()),
+            "--format", "json",
+            "-f", str(design_path.resolve()),
+            "-f", str(draft_path.resolve()),
+            prompt,
         ]
 
         last_error: Optional[Exception] = None
         for attempt in range(MAX_RETRIES):
             try:
-                return _run_enrich_once(cmd, output_path, project_root, env, timeout)
+                return _run_enrich_once(cmd, project_root, timeout)
             except subprocess.TimeoutExpired:
                 last_error = RuntimeError(
-                    f"opencode enrich-code-blueprint timed out after {timeout}s. "
+                    f"opencode timed out after {timeout}s. "
                     f"Try increasing MANIFEST_ENRICH_TIMEOUT (e.g. 600) for large projects."
                 )
                 logger.warning("Enrich attempt %d timed out", attempt + 1)

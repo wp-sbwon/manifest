@@ -1,7 +1,5 @@
 """
-Mechanical validation for blueprint data.
-
-Normalize null to ""/[]/{}; ensure required keys. Use on read and before write.
+Mechanical validation for blueprint data. Normalize null to ""/[]/{}; ensure required keys.
 """
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -21,10 +19,7 @@ def _normalize_value(value: Any) -> Any:
 
 
 def normalize_for_schema(data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Idempotent: coerce null to defaults, ensure required keys exist.
-    Use on read so downstream code never sees null or missing keys.
-    """
+    """Idempotent: coerce null to defaults, ensure required keys exist."""
     if not isinstance(data, dict):
         return {}
     data = _normalize_value(data)
@@ -202,8 +197,3 @@ def validate_blueprint_file(path: Path) -> Tuple[bool, List[str]]:
     data = normalize_for_schema(data)
     errors = _validate_blueprint_root(data)
     return (len(errors) == 0, errors)
-
-
-def validate_blueprint_code_file(path: Path) -> Tuple[bool, List[str]]:
-    """Alias for validate_blueprint_file (same schema for design and code)."""
-    return validate_blueprint_file(path)

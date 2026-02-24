@@ -1,8 +1,8 @@
 """
-Layer-by-layer blueprint writer: build context for each layer, invoke OpenCode to produce children.
+Layer-by-layer blueprint writer: build context per layer; opencode produces children.
 
-Per doc-creation-context-plan.md: each layer receives parent entity, PRD excerpt,
-path from root, and sibling IDs. OpenCode produces that layer's children.
+Per doc-creation-context-plan.md: each layer gets parent entity, PRD excerpt,
+path from root, and sibling IDs.
 """
 import json
 import os
@@ -17,6 +17,7 @@ from manifest.audit.entity_validation import normalize_for_schema, validate_blue
 from manifest.core.logger import get_logger
 from manifest.io.blueprint_io import load_blueprint
 from manifest.io.json_io import read_json_or_default
+from manifest.opencode.run_helpers import extract_json_from_text, parse_opencode_stdout
 
 logger = get_logger(__name__)
 
@@ -64,10 +65,8 @@ def build_layer_writer_context(
     max_context_tokens: int = 12000,
 ) -> Dict[str, Any]:
     """
-    Build the context dict for a layer-writer task.
-
-    Loads blueprint and PRD, finds parent entity, path from root, sibling IDs.
-    Returns dict: layer_index, max_depth, parent_entity, prd_excerpt, blueprint_excerpt.
+    Build context dict: blueprint, PRD, parent entity, path from root, sibling IDs.
+    Returns dict with layer_index, max_depth, parent_entity, prd_excerpt, blueprint_excerpt.
     """
     manifest_dir = Path(manifest_dir)
     blueprint = load_blueprint(manifest_dir)
@@ -97,16 +96,24 @@ def build_layer_writer_context(
     }
 
 
+LAYER_WRITER_PROMPT = (
+    "Read the blueprint layer context from the attached file context.json. "
+    "Produce a JSON object with a 'children' array of entity objects (id, narrative, profile, children, etc.). "
+    "Return empty children [] when no further breakdown is needed. "
+    "Output ONLY valid JSON, no markdown or explanation."
+)
+
+
 def write_blueprint_layer(
     context: Dict[str, Any],
     project_root: Path,
     manifest_dir: Path,
 ) -> Dict[str, Any]:
     """
-    Invoke OpenCode to produce children for the parent entity.
+    Produce children for the parent entity via opencode.
 
-    Returns dict with keys: children (list of entity dicts), or empty children if
-    OpenCode returns none / stub mode. Raises if OpenCode fails and stub mode is off.
+    Returns dict with 'children' (list of entity dicts); empty if stub mode or no output.
+    Raises if opencode fails and stub is off.
     """
     project_root = Path(project_root)
     manifest_dir = Path(manifest_dir)
@@ -119,25 +126,23 @@ def write_blueprint_layer(
     if not opencode_path:
         raise RuntimeError(
             "opencode not on PATH. "
-            "Layer writing requires opencode with write-blueprint-layer support. "
+            "Layer writing requires opencode. "
             "Set MANIFEST_LAYER_WRITER_STUB=1 to run pipeline without OpenCode."
         )
 
     with tempfile.TemporaryDirectory(prefix="manifest_layer_") as tmp:
         context_path = Path(tmp) / "context.json"
-        output_path = Path(tmp) / "children.json"
         with open(context_path, "w", encoding="utf-8") as f:
             json.dump(context, f, indent=2, ensure_ascii=False)
 
-        env = os.environ.copy()
-        env["MANIFEST_LAYER_CONTEXT"] = str(context_path)
-        env["MANIFEST_LAYER_OUTPUT"] = str(output_path)
         cmd = [
             opencode_path,
-            str(project_root),
-            "write-blueprint-layer",
-            "--context", str(context_path),
-            "--output", str(output_path),
+            "run",
+            "--agent", "layer-writer",
+            "--dir", str(project_root.resolve()),
+            "--format", "json",
+            "-f", str(context_path.resolve()),
+            LAYER_WRITER_PROMPT,
         ]
 
         timeout = int(os.environ.get("MANIFEST_LAYER_TIMEOUT", "120"))
@@ -148,11 +153,10 @@ def write_blueprint_layer(
                 text=True,
                 timeout=timeout,
                 cwd=str(project_root),
-                env=env,
             )
         except subprocess.TimeoutExpired:
             raise RuntimeError(
-                f"opencode write-blueprint-layer timed out after {timeout}s. "
+                f"Layer writer timed out after {timeout}s. "
                 "Set MANIFEST_LAYER_TIMEOUT for larger projects."
             )
         except FileNotFoundError:
@@ -162,21 +166,21 @@ def write_blueprint_layer(
             stderr = ((result.stdout or "") + (result.stderr or "")).strip()
             excerpt = stderr[:400].replace("\n", " ") if stderr else ""
             raise RuntimeError(
-                f"opencode write-blueprint-layer failed (exit {result.returncode}). "
+                f"Layer writer failed (exit {result.returncode}). "
                 f"Output: {excerpt}. "
-                "OpenCode may not support write-blueprint-layer yet. Set MANIFEST_LAYER_WRITER_STUB=1 to skip."
+                "Set MANIFEST_LAYER_WRITER_STUB=1 to skip."
             )
 
-        if not output_path.exists():
+        merged = parse_opencode_stdout(result.stdout or "")
+        if not merged:
             return {"children": []}
 
         try:
-            with open(output_path, "r", encoding="utf-8") as f:
-                raw = json.load(f)
-        except json.JSONDecodeError as e:
-            raise RuntimeError(f"opencode wrote invalid JSON: {e}")
+            data = extract_json_from_text(merged)
+        except (json.JSONDecodeError, KeyError):
+            return {"children": []}
 
-        children = raw.get("children") if isinstance(raw, dict) else []
+        children = data.get("children") if isinstance(data, dict) else []
         if not isinstance(children, list):
             children = []
 
@@ -252,10 +256,9 @@ def try_spawn_next_layer(
     spawn_script: Optional[Path] = None,
 ) -> List[Tuple[str, int]]:
     """
-    After a layer completes, spawn tasks for each child.
+    After a layer completes, spawn the layer-writer process for each child.
 
-    For each child entity, spawns run_doc_layer_writer.py. Limits concurrent
-    processes via max_concurrency (env MANIFEST_LAYER_MAX_CONCURRENCY).
+    Limits concurrent processes via max_concurrency (env MANIFEST_LAYER_MAX_CONCURRENCY).
     Returns list of (child_id, next_layer_index) for spawned tasks.
     """
     manifest_dir = Path(manifest_dir)
@@ -314,33 +317,3 @@ def try_spawn_next_layer(
         except subprocess.TimeoutExpired:
             pass
     return spawned
-
-
-def run_layer_0(manifest_dir: Path, project_root: Path) -> bool:
-    """
-    Run the layer-0 writer (root's direct children). Merges result and spawns layer 1.
-
-    Returns True if successful. Requires blueprint with root and optionally prd.json.
-    """
-    manifest_dir = Path(manifest_dir)
-    project_root = Path(project_root)
-    blueprint = load_blueprint(manifest_dir)
-    root = next(
-        (e for e in (blueprint.get("entities") or []) if (e.get("id") or "") == PROJECT_ROOT_ID),
-        None,
-    )
-    if not root:
-        raise ValueError("Blueprint has no PROJECT_ROOT entity")
-
-    ctx = build_layer_writer_context(manifest_dir, PROJECT_ROOT_ID, 0)
-    result = write_blueprint_layer(ctx, project_root, manifest_dir)
-    children = result.get("children") or []
-
-    if not children:
-        return True
-
-    if not merge_children_into_blueprint(manifest_dir, PROJECT_ROOT_ID, children):
-        return False
-
-    try_spawn_next_layer(manifest_dir, project_root, PROJECT_ROOT_ID, 0, children)
-    return True

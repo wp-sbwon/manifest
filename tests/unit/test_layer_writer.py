@@ -103,22 +103,17 @@ def test_write_blueprint_layer_stub_returns_empty(tmp_manifest):
 
 
 def test_write_blueprint_layer_returns_new_dicts_not_mutated(tmp_manifest):
-    """When opencode returns children, we build new dicts instead of mutating parsed objects."""
+    """When opencode returns children in stdout, we build new dicts instead of mutating parsed objects."""
     from unittest.mock import MagicMock
 
     ctx = {"layer_index": 1, "parent_entity": {"id": "p"}, "prd_excerpt": {}, "blueprint_excerpt": {}}
-
-    def fake_run(cmd, **kwargs):
-        out = (kwargs.get("env") or {}).get("MANIFEST_LAYER_OUTPUT")
-        if out:
-            Path(out).parent.mkdir(parents=True, exist_ok=True)
-            Path(out).write_text(json.dumps({"children": [{"id": "c1", "intent": {}}]}), encoding="utf-8")
-        m = MagicMock()
-        m.returncode = 0
-        return m
+    # opencode --format json stdout: one text part with children JSON
+    payload = json.dumps({"children": [{"id": "c1", "intent": {}}]})
+    opencode_stdout = json.dumps({"type": "text", "part": {"text": payload}}) + "\n"
+    mock_result = MagicMock(returncode=0, stdout=opencode_stdout, stderr="")
 
     with patch("shutil.which", return_value="/fake/opencode"):
-        with patch("subprocess.run", side_effect=fake_run):
+        with patch("manifest.opencode.layer_writer.subprocess.run", return_value=mock_result):
             result = write_blueprint_layer(ctx, tmp_manifest.parent, tmp_manifest)
     assert len(result["children"]) == 1
     assert result["children"][0]["id"] == "c1"
