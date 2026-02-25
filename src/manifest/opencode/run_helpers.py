@@ -1,13 +1,7 @@
 """Helpers for parsing opencode JSON-line stdout."""
 import json
 import re
-import uuid
 from typing import Any, Dict
-
-
-def opencode_run_session_id() -> str:
-    """Unique session ID for a single scripted opencode run. OpenCode expects sessionID to start with 'ses'."""
-    return f"ses_manifest_{uuid.uuid4().hex[:16]}"
 
 
 def parse_opencode_stdout(stdout: str) -> str:
