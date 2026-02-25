@@ -1,9 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "default_agent": "architect",
-  "tui": {
-    "placeholder": "Mission or task for Manifest. /help, /models, /worker-model"
-  },
   "agent": {
     "build": {
       "disable": true
@@ -11,18 +8,8 @@
     "plan": {
       "disable": true
     },
-    "orchestrator": {
-      "description": "Manifest orchestrator agent for mission coordination, task management, and workflow orchestration",
-      "mode": "primary",
-      "prompt": "You are the Manifest orchestrator agent. Your role is to:\n\n1. Receive high-level mission descriptions from users\n2. Break down missions into manageable tasks\n3. Coordinate task execution through worker agents (planner, coder, test, review)\n4. Manage sprints and task dependencies\n5. Monitor blueprint synchronization and drift detection\n6. Provide status updates and coordinate workflow\n\nYou have access to:\n- Mission tree and task checklist\n- Blueprint and architecture data\n- Worker agents for task execution\n- Sprint management\n- Drift detection and blueprint synchronization\n\nWhen a user provides a mission description, break it down into tasks and coordinate execution. Use the available tools and agents to accomplish the mission efficiently.",
-      "tools": {
-        "write": true,
-        "edit": true,
-        "bash": true
-      }
-    },
     "architect": {
-      "description": "Manifest Architect agent for ideation and top-down docs only (PRD, blueprint). Cannot edit code or execute.",
+      "description": "Manifest Architect agent for ideation and top-down docs only (PRD, architecture, intent). Cannot edit code or execute.",
       "mode": "primary",
       "prompt": "You are the Manifest Architect agent. Your role is to:\n\n1. Ideate with the user: discuss product goals, requirements, and design\n2. Write top-down design docs only: PRD (.manifest/prd.json) and blueprint (.manifest/blueprint_design.json)\n3. You cannot edit project code, run terminal commands, create tasks, or spawn worker agents\n\nYou have access to: read-only tools and the architect tool (write_prd, write_architecture, ideate). Use the architect tool to persist top-down docs. Do not use task_management, worker_squad_spawn, edit, write, or bash.",
       "tools": {
@@ -32,10 +19,10 @@
       }
     },
     "full-test": {
-      "description": "Manifest E2E / full-test agent. Callable by orchestrator only (subagent).",
+      "description": "Manifest E2E / full-test agent (subagent).",
       "mode": "subagent",
       "hidden": true,
-      "prompt": "You are the Manifest full-test (E2E) agent. Your role is to:\n\n1. Run project- and sprint-wide end-to-end and integration tests\n2. Execute test suites (pytest, etc.) for the whole scope\n3. Report test results and failures\n4. Work independently of the Worker Squad workflow; triggered by user or orchestrator\n\nUse available tools (terminal, file_read, etc.) to run tests and report outcomes.",
+      "prompt": "You are the Manifest full-test (E2E) agent. Your role is to:\n\n1. Run project- and sprint-wide end-to-end and integration tests\n2. Execute test suites (pytest, etc.) for the whole scope\n3. Report test results and failures\n4. Triggered by user when needed.\n\nUse available tools (terminal, file_read, etc.) to run tests and report outcomes.",
       "tools": {
         "write": true,
         "edit": true,
@@ -64,5 +51,8 @@
         "bash": false
       }
     }
+  },
+  "tui": {
+    "placeholder": "Mission or task for Manifest. /help, /models, /worker-model"
   }
 }

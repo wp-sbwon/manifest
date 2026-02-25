@@ -253,7 +253,6 @@ def try_spawn_next_layer(
     *,
     max_depth: Optional[int] = None,
     max_concurrency: Optional[int] = None,
-    spawn_script: Optional[Path] = None,
 ) -> List[Tuple[str, int]]:
     """
     After a layer completes, spawn the layer-writer process for each child.
@@ -269,9 +268,9 @@ def try_spawn_next_layer(
         return []
 
     repo_root = Path(__file__).resolve().parent.parent.parent.parent
-    script = spawn_script or (repo_root / "scripts" / "run_doc_layer_writer.py")
+    script = repo_root / "bin" / "run_doc_layer_writer.py"
     if not script.exists():
-        logger.warning("run_doc_layer_writer.py not found; skipping spawn")
+        logger.warning("bin/run_doc_layer_writer.py not found; skipping spawn")
         return []
 
     limit = max_concurrency

@@ -19,8 +19,8 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 | File | Role | Created by |
 |------|------|------------|
 | **blueprint_design.json** | Design (top-down). Intent filled, reality from design or empty. | Architect / design agents |
-| **blueprint_code.json** | Code (bottom-up). Same schema and entity ids as design; reality from CodeExtractor; intent from opencode enricher (ground truth from code). | run_bottom_up_docs.py (on commit) |
-| **blueprint_view.json** | **Final blueprint for the view.** Same keys as design/code; each comparable value is a pair plus deviation: `{ "plan", "actual", "deviates" }`. Validation (status, deviations) per entity. | `build_view_schema` (on view refresh, mock script, or run_bottom_up_docs) |
+| **blueprint_code.json** | Code (bottom-up). Same schema and entity ids as design; reality from CodeExtractor; intent from opencode enricher (ground truth from code). | bin/run_bottom_up_docs.py (on commit) |
+| **blueprint_view.json** | **Final blueprint for the view.** Same keys as design/code; each comparable value is a pair plus deviation: `{ "plan", "actual", "deviates" }`. Validation (status, deviations) per entity. | `build_view_schema` (on view refresh, mock script, or bin/run_bottom_up_docs) |
 
 **Design and code:** Same shape: `version`, `root_id`, `entities`; per entity: `id`, `children`, `dependencies`, `intent`, `reality`, `outgoing_contracts`. Both files must align to this schema for comparison.
 
@@ -75,8 +75,8 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 | File | Top-down | Bottom-up |
 |------|----------|------------|
 | blueprint_design.json | ✓ Agents | |
-| blueprint_code.json | | ✓ run_bottom_up_docs.py (on commit) |
-| blueprint_view.json | | Comparison output (view refresh; also create_mock_project_data.py, run_bottom_up_docs.py) |
+| blueprint_code.json | | ✓ bin/run_bottom_up_docs.py (on commit) |
+| blueprint_view.json | | Comparison output (view refresh; also scripts/create_mock_project_data.py, bin/run_bottom_up_docs.py) |
 | state.json (health_metrics) | | ✓ Pipeline |
 | tasks.json | ✓ Core/agents | |
 | diagram_config.json | Config | |

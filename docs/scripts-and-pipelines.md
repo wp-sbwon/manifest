@@ -2,9 +2,11 @@
 
 How data in `.manifest/` is created and refreshed. The view app only reads; it does not write these files.
 
+**Layout:** App runnables (bottom-up pipeline, layer writer, OpenCode agent setup) live in `bin/`. Dev/CI/setup helpers (tests, pre-push, post-commit hook driver, setup scripts) live in `scripts/`.
+
 ## Bottom-up (code → .manifest)
 
-**Script:** `scripts/run_bottom_up_docs.py`
+**Script:** `bin/run_bottom_up_docs.py`
 
 **When it runs:** On commit. GitManager runs the script after `create_commit()`. For commits made with `git commit` in the terminal, install the post-commit hook so the script runs there too (see README Git hooks).
 
@@ -13,7 +15,7 @@ How data in `.manifest/` is created and refreshed. The view app only reads; it d
 - **Principle:** Same schema and entity ids as design; reality from extraction; intent filled by opencode from the code (not copied from design).
 
 ```bash
-python scripts/run_bottom_up_docs.py --project-root <project> --manifest-dir <project>/.manifest
+python bin/run_bottom_up_docs.py --project-root <project> --manifest-dir <project>/.manifest
 ```
 
 ## Top-down (design → .manifest)

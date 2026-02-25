@@ -22,8 +22,6 @@ from textual.binding import Binding
 from manifest.core.logger import get_logger
 from manifest.view.data_access import (
     get_health_metrics,
-    get_inspector_shadow_channels,
-    get_shadow_results_for_node,
     get_timeline_events,
 )
 from manifest.view.file_watcher import ViewFileWatcher
@@ -469,18 +467,6 @@ class ManifestViewApp(App[None]):
                 return self._render_detail_content()
             else:
                 lines.append("Execution trace when orchestrator or agents run.")
-            lines.append("")
-            channels = get_inspector_shadow_channels(self.manifest_dir)
-            lines.append("Component / shadow output (what/how modules are doing):")
-            if channels:
-                for ch, msgs in channels[:8]:
-                    lines.append(f"  [{ch}] ({len(msgs)} msgs)")
-                    for m in msgs[-2:]:
-                        role = m.get("role", "?")
-                        content = (m.get("content") or "")[:60].replace("\n", " ")
-                        lines.append(f"    {role}: {content}...")
-            else:
-                lines.append("  No shadow output.")
         except Exception as e:
             logger.debug("Inspector view load failed: %s", e)
             lines.append("Inspector: load failed.")
@@ -523,14 +509,6 @@ class ManifestViewApp(App[None]):
             ViewType.INSPECTOR: "Inspector",
         }.get(self.current_view, "—")
         return get_sidebar_viz_text(name)
-
-    def _get_shadow_results_for_node(self, nid: str) -> Tuple[str, str]:
-        """Last Output and Shadow Trace for node from state (shadow-* channels). Returns (last_output, trace)."""
-        try:
-            return get_shadow_results_for_node(self.manifest_dir, nid)
-        except Exception as e:
-            logger.debug("Shadow results failed: %s", e)
-        return "—", "—"
 
     def _get_diagram_label_for_node(self, kind: str, nid: str, data: Dict[str, Any]) -> str:
         """Label for right panel: match diagram (entity/node name)."""

@@ -35,8 +35,6 @@ name = "manifest"
 version = "0.1.0"
 description = "AI-Native Orchestration IDE"
 requires-python = ">=3.10"
-[project.scripts]
-manifest = "manifest.__main__:main"
 dependencies = [
     "urllib3>=1.26.18,<2",
     "textual>=0.40.0",
@@ -56,6 +54,12 @@ dependencies = [
     "opencode-ai>=1.0.0",
     "watchdog>=3.0.0",
 ]
+
+[project.scripts]
+manifest = "manifest.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

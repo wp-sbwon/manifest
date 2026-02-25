@@ -20,11 +20,11 @@ if [ -f "venv/bin/activate" ]; then
     source venv/bin/activate
 fi
 
-if [ ! -f "scripts/run_bottom_up_docs.py" ]; then
-    echo "post_commit_bottom_up: scripts/run_bottom_up_docs.py not found" >&2
+if [ ! -f "bin/run_bottom_up_docs.py" ]; then
+    echo "post_commit_bottom_up: bin/run_bottom_up_docs.py not found" >&2
     exit 0
 fi
 
 export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
-python3 scripts/run_bottom_up_docs.py --project-root "$ROOT" 2>&1 | head -20
+python3 bin/run_bottom_up_docs.py --project-root "$ROOT" 2>&1 | head -20
 exit 0

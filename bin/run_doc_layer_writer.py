@@ -3,7 +3,7 @@
 Run a single doc layer-writer task: produce children for a parent entity and merge into blueprint.
 
 Usage:
-  PYTHONPATH=src python scripts/run_doc_layer_writer.py --manifest-dir .manifest --parent PROJECT_ROOT --layer 0
+  PYTHONPATH=src python bin/run_doc_layer_writer.py --manifest-dir .manifest --parent PROJECT_ROOT --layer 0
 
 Per doc-creation-context-plan.md: each task receives parent entity, PRD excerpt, path from root,
 and sibling IDs. OpenCode (or stub) produces that layer's children. Result is merged into

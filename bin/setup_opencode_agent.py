@@ -5,31 +5,11 @@ Setup script to register Manifest agents with OpenCode.
 Writes opencode.json (tools: {write, edit, bash}). OpenCode may also load
 .opencode/agents/*.json which use tools as string arrays. Schema compatibility
 depends on OpenCode version; merge order (project vs .opencode) determines precedence.
-- default_agent = orchestrator (orchestrator in agent switcher).
-- Built-in agents build and plan are disabled.
-- full-test is a subagent (callable by orchestrator only; not in switcher).
+Default agent: architect. Built-in agents build and plan are disabled.
 """
 import json
 import sys
 from pathlib import Path
-
-ORCHESTRATOR_PROMPT = """You are the Manifest orchestrator agent. Your role is to:
-
-1. Receive high-level mission descriptions from users
-2. Break down missions into manageable tasks
-3. Coordinate task execution through worker agents (planner, coder, test, review)
-4. Manage sprints and task dependencies
-5. Monitor blueprint synchronization and drift detection
-6. Provide status updates and coordinate workflow
-
-You have access to:
-- Mission tree and task checklist
-- Blueprint and architecture data
-- Worker agents for task execution
-- Sprint management
-- Drift detection and blueprint synchronization
-
-When a user provides a mission description, break it down into tasks and coordinate execution. Use the available tools and agents to accomplish the mission efficiently."""
 
 ARCHITECT_PROMPT = """You are the Manifest Architect agent. Your role is to:
 
@@ -44,25 +24,19 @@ FULL_TEST_PROMPT = """You are the Manifest full-test (E2E) agent. Your role is t
 1. Run project- and sprint-wide end-to-end and integration tests
 2. Execute test suites (pytest, etc.) for the whole scope
 3. Report test results and failures
-4. Work independently of the Worker Squad workflow; triggered by user or orchestrator
+4. Triggered by user when needed.
 
 Use available tools (terminal, file_read, etc.) to run tests and report outcomes."""
 
 
 def create_opencode_agent_config():
-    """Create or update opencode.json: orchestrator only in switcher; full-test subagent."""
+    """Create or update opencode.json: architect default; full-test subagent."""
     project_root = Path.cwd()
     opencode_json = project_root / "opencode.json"
 
     agents = {
         "build": {"disable": True},
         "plan": {"disable": True},
-        "orchestrator": {
-            "description": "Manifest orchestrator agent for mission coordination, task management, and workflow orchestration",
-            "mode": "primary",
-            "prompt": ORCHESTRATOR_PROMPT,
-            "tools": {"write": True, "edit": True, "bash": True},
-        },
         "architect": {
             "description": "Manifest Architect agent for ideation and top-down docs only (PRD, architecture, intent). Cannot edit code or execute.",
             "mode": "primary",
@@ -70,7 +44,7 @@ def create_opencode_agent_config():
             "tools": {"write": False, "edit": False, "bash": False},
         },
         "full-test": {
-            "description": "Manifest E2E / full-test agent. Callable by orchestrator only (subagent).",
+            "description": "Manifest E2E / full-test agent (subagent).",
             "mode": "subagent",
             "hidden": True,
             "prompt": FULL_TEST_PROMPT,
@@ -88,7 +62,7 @@ def create_opencode_agent_config():
 
     config = {
         "$schema": "https://opencode.ai/config.json",
-        "default_agent": "orchestrator",
+        "default_agent": "architect",
         "agent": {**(existing.get("agent") or {}), **agents},
     }
     # Preserve other top-level keys from existing config
@@ -100,8 +74,8 @@ def create_opencode_agent_config():
         json.dump(config, f, indent=2, ensure_ascii=False)
 
     print(f"✅ Updated OpenCode config: {opencode_json}")
-    print(f"✅ Agents in switcher: orchestrator, architect")
-    print(f"✅ full-test: subagent (callable by orchestrator only)")
+    print(f"✅ Default agent: architect")
+    print(f"✅ full-test: subagent")
     return True
 
 
