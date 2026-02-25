@@ -576,7 +576,7 @@ class ManifestViewApp(App[None]):
         entity_label = "System Core" if kind == "root" else display_name
         header = f"[bold cyan]Inspector::[/] [bold #f0c674]{entity_label}[/]"
         if deviating:
-            header += "  [red bold][D] DIFF[/]"
+            header += "  [bold][D] DIFF[/]"
         header += "\n\n"
 
         if self._right_panel_differences:

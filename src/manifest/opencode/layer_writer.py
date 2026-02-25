@@ -16,8 +16,12 @@ from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity
 from manifest.audit.entity_validation import normalize_for_schema, validate_blueprint_data
 from manifest.core.logger import get_logger
 from manifest.io.blueprint_io import load_blueprint
-from manifest.io.json_io import read_json_or_default
-from manifest.opencode.run_helpers import extract_json_from_text, parse_opencode_stdout
+from manifest.io.prd_io import load_prd
+from manifest.opencode.run_helpers import (
+    extract_json_from_text,
+    opencode_run_session_id,
+    parse_opencode_stdout,
+)
 
 logger = get_logger(__name__)
 
@@ -70,8 +74,7 @@ def build_layer_writer_context(
     """
     manifest_dir = Path(manifest_dir)
     blueprint = load_blueprint(manifest_dir)
-    prd_path = manifest_dir / "prd.json"
-    prd_excerpt = read_json_or_default(prd_path, {"title": "", "sections": []})
+    prd_excerpt = load_prd(manifest_dir)
 
     entities = blueprint.get("entities") or []
     parent = next((e for e in entities if (e.get("id") or "") == parent_entity_id), None)
@@ -86,7 +89,11 @@ def build_layer_writer_context(
         "layer_index": layer_index,
         "max_depth": max_depth if max_depth is not None else 10,
         "parent_entity": parent,
-        "prd_excerpt": {"title": prd_excerpt.get("title", ""), "sections": list(prd_excerpt.get("sections") or [])},
+        "prd_excerpt": {
+            "title": prd_excerpt.get("title", ""),
+            "mission": prd_excerpt.get("mission", ""),
+            "sections": list(prd_excerpt.get("sections") or []),
+        },
         "blueprint_excerpt": {
             "path_from_root": path_from_root,
             "parent_id": parent_entity_id,
@@ -138,6 +145,7 @@ def write_blueprint_layer(
         cmd = [
             opencode_path,
             "run",
+            "-s", opencode_run_session_id(),
             "--agent", "layer-writer",
             "--dir", str(project_root.resolve()),
             "--format", "json",

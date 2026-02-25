@@ -10,7 +10,11 @@ from typing import Any, Dict, Optional
 
 from manifest.audit.entity_validation import normalize_for_schema, validate_blueprint_data
 from manifest.core.logger import get_logger
-from manifest.opencode.run_helpers import extract_json_from_text, parse_opencode_stdout
+from manifest.opencode.run_helpers import (
+    extract_json_from_text,
+    opencode_run_session_id,
+    parse_opencode_stdout,
+)
 
 logger = get_logger(__name__)
 
@@ -127,6 +131,7 @@ def enrich_code_blueprint(
         cmd = [
             opencode_path,
             "run",
+            "-s", opencode_run_session_id(),
             "--agent", "enrich-code-blueprint",
             "--dir", str(project_root.resolve()),
             "--format", "json",

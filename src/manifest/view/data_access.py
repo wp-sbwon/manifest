@@ -4,6 +4,7 @@ View data access: timeline events, health metrics.
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE, PRD_FILE
 from manifest.view.views_content import ACCENT_BLUE
 
 
@@ -19,7 +20,7 @@ def get_timeline_events(manifest_dir: Path) -> List[Tuple[str, str, str, str]]:
     project_root = manifest_dir.parent
     git_mgr = GitManager(project_root, search_parent_directories=False)
 
-    design_doc_names = ["blueprint_design.json", "prd.json"]
+    design_doc_names = [BLUEPRINT_DESIGN_FILE, PRD_FILE]
     design_paths = [
         str(manifest_dir.relative_to(project_root) / name)
         for name in design_doc_names
