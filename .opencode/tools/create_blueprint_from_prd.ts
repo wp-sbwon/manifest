@@ -9,17 +9,13 @@ const _srcPath = path.join(_repoRoot, "src")
 
 export default tool({
   description:
-    "Validate and write blueprint to .manifest/blueprint_design.json. Payload must be a valid blueprint object (root_id, entities).",
-  args: {
-    payload: tool.schema
-      .string()
-      .describe("JSON string of blueprint object with root_id and entities array"),
-  },
-  async execute(args, context) {
+    "Create blueprint_design.json from .manifest/prd.json and start layer-by-layer expansion. Requires prd.json. Builds root from PRD, saves blueprint_design.json, then runs the layer writer recursively until breakdown is complete.",
+  args: {},
+  async execute(_args, context) {
     const worktree = context.worktree || context.directory || process.cwd()
     const manifestDir = path.join(worktree, ".manifest")
     const env = { ...process.env, PYTHONPATH: _srcPath }
-    const result = await Bun.$`python3 ${_cliPath} ${manifestDir} write_architecture ${args.payload}`.env(env).text()
+    const result = await Bun.$`python3 ${_cliPath} ${manifestDir} create_blueprint_from_prd`.env(env).text()
     return result.trim()
   },
 })

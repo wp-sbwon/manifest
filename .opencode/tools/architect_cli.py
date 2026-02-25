@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI for architect tools: write_prd, write_architecture. Invoked by OpenCode tool definitions."""
+"""CLI for architect tools. Invoked by OpenCode tool definitions."""
 import json
 import sys
 from pathlib import Path
@@ -10,7 +10,7 @@ _src = _repo / "src"
 if str(_src) not in sys.path:
     sys.path.insert(0, str(_src))
 
-from manifest.opencode.architect import write_prd, write_architecture
+from manifest.opencode.architect import write_prd, write_architecture, create_blueprint_from_prd
 
 
 def main() -> int:
@@ -24,13 +24,15 @@ def main() -> int:
     try:
         if cmd == "write_prd":
             if payload_raw:
-                data = json.loads(payload_raw) if payload_raw.startswith("{") else {"mission": payload_raw}
+                data = json.loads(payload_raw) if payload_raw.startswith("{") else {"title": "", "mission": payload_raw, "sections": []}
             else:
-                data = {"mission": ""}
+                data = {"title": "", "mission": "", "sections": []}
             result = write_prd(manifest_dir, data)
         elif cmd == "write_architecture":
             payload = json.loads(payload_raw) if payload_raw else {}
             result = write_architecture(manifest_dir, payload)
+        elif cmd == "create_blueprint_from_prd":
+            result = create_blueprint_from_prd(manifest_dir, manifest_dir.parent)
         else:
             result = {"ok": False, "error": f"Unknown command: {cmd}"}
     except json.JSONDecodeError as e:

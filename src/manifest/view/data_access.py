@@ -1,5 +1,5 @@
 """
-View data access: timeline events, chat/shadow state, health metrics.
+View data access: timeline events, health metrics.
 """
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -43,18 +43,6 @@ def get_timeline_events(manifest_dir: Path) -> List[Tuple[str, str, str, str]]:
             pass
     events.sort(key=lambda x: x[0], reverse=True)
     return events
-
-
-def get_inspector_shadow_channels(manifest_dir: Path) -> List[Tuple[str, List[Dict[str, Any]]]]:
-    """Return [(channel_key, msgs), ...] for shadow-* channels. Currently returns empty."""
-    return []
-
-
-def get_shadow_results_for_node(manifest_dir: Path, nid: str) -> Tuple[str, str]:
-    """
-    Last output and trace for node from shadow-* channels. Returns (last_output, trace).
-    """
-    return "—", "—"
 
 
 def get_health_metrics(manifest_dir: Path, populate_if_blank: bool = False) -> Dict[str, Any]:

@@ -1,4 +1,5 @@
-"""Canonical manifest file names: design, code, view."""
+"""Canonical manifest file names: design, code, view, PRD."""
 BLUEPRINT_DESIGN_FILE = "blueprint_design.json"
 BLUEPRINT_CODE_FILE = "blueprint_code.json"
 BLUEPRINT_VIEW_FILE = "blueprint_view.json"
+PRD_FILE = "prd.json"

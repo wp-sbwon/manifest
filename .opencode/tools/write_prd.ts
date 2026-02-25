@@ -9,16 +9,28 @@ const _srcPath = path.join(_repoRoot, "src")
 
 export default tool({
   description:
-    "Write PRD and initial blueprint to .manifest. Creates prd.json and blueprint_design.json from mission text. Use this to persist top-down design from user discussion.",
+    "Save PRD to .manifest/prd.json (fixed format: title, mission, sections).",
   args: {
-    mission: tool.schema
-      .string()
-      .describe("Mission or product goal text to save as PRD and minimal blueprint"),
+    title: tool.schema.string().describe("PRD title").optional(),
+    mission: tool.schema.string().describe("Mission or product goal").optional(),
+    sections: tool.schema
+      .array(
+        tool.schema.object({
+          heading: tool.schema.string(),
+          content: tool.schema.string(),
+        })
+      )
+      .describe("Sections: array of { heading, content }")
+      .optional(),
   },
   async execute(args, context) {
     const worktree = context.worktree || context.directory || process.cwd()
     const manifestDir = path.join(worktree, ".manifest")
-    const payload = JSON.stringify({ mission: args.mission || "" })
+    const payload = JSON.stringify({
+      title: args.title ?? "",
+      mission: args.mission ?? "",
+      sections: args.sections ?? [],
+    })
     const env = { ...process.env, PYTHONPATH: _srcPath }
     const result = await Bun.$`python3 ${_cliPath} ${manifestDir} write_prd ${payload}`.env(env).text()
     return result.trim()

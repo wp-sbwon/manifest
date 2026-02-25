@@ -2,6 +2,12 @@ from typing import Dict, Any, List, Optional
 
 from manifest.view.constants import DEFAULT_DIAGRAM_TITLE
 
+_BOX_MIN_WIDTH = 12
+_BOX_MAX_WIDTH = 28
+_L2_LABEL_MAX_LEN = 14
+_L2_MAX_ITEMS = 8
+_GRID_CELL_WIDTH = 12
+
 
 def _status_color(status: str, config: Dict[str, Any]) -> str:
     colors = config.get("colors") or {}
@@ -103,7 +109,7 @@ def _render_simple_flow(
 ) -> List[str]:
     arrow = " ──► "
     spacer = "     "
-    min_w, max_w = 12, 28
+    min_w, max_w = _BOX_MIN_WIDTH, _BOX_MAX_WIDTH
     lines: List[str] = []
     boxes: List[tuple] = []
     for node in nodes:
@@ -112,7 +118,7 @@ def _render_simple_flow(
         status = node.get("status") or "planned"
         st_color = _status_color(status, config)
         l2_list = _l2_labels(node)
-        l2_line = ", ".join((t or "?")[:14] for t in l2_list[:8]) if l2_list else "—"
+        l2_line = ", ".join((t or "?")[:_L2_LABEL_MAX_LEN] for t in l2_list[:_L2_MAX_ITEMS]) if l2_list else "—"
         w = max(min_w, min(max_w, max(len(label) + 6, len(l2_line) + 4)))
         boxes.append((nid, label, st_color, l2_line, w))
 
@@ -155,7 +161,7 @@ def _render_grid(
     if not isinstance(map_list, list):
         map_list = []
     id_to_node = {n.get("id") or "": n for n in nodes}
-    cell_w = 12
+    cell_w = _GRID_CELL_WIDTH
     grid: List[List[Optional[str]]] = [[None] * cols for _ in range(rows)]
     for item in map_list:
         if not isinstance(item, dict):

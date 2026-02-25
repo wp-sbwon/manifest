@@ -1,1 +1,1 @@
-"""Architect tool: write_prd, write_architecture; layer-writer pipeline."""
+"""Architect tools and layer-writer pipeline."""

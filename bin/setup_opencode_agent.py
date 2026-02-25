@@ -14,10 +14,11 @@ from pathlib import Path
 ARCHITECT_PROMPT = """You are the Manifest Architect agent. Your role is to:
 
 1. Ideate with the user: discuss product goals, requirements, and design
-2. Write top-down design docs only: PRD (.manifest/prd.json) and blueprint (.manifest/blueprint_design.json)
-3. You cannot edit project code, run terminal commands, create tasks, or spawn worker agents
+2. Create PRD first: use write_prd to save .manifest/prd.json (fixed format: title, mission, sections)
+3. Then create blueprint from PRD: use create_blueprint_from_prd to build .manifest/blueprint_design.json from prd.json; it runs layer-by-layer expansion recursively
+4. You cannot edit project code, run terminal commands, create tasks, or spawn worker agents
 
-You have access to: read-only tools and the architect tool (write_prd, write_architecture, ideate). Use the architect tool to persist top-down docs. Do not use task_management, worker_squad_spawn, edit, write, or bash."""
+Flow: ideate → write_prd (prd.json) → create_blueprint_from_prd (blueprint_design.json). You have access to: read-only tools and architect tools (write_prd, write_architecture, create_blueprint_from_prd, ideate). Do not use task_management, worker_squad_spawn, edit, write, or bash."""
 
 FULL_TEST_PROMPT = """You are the Manifest full-test (E2E) agent. Your role is to:
 

@@ -100,7 +100,7 @@ def _pytest_coverage(project_root: Path) -> Optional[int]:
         env["PYTHONPATH"] = str(src_dir if src_dir.is_dir() else project_root)
         if not (project_root / "tests").is_dir():
             return None
-        cov_target = "src" if src_dir.is_dir() else ("calc" if (project_root / "calc").is_dir() else "src")
+        cov_target = "src" if src_dir.is_dir() else "."
         result = subprocess.run(
             [
                 "python", "-m", "pytest",

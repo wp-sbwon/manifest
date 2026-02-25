@@ -105,7 +105,7 @@ def _run_opencode() -> int:
     config = _get_opencode_config_path()
     if config:
         env["OPENCODE_CONFIG"] = str(config)
-    # Expose manifest .opencode (tools, agents) so architect can call write_prd/write_architecture
+    # Expose manifest .opencode (tools, agents) for architect
     _manifest_root = Path(__file__).resolve().parent.parent.parent
     if (_manifest_root / ".opencode").is_dir():
         env["OPENCODE_CONFIG_DIR"] = str(_manifest_root)
