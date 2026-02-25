@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity, empty_intent, empty_reality
+from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity
 from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE, BLUEPRINT_CODE_FILE, BLUEPRINT_VIEW_FILE
 from manifest.view.entity_model import get_entities_for_view
 
@@ -15,9 +15,8 @@ def test_get_entities_for_view_produces_comp_status_and_view_schema(manifest_dir
     """Pipeline: write design + code blueprints, call get_entities_for_view; comp_status and view_schema populated."""
     design = minimal_blueprint(["a"])
     code = minimal_blueprint(["a"])
-    (design["entities"][0])["reality"] = dict(empty_reality())
-    (design["entities"][0])["reality"]["symbol"] = "main.py"
-    code["entities"][1]["reality"]["symbol"] = "a.py"
+    (design["entities"][0])["symbol"] = "main.py"
+    code["entities"][1]["symbol"] = "a.py"
     with open(manifest_dir / BLUEPRINT_DESIGN_FILE, "w", encoding="utf-8") as f:
         json.dump(design, f, indent=2)
     with open(manifest_dir / BLUEPRINT_CODE_FILE, "w", encoding="utf-8") as f:

@@ -60,28 +60,17 @@ Each task’s `context` is a single JSON-like dict stored in `doc_layer_writer_t
   "max_depth": 10,
   "parent_entity": {
     "id": "PROJECT_ROOT",
-    "children": [],
+    "children": ["cli", "arithmetic_engine", "output"],
     "dependencies": [],
-    "intent": {
-      "narrative": {"role": "Calculator", "mission": "CLI calculator: parse args → compute → format → print."},
-      "goals": [
-        {"id": "goal-1", "name": "CLI entry", "description": "User can run calculator from terminal with op and two numbers.", "status": "Done"},
-        {"id": "goal-2", "name": "Arithmetic", "description": "Support add, subtract, multiply.", "status": "Done"},
-        {"id": "goal-3", "name": "Tests", "description": "Unit tests for operations and CLI.", "status": "Planned"}
-      ],
-      "interface": "main(argv) → stdout; CLI parses op and numbers; engine computes; output formats.",
-      "global_rules": ["Stateless flow.", "No I/O in arithmetic engine."],
-      "blueprint": {"type": "FLOW", "topology": {}},
-      "protocol": {"input": [{"name": "argv", "type": "string"}], "output": [{"name": "stdout", "type": "string"}]},
-      "profile": {"language": "python", "platform": "cli", "io_model": "request_response", "state_model": "stateless"},
-      "governance": {"rules": ["Stateless.", "Pure arithmetic only in engine."], "assertions": []}
-    },
-    "reality": {
-      "symbol": "main",
-      "dependencies": ["cli.parser", "engine.calculator", "output.formatter"],
-      "traits": ["orchestrator"],
-      "preview": "main.py: parse → engine → format_result → print."
-    },
+    "narrative": {"role": "Calculator", "mission": "CLI calculator: parse args → compute → format → print."},
+    "blueprint": {"type": "FLOW", "topology": {}},
+    "protocol": {"input": [{"name": "argv", "type": "string"}], "output": [{"name": "stdout", "type": "string"}]},
+    "profile": {"language": "python", "platform": "cli", "io_model": "request_response", "state_model": "stateless"},
+    "governance": {"rules": ["Stateless flow.", "No I/O in arithmetic engine."], "assertions": []},
+    "symbol": "main",
+    "traits": [],
+    "topology_actual": {"type": "", "map": []},
+    "preview": "main.py: parse → engine → format_result → print.",
     "outgoing_contracts": []
   },
   "prd_excerpt": {
@@ -101,7 +90,7 @@ Each task’s `context` is a single JSON-like dict stored in `doc_layer_writer_t
 }
 ```
 
-**Instruction (conceptual):** Produce direct children of the root (top-level components). In the mock, the writer would output entities for `cli`, `arithmetic_engine`, `output` (or the LLM would derive similar from PRD + parent intent).
+**Instruction (conceptual):** Produce direct children of the root (top-level components). In the mock, the writer would output entities for `cli`, `arithmetic_engine`, `output` (or the LLM would derive similar from PRD + parent entity).
 
 ---
 
@@ -119,22 +108,18 @@ Each task’s `context` is a single JSON-like dict stored in `doc_layer_writer_t
     "id": "cli",
     "children": [],
     "dependencies": [],
-    "intent": {
-      "narrative": {"role": "CLI", "mission": "Parse terminal input into op and two numbers."},
-      "blueprint": {"type": "FLOW", "topology": {}},
-      "protocol": {
-        "input": [{"name": "argv", "type": "list"}],
-        "output": [{"name": "op", "type": "str"}, {"name": "a", "type": "float"}, {"name": "b", "type": "float"}]
-      },
-      "profile": {"language": "python", "platform": "cli", "io_model": "", "state_model": ""},
-      "governance": {"rules": [], "assertions": []}
+    "narrative": {"role": "CLI", "mission": "Parse terminal input into op and two numbers."},
+    "blueprint": {"type": "FLOW", "topology": {}},
+    "protocol": {
+      "input": [{"name": "argv", "type": "list"}],
+      "output": [{"name": "op", "type": "str"}, {"name": "a", "type": "float"}, {"name": "b", "type": "float"}]
     },
-    "reality": {
-      "symbol": "cli.parser",
-      "dependencies": ["argparse"],
-      "traits": ["parser"],
-      "preview": ""
-    },
+    "profile": {"language": "python", "platform": "cli", "io_model": "", "state_model": ""},
+    "governance": {"rules": [], "assertions": []},
+    "symbol": "cli.parser",
+    "traits": ["parser"],
+    "topology_actual": {"type": "", "map": []},
+    "preview": "",
     "outgoing_contracts": [{"to": "arithmetic_engine", "type": "flow", "file": "cli/parser.py", "symbols": ["parse_args"]}]
   },
   "prd_excerpt": {
@@ -170,24 +155,20 @@ Each task’s `context` is a single JSON-like dict stored in `doc_layer_writer_t
   "max_depth": 10,
   "parent_entity": {
     "id": "arithmetic_engine",
-    "children": [],
+    "children": ["add", "sub", "mul"],
     "dependencies": [],
-    "intent": {
-      "narrative": {"role": "Arithmetic Engine", "mission": "Pure arithmetic: add, sub, mul (side-effect free)."},
-      "blueprint": {"type": "FLOW", "topology": {}},
-      "protocol": {
-        "input": [{"name": "op", "type": "str"}, {"name": "a", "type": "float"}, {"name": "b", "type": "float"}],
-        "output": [{"name": "result", "type": "float"}]
-      },
-      "profile": {"language": "python", "platform": "cli", "io_model": "", "state_model": ""},
-      "governance": {"rules": ["No side effects.", "Pure functions only."], "assertions": []}
+    "narrative": {"role": "Arithmetic Engine", "mission": "Pure arithmetic: add, sub, mul (side-effect free)."},
+    "blueprint": {"type": "FLOW", "topology": {}},
+    "protocol": {
+      "input": [{"name": "op", "type": "str"}, {"name": "a", "type": "float"}, {"name": "b", "type": "float"}],
+      "output": [{"name": "result", "type": "float"}]
     },
-    "reality": {
-      "symbol": "engine.calculator",
-      "dependencies": ["calc.operations.add", "calc.operations.sub", "calc.operations.mul"],
-      "traits": ["orchestrator", "pure"],
-      "preview": ""
-    },
+    "profile": {"language": "python", "platform": "cli", "io_model": "", "state_model": ""},
+    "governance": {"rules": ["No side effects.", "Pure functions only."], "assertions": []},
+    "symbol": "engine.calculator",
+    "traits": ["orchestrator", "pure"],
+    "topology_actual": {"type": "", "map": []},
+    "preview": "",
     "outgoing_contracts": [
       {"to": "add", "type": "dependency", "file": "engine/calculator.py", "symbols": ["add"]},
       {"to": "sub", "type": "dependency", "file": "engine/calculator.py", "symbols": ["sub"]},
@@ -238,22 +219,18 @@ Each task’s `context` is a single JSON-like dict stored in `doc_layer_writer_t
     "id": "add",
     "children": [],
     "dependencies": [],
-    "intent": {
-      "narrative": {"role": "Add", "mission": "Return a + b."},
-      "blueprint": {"type": "FLOW", "topology": {}},
-      "protocol": {
-        "input": [{"name": "a", "type": "float"}, {"name": "b", "type": "float"}],
-        "output": [{"name": "result", "type": "float"}]
-      },
-      "profile": {"language": "python", "platform": "cli", "io_model": "", "state_model": ""},
-      "governance": {"rules": ["Pure function."], "assertions": []}
+    "narrative": {"role": "Add", "mission": "Return a + b."},
+    "blueprint": {"type": "FLOW", "topology": {}},
+    "protocol": {
+      "input": [{"name": "a", "type": "float"}, {"name": "b", "type": "float"}],
+      "output": [{"name": "result", "type": "float"}]
     },
-    "reality": {
-      "symbol": "calc.operations.add",
-      "dependencies": [],
-      "traits": ["pure", "O(1)"],
-      "preview": ""
-    },
+    "profile": {"language": "python", "platform": "cli", "io_model": "", "state_model": ""},
+    "governance": {"rules": ["Pure function."], "assertions": []},
+    "symbol": "calc.operations.add",
+    "traits": ["pure", "O(1)"],
+    "topology_actual": {"type": "", "map": []},
+    "preview": "",
     "outgoing_contracts": []
   },
   "prd_excerpt": {

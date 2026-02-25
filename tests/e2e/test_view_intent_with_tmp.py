@@ -9,14 +9,14 @@ from manifest.audit.entity_schema import PROJECT_ROOT_ID
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-TMP_MANIFEST = REPO_ROOT / "tmp" / ".manifest"
+TMP_MANIFEST = REPO_ROOT / "tmp" / "calculator" / ".manifest"
 
 
 @pytest.mark.e2e
 def test_tmp_view_shows_what_is_built() -> None:
-    """With tmp/.manifest, view exposes multiple entities so user sees what is being built."""
+    """With tmp/calculator/.manifest, view exposes multiple entities so user sees what is being built."""
     if not TMP_MANIFEST.exists() or not (TMP_MANIFEST / "blueprint_design.json").exists():
-        pytest.skip("Run: PYTHONPATH=src python scripts/create_mock_project_data.py tmp/.manifest")
+        pytest.skip("Run: PYTHONPATH=src python scripts/create_mock_project_data.py tmp/calculator/.manifest")
     data = get_entities_for_view(TMP_MANIFEST)
     view_schema = data.get("view_schema") or {}
     entities = view_schema.get("entities") or []
@@ -28,9 +28,9 @@ def test_tmp_view_shows_what_is_built() -> None:
 
 @pytest.mark.e2e
 def test_tmp_view_shows_how_much_done_no_contradiction() -> None:
-    """With tmp/.manifest, status and deviations are consistent (no healthy + field-level deviations)."""
+    """With tmp/calculator/.manifest, status and deviations are consistent (no healthy + field-level deviations)."""
     if not TMP_MANIFEST.exists() or not (TMP_MANIFEST / "blueprint_design.json").exists():
-        pytest.skip("Run: PYTHONPATH=src python scripts/create_mock_project_data.py tmp/.manifest")
+        pytest.skip("Run: PYTHONPATH=src python scripts/create_mock_project_data.py tmp/calculator/.manifest")
     data = get_entities_for_view(TMP_MANIFEST)
     view_schema = data.get("view_schema") or {}
     for ve in view_schema.get("entities") or []:
@@ -43,9 +43,9 @@ def test_tmp_view_shows_how_much_done_no_contradiction() -> None:
 
 @pytest.mark.e2e
 def test_tmp_root_status_reflects_implementation() -> None:
-    """With tmp/.manifest, root status is not 'planned' when code exists (user sees progress)."""
+    """With tmp/calculator/.manifest, root status is not 'planned' when code exists (user sees progress)."""
     if not TMP_MANIFEST.exists() or not (TMP_MANIFEST / "blueprint_design.json").exists():
-        pytest.skip("Run: PYTHONPATH=src python scripts/create_mock_project_data.py tmp/.manifest")
+        pytest.skip("Run: PYTHONPATH=src python scripts/create_mock_project_data.py tmp/calculator/.manifest")
     data = get_entities_for_view(TMP_MANIFEST)
     comp_status = data.get("comp_status") or {}
     root_status = comp_status.get(PROJECT_ROOT_ID)

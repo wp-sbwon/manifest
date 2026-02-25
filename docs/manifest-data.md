@@ -4,13 +4,13 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 
 ## Blueprint
 
-**Source of truth (design):** `blueprint_design.json`. Root intent holds mission, goals, interface; root's children = top layer (e.g. modules).
+**Source of truth (design):** `blueprint_design.json`. Root holds mission, goals, interface; root's children = top layer (e.g. modules).
 
-**Alignment rule:** `blueprint_design.json` and `blueprint_code.json` use the **same schema** so they can be compared mechanically. Diagram and Inspector data come from the **comparison output**, not from design or code alone.
+**Alignment rule:** `blueprint_design.json` and `blueprint_code.json` use the **same entity-layer schema**. Diagram and Inspector data come from **blueprint_view** (plan/actual and status per entity), not from design or code alone.
 
 **Depth / granularity:** No fixed max depth. Diagram can drill (Enter/Backspace). Task-level granularity is separate (`.rules/task-granularity.md`).
 
-**Entity shape:** Same keys at every level (`id`, `children`, `intent`, `reality`, etc.). No explicit type or layer label in the schema. Any distinction (e.g. goal-oriented near root, implementation-oriented deeper) is by context and by the content writers produce, not by a "layer type" or index in doc creation.
+**Entity shape:** Same keys at every level: `id`, `children`, `dependencies`, `narrative`, `blueprint`, `protocol`, `profile`, `governance`, `symbol`, `traits`, `topology_actual`, `preview`, `outgoing_contracts`. No explicit type or layer label in the schema.
 
 ---
 
@@ -18,13 +18,13 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 
 | File | Role | Created by |
 |------|------|------------|
-| **blueprint_design.json** | Design (top-down). Intent filled, reality from design or empty. | Architect / design agents |
-| **blueprint_code.json** | Code (bottom-up). Same schema and entity ids as design; reality from CodeExtractor; intent from opencode enricher (ground truth from code). | bin/run_bottom_up_docs.py (on commit) |
-| **blueprint_view.json** | **Final blueprint for the view.** Same keys as design/code; each comparable value is a pair plus deviation: `{ "plan", "actual", "deviates" }`. Validation (status, deviations) per entity. | `build_view_schema` (on view refresh, mock script, or bin/run_bottom_up_docs) |
+| **blueprint_design.json** | Design (top-down). All entity fields filled. | Architect / design agents |
+| **blueprint_code.json** | Code (bottom-up). Same schema and entity ids as design; mechanical fields from CodeExtractor; narrative/governance etc. from enricher (LLM) with design as context. | bin/run_bottom_up_docs.py (on commit) |
+| **blueprint_view.json** | **View blueprint.** Same keys as design/code; each comparable value is `{ "plan", "actual", "deviates" }`. Status and deviations per entity from comparison. | `build_view_schema` (on view refresh, mock script, or bin/run_bottom_up_docs) |
 
-**Design and code:** Same shape: `version`, `root_id`, `entities`; per entity: `id`, `children`, `dependencies`, `intent`, `reality`, `outgoing_contracts`. Both files must align to this schema for comparison.
+**Design and code:** Same shape: `version`, `root_id`, `entities`; per entity: `id`, `children`, `dependencies`, `narrative`, `blueprint`, `protocol`, `profile`, `governance`, `symbol`, `traits`, `topology_actual`, `preview`, `outgoing_contracts`. Both files align to this schema; comparison is done only when building the view.
 
-**View:** View schema has the **same keys** as blueprint_design/blueprint_code. Values are not single values but `{ "plan": <design>, "actual": <code>, "deviates": <bool> }` so the view can show one spec and flag deviations. The pipeline loads design and code, validates, compares mechanically, builds this view schema, and writes `blueprint_view.json`. The view uses that (and in-memory `view_schema` from `get_entities_for_view`) as its reference.
+**View:** View schema has the same keys as design/code. Values are `{ "plan", "actual", "deviates" }` so the view can show plan vs actual and flag deviations. The pipeline loads design and code, builds the view schema (comparison and status), and writes `blueprint_view.json`.
 
 ---
 
@@ -65,7 +65,7 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 
 ## Schema and validation
 
-- **Canonical schema:** `src/manifest/audit/entity_schema.py` (Entity, Intent, Reality). Blueprint = version, root_id, entities only. No `null`; required keys enforced.
+- **Canonical schema:** `src/manifest/audit/entity_schema.py` (Entity). Blueprint = version, root_id, entities only. No `null`; required keys enforced.
 - **Validation:** `entity_validation.py` — `validate_blueprint_data`, `validate_blueprint_file`, `normalize_for_schema`. Used before every write; writers must emit valid entity format or save fails.
 
 ---
@@ -76,7 +76,7 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 |------|----------|------------|
 | blueprint_design.json | ✓ Agents | |
 | blueprint_code.json | | ✓ bin/run_bottom_up_docs.py (on commit) |
-| blueprint_view.json | | Comparison output (view refresh; also scripts/create_mock_project_data.py, bin/run_bottom_up_docs.py) |
+| blueprint_view.json | | View schema from build_view_schema (view refresh; scripts/create_mock_project_data.py; bin/run_bottom_up_docs.py) |
 | state.json (health_metrics) | | ✓ Pipeline |
 | tasks.json | ✓ Core/agents | |
 | diagram_config.json | Config | |

@@ -1,16 +1,9 @@
 """
-Blueprint management and status.
-
-This package contains modules for managing blueprints:
-- BlueprintLoader: Centralized blueprint loading
-- BlueprintMetadata: Metadata management for blueprints
-- BlueprintComparator: Compares top-down and bottom-up blueprints
-- blueprint_status: calculate_implementation_status
+Blueprint loading, view schema (comparison and status), and status derivation.
 """
 from .manifest_filenames import BLUEPRINT_DESIGN_FILE, BLUEPRINT_CODE_FILE, BLUEPRINT_VIEW_FILE
 from .blueprint_loader import BlueprintLoader
 from .blueprint_metadata import load_blueprint_with_metadata, save_blueprint_with_metadata
-from .blueprint_comparator import BlueprintComparator, BlueprintConflict, ConflictType
 from .blueprint_status import calculate_implementation_status
 from .status_enums import ConflictWorkflowStatus, ImplementationStatus
 from .view_schema import (
@@ -29,9 +22,6 @@ __all__ = [
     "BlueprintLoader",
     "load_blueprint_with_metadata",
     "save_blueprint_with_metadata",
-    "BlueprintComparator",
-    "BlueprintConflict",
-    "ConflictType",
     "calculate_implementation_status",
     "ConflictWorkflowStatus",
     "ImplementationStatus",

@@ -10,7 +10,8 @@ from manifest.launcher import (
     _is_manifest_repo,
     _get_project_dir,
     _get_manifest_dir,
-    DEV_PROJECT_DIR_NAME,
+    TMP_DIR_NAME,
+    DEFAULT_DEV_PROJECT,
 )
 
 
@@ -48,6 +49,7 @@ def test_get_manifest_dir_appends_manifest() -> None:
 
 
 @pytest.mark.unit
-def test_dev_project_dir_name() -> None:
-    """DEV_PROJECT_DIR_NAME is 'tmp'."""
-    assert DEV_PROJECT_DIR_NAME == "tmp"
+def test_tmp_dir_name() -> None:
+    """TMP_DIR_NAME is 'tmp'; DEFAULT_DEV_PROJECT is 'calculator'."""
+    assert TMP_DIR_NAME == "tmp"
+    assert DEFAULT_DEV_PROJECT == "calculator"

@@ -139,19 +139,15 @@ def build_info_hub_node_content(
             return f"{_cap(label)}: {p}  ⚠ actual: [red]{a}[/]", True
         return f"{_cap(label)}: {p}  (actual: {a})", False
 
-    intent = data.get("intent") or {}
-    reality = data.get("reality") or {}
-    narrative = intent.get("narrative") or {}
-    blueprint = intent.get("blueprint") or {}
+    narrative = data.get("narrative") or {}
+    blueprint = data.get("blueprint") or {}
     bp_topology = blueprint.get("topology") or {}
-    protocol_i = intent.get("protocol") or {}
-    protocol_r = reality.get("protocol") or {}
-    profile_i = intent.get("profile") or {}
-    profile_r = reality.get("profile") or {}
-    gov = intent.get("governance") or {}
-    reality_deps = reality.get("dependencies") or []
-    traits = reality.get("traits") or []
-    topology_actual = reality.get("topology_actual") or {}
+    protocol = data.get("protocol") or {}
+    profile = data.get("profile") or {}
+    gov = data.get("governance") or {}
+    deps = data.get("dependencies") or []
+    traits = data.get("traits") or []
+    topology_actual = data.get("topology_actual") or {}
     children_ids = data.get("children") or []
     children_display = [id_to_display_name.get(cid, cid) for cid in children_ids]
     contracts = data.get("outgoing_contracts") or []
@@ -159,7 +155,7 @@ def build_info_hub_node_content(
     identity_lines = [
         f"[white]{_cap('id')}[/]: {nid}",
         f"[white]{_cap('children')}[/]: {', '.join(children_display) or '—'}{_box(('children',))}",
-        f"[white]{_cap('dependencies')}[/]: {', '.join((data.get('dependencies') or [])[:12]) or '—'}{_box(('dependencies',))}",
+        f"[white]{_cap('dependencies')}[/]: {', '.join(deps[:12]) or '—'}{_box(('dependencies',))}",
     ]
     identity_body = "\n".join(identity_lines)
     topology_summary = "—"
@@ -177,33 +173,32 @@ def build_info_hub_node_content(
         raw = format_for_display(val, fmt_len)
         return f"{_cap(label)}: {raw}{_box(path)}"
 
-    spec_lines.append(_role_mission_line("role", narrative.get("role"), ("intent", "narrative", "role"), 80))
-    spec_lines.append(_role_mission_line("mission", narrative.get("mission"), ("intent", "narrative", "mission"), 240))
+    spec_lines.append(_role_mission_line("role", narrative.get("role"), ("narrative", "role"), 80))
+    spec_lines.append(_role_mission_line("mission", narrative.get("mission"), ("narrative", "mission"), 240))
     spec_lines.append(f"{_cap('blueprint')}")
-    spec_lines.append(f"  — {_cap('type')}: {format_for_display(blueprint.get('type'), 20)}{_box(('intent', 'blueprint', 'type'))}")
-    spec_lines.append(f"  — {_cap('topology')}: {topology_summary}{_box(('intent', 'blueprint', 'topology'))}")
+    spec_lines.append(f"  — {_cap('type')}: {format_for_display(blueprint.get('type'), 20)}{_box(('blueprint', 'type'))}")
+    spec_lines.append(f"  — {_cap('topology')}: {topology_summary}{_box(('blueprint', 'topology'))}")
     spec_lines.append(f"{_cap('protocol')}")
-    ln, dev = _spec_line("input", protocol_i.get("input"), protocol_r.get("input"), ("intent", "protocol", "input"))
-    spec_lines.append(f"  — {ln}{_box(('intent', 'protocol', 'input'))}")
+    ln, dev = _spec_line("input", protocol.get("input"), protocol.get("input"), ("protocol", "input"))
+    spec_lines.append(f"  — {ln}{_box(('protocol', 'input'))}")
     any_spec_deviation = any_spec_deviation or dev
-    ln, dev = _spec_line("output", protocol_i.get("output"), protocol_r.get("output"), ("intent", "protocol", "output"))
-    spec_lines.append(f"  — {ln}{_box(('intent', 'protocol', 'output'))}")
+    ln, dev = _spec_line("output", protocol.get("output"), protocol.get("output"), ("protocol", "output"))
+    spec_lines.append(f"  — {ln}{_box(('protocol', 'output'))}")
     any_spec_deviation = any_spec_deviation or dev
     spec_lines.append(f"{_cap('profile')}")
     for key in ("language", "platform", "io_model", "state_model"):
-        pi = profile_i.get(key)
-        pr = profile_r.get(key)
-        ln, dev = _spec_line(key, pi, pr, ("intent", "profile", key))
-        spec_lines.append(f"  — {ln}{_box(('intent', 'profile', key))}")
+        pv = profile.get(key)
+        ln, dev = _spec_line(key, pv, pv, ("profile", key))
+        spec_lines.append(f"  — {ln}{_box(('profile', key))}")
         any_spec_deviation = any_spec_deviation or dev
     spec_lines.append(f"{_cap('governance')}")
-    spec_lines.append(f"  — {_cap('rules')}: {format_for_display(gov.get('rules'))}{_box(('intent', 'governance', 'rules'))}")
-    spec_lines.append(f"  — {_cap('assertions')}: {format_for_display(gov.get('assertions'))}{_box(('intent', 'governance', 'assertions'))}")
-    spec_lines.append(f"{_cap('symbol')}: {format_for_display(reality.get('symbol'), 120)}{_box(('reality', 'symbol'))}")
-    spec_lines.append(f"{_cap('dependencies')} (code): {', '.join(reality_deps[:12]) or '—'}{_box(('reality', 'dependencies'))}")
-    spec_lines.append(f"{_cap('traits')}: {', '.join(traits[:10]) or '—'}{_box(('reality', 'traits'))}")
-    spec_lines.append(f"{_cap('topology_actual')}: {topology_actual_summary}{_box(('reality', 'topology_actual'))}")
-    spec_lines.append(f"{_cap('preview')}: {format_for_display(reality.get('preview'), 160)}{_box(('reality', 'preview'))}")
+    spec_lines.append(f"  — {_cap('rules')}: {format_for_display(gov.get('rules'))}{_box(('governance', 'rules'))}")
+    spec_lines.append(f"  — {_cap('assertions')}: {format_for_display(gov.get('assertions'))}{_box(('governance', 'assertions'))}")
+    spec_lines.append(f"{_cap('symbol')}: {format_for_display(data.get('symbol'), 120)}{_box(('symbol',))}")
+    spec_lines.append(f"{_cap('dependencies')}: {', '.join(deps[:12]) or '—'}{_box(('dependencies',))}")
+    spec_lines.append(f"{_cap('traits')}: {', '.join(traits[:10]) or '—'}{_box(('traits',))}")
+    spec_lines.append(f"{_cap('topology_actual')}: {topology_actual_summary}{_box(('topology_actual',))}")
+    spec_lines.append(f"{_cap('preview')}: {format_for_display(data.get('preview'), 160)}{_box(('preview',))}")
 
     spec_body = "\n".join(spec_lines)
     contract_lines = [f"→ {c.get('to') or '—'} [{c.get('type') or 'dependency'}] {c.get('file') or ''} {', '.join((c.get('symbols') or [])[:4])}" for c in (contracts or [])[:10]]
@@ -232,35 +227,33 @@ def build_info_hub_diff_view(
     """Diff view: Plan vs Code as a Rich table; only differing values in red."""
     plan = design_ent or data
     actual = code_ent or data
-    plan_intent = plan.get("intent") or {}
-    plan_narr = plan_intent.get("narrative") or {}
-    plan_reality = plan.get("reality") or {}
-    actual_intent = actual.get("intent") or {}
-    actual_narr = actual_intent.get("narrative") or {}
-    actual_reality = actual.get("reality") or {}
+    plan_narr = plan.get("narrative") or {}
+    actual_narr = actual.get("narrative") or {}
+    plan_blueprint = plan.get("blueprint") or {}
+    actual_blueprint = actual.get("blueprint") or {}
+    plan_protocol = plan.get("protocol") or {}
+    actual_protocol = actual.get("protocol") or {}
+    plan_profile = plan.get("profile") or {}
+    actual_profile = actual.get("profile") or {}
+    plan_gov = plan.get("governance") or {}
+    actual_gov = actual.get("governance") or {}
     max_cell = 28
 
     def _s(v: Any, w: int = 28) -> str:
         return format_for_display(v, max_len=w, max_items=5)[:w].replace("\n", " ")
 
-    plan_protocol = plan_intent.get("protocol") or {}
-    actual_protocol = actual_intent.get("protocol") or {}
-    plan_profile = plan_intent.get("profile") or {}
-    actual_profile = actual_intent.get("profile") or {}
-    plan_gov = plan_intent.get("governance") or {}
-    actual_gov = actual_intent.get("governance") or {}
     rows = [
         ("Role", _s(plan_narr.get("role")), _s(actual_narr.get("role"))),
         ("Mission", _s(plan_narr.get("mission")), _s(actual_narr.get("mission"))),
-        ("Type", _s(plan_intent.get("blueprint", {}).get("type")), _s(actual_intent.get("blueprint", {}).get("type"))),
+        ("Type", _s(plan_blueprint.get("type")), _s(actual_blueprint.get("type"))),
         ("Protocol input", _s(plan_protocol.get("input")), _s(actual_protocol.get("input"))),
         ("Protocol output", _s(plan_protocol.get("output")), _s(actual_protocol.get("output"))),
         ("Language", _s(plan_profile.get("language")), _s(actual_profile.get("language"))),
         ("Platform", _s(plan_profile.get("platform")), _s(actual_profile.get("platform"))),
         ("Governance rules", _s(plan_gov.get("rules")), _s(actual_gov.get("rules"))),
-        ("Symbol", _s(plan_reality.get("symbol")), _s(actual_reality.get("symbol"))),
-        ("Dependencies", _s(plan_reality.get("dependencies")), _s(actual_reality.get("dependencies"))),
-        ("Traits", _s(plan_reality.get("traits")), _s(actual_reality.get("traits"))),
+        ("Symbol", _s(plan.get("symbol")), _s(actual.get("symbol"))),
+        ("Dependencies", _s(plan.get("dependencies")), _s(actual.get("dependencies"))),
+        ("Traits", _s(plan.get("traits")), _s(actual.get("traits"))),
     ]
     table = Table(
         show_header=True,

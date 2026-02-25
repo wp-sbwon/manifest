@@ -1,4 +1,4 @@
-"""Start View TUI and OpenCode. Uses tmp/ as project dir when MANIFEST_DEV=1 in repo."""
+"""Start View TUI and OpenCode. Uses tmp/<name> as project dir when MANIFEST_DEV=1 in repo."""
 import os
 import sys
 import shutil
@@ -7,7 +7,8 @@ import platform
 from pathlib import Path
 from typing import Optional
 
-DEV_PROJECT_DIR_NAME = "tmp"
+TMP_DIR_NAME = "tmp"
+DEFAULT_DEV_PROJECT = "calculator"
 
 
 def _is_manifest_repo(path: Path) -> bool:
@@ -21,7 +22,8 @@ def _get_project_dir() -> Path:
         return p
     cwd = Path.cwd()
     if _is_manifest_repo(cwd) and os.environ.get("MANIFEST_DEV"):
-        p = cwd / DEV_PROJECT_DIR_NAME
+        name = os.environ.get("MANIFEST_DEV_PROJECT") or DEFAULT_DEV_PROJECT
+        p = cwd / TMP_DIR_NAME / name
         p.mkdir(parents=True, exist_ok=True)
         return p
     return cwd

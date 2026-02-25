@@ -1,23 +1,23 @@
 """Tests for merge_design_and_extraction matching heuristics."""
-from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity, empty_intent, empty_reality
+from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity
 from manifest.audit.code.code_blueprint_builder import merge_design_and_extraction
 
 
 def _design_ent(eid: str, role: str = "", children=None):
-    return {
-        **empty_entity(eid),
-        "id": eid,
-        "children": children or [],
-        "intent": {"narrative": {"role": role, "mission": ""}},
-    }
+    ent = dict(empty_entity(eid))
+    ent["id"] = eid
+    ent["children"] = children or []
+    ent["narrative"] = {"role": role, "mission": ""}
+    return ent
 
 
 def _extracted(eid: str, name: str = "", symbol: str = ""):
-    return {
-        "id": eid,
-        "name": name,
-        "reality": {"symbol": symbol, "dependencies": []},
-    }
+    ent = dict(empty_entity(eid))
+    ent["id"] = eid
+    ent["narrative"] = {"role": name, "mission": ""}
+    ent["symbol"] = symbol
+    ent["dependencies"] = []
+    return ent
 
 
 def test_exact_id_match():
@@ -25,7 +25,7 @@ def test_exact_id_match():
     extracted = {"entities": [_extracted("cli", "CLI", "cli.parser")], "root_id": PROJECT_ROOT_ID}
     out = merge_design_and_extraction(design, extracted)
     cli_ent = next(e for e in out["entities"] if e["id"] == "cli")
-    assert cli_ent["reality"]["symbol"] == "cli.parser"
+    assert cli_ent["symbol"] == "cli.parser"
 
 
 def test_module_path_suffix_match():
@@ -36,7 +36,7 @@ def test_module_path_suffix_match():
     }
     out = merge_design_and_extraction(design, extracted)
     cli_ent = next(e for e in out["entities"] if e["id"] == "cli")
-    assert "cli" in (cli_ent["reality"].get("symbol") or "") or "parser" in (cli_ent["reality"].get("symbol") or "")
+    assert "cli" in (cli_ent.get("symbol") or "") or "parser" in (cli_ent.get("symbol") or "")
 
 
 def test_normalized_partial_match():
@@ -47,7 +47,7 @@ def test_normalized_partial_match():
     }
     out = merge_design_and_extraction(design, extracted)
     eng_ent = next(e for e in out["entities"] if e["id"] == "arithmetic_engine")
-    assert eng_ent["reality"]["symbol"] or eng_ent["reality"].get("preview") or "ArithmeticEngine" in str(eng_ent["reality"])
+    assert eng_ent["symbol"] or eng_ent.get("preview") or "ArithmeticEngine" in str(eng_ent)
 
 
 def test_token_overlap():
@@ -58,7 +58,7 @@ def test_token_overlap():
     }
     out = merge_design_and_extraction(design, extracted)
     add_ent = next(e for e in out["entities"] if e["id"] == "add")
-    assert add_ent["reality"]["symbol"] == "add" or add_ent["reality"].get("preview")
+    assert add_ent["symbol"] == "add" or add_ent.get("preview")
 
 
 def test_auth_no_false_match_authentication():
@@ -69,4 +69,4 @@ def test_auth_no_false_match_authentication():
     }
     out = merge_design_and_extraction(design, extracted)
     auth_ent = next(e for e in out["entities"] if e["id"] == "auth")
-    assert not (auth_ent["reality"].get("symbol") or auth_ent["reality"].get("preview"))
+    assert not (auth_ent.get("symbol") or auth_ent.get("preview"))

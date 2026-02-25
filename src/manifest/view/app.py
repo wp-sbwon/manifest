@@ -42,7 +42,7 @@ from manifest.audit.entity_schema import (
     contracts_from_entities,
     get_root_entity,
     top_layer_entities,
-    root_intent,
+    root_narrative,
     mission_from_blueprint,
 )
 from manifest.view.constants import (
@@ -184,9 +184,14 @@ class ManifestViewApp(App[None]):
         status_info = {"node_statuses": comp_status}
         return (comp_status, status_info)
 
-    def _get_conflicts(self) -> list:
-        """Blueprint conflicts from view data."""
-        return list(self._view_data.get("conflicts") or [])
+    def _get_deviations_from_view(self) -> List[Dict[str, Any]]:
+        """Deviations from view (validation_by_id or view_schema)."""
+        out: List[Dict[str, Any]] = []
+        vby = (self._view_data or {}).get("validation_by_id") or {}
+        for eid, val in vby.items():
+            for d in val.get("deviations") or []:
+                out.append({"node_id": eid, "message": d})
+        return out
 
     def _ensure_diagram_components(self) -> None:
         """Populate diagram from view data; layered spec and selectable nodes."""
@@ -369,11 +374,10 @@ class ManifestViewApp(App[None]):
         if code_data:
             for c in code_data.get("entities", []) or []:
                 if isinstance(c, dict) and c.get("id") == nid:
-                    r = c.get("reality") or {}
                     comp.update(c)
-                    comp["file"] = r.get("symbol", comp.get("file"))
-                    comp["methods"] = r.get("methods", comp.get("methods"))
-                    comp["type"] = r.get("type", comp.get("type"))
+                    comp["file"] = c.get("symbol", comp.get("file"))
+                    comp["methods"] = c.get("methods", comp.get("methods"))
+                    comp["type"] = c.get("type", comp.get("type"))
                     break
         lines = [
             f"Component: {comp.get('name') or nid}",
@@ -443,15 +447,14 @@ class ManifestViewApp(App[None]):
         lines = []
         try:
             if self.inspector_mode == InspectorMode.DEVIATION:
-                conflicts = self._get_conflicts()
-                lines.append(f"Deviation (mismatches): {len(conflicts)}")
-                for conflict in conflicts[:20]:
-                    severity = conflict.severity.value
-                    msg = conflict.message[:70]
-                    comp_id = conflict.node_id or "?"
-                    lines.append(f"  [{severity}] {comp_id}: {msg}")
-                if len(conflicts) > 20:
-                    lines.append(f"  ... and {len(conflicts) - 20} more")
+                deviations = self._get_deviations_from_view()
+                lines.append(f"Deviation (mismatches): {len(deviations)}")
+                for d in deviations[:20]:
+                    comp_id = d.get("node_id") or "?"
+                    msg = (d.get("message") or "?")[:70]
+                    lines.append(f"  {comp_id}: {msg}")
+                if len(deviations) > 20:
+                    lines.append(f"  ... and {len(deviations) - 20} more")
             elif self.inspector_mode == InspectorMode.VISUAL:
                 comp_status, _ = self._get_implementation_status()
                 healthy_n = sum(1 for s in comp_status.values() if s == "healthy")
@@ -519,12 +522,13 @@ class ManifestViewApp(App[None]):
         if kind == "up":
             return "↑ Up"
         if kind == "node":
-            role = ((data.get("intent") or {}).get("narrative") or {}).get("role") or ""
+            narrative = data.get("narrative") or {}
+            role = (narrative.get("role") or "").strip()
             if role:
-                return role.strip()
-            symbol = (data.get("reality") or {}).get("symbol") or ""
+                return role
+            symbol = (data.get("symbol") or "").strip()
             if symbol:
-                return symbol.strip()
+                return symbol
             return (data.get("name") or nid or "?").strip()
         blueprint = self._get_design_blueprint()
         for e in top_layer_entities(blueprint):
@@ -545,24 +549,18 @@ class ManifestViewApp(App[None]):
         return design_ent, code_ent
 
     def _get_entity_for_inspector(self, nid: str) -> Dict[str, Any]:
-        """Merged entity for inspector: intent from design, reality from code."""
+        """Entity for inspector (unified schema); prefer code, fallback design."""
         from manifest.audit.entity_schema import empty_entity
         design_ent, code_ent = self._get_entities_by_id(nid)
         if not design_ent and not code_ent:
             return dict(empty_entity(nid))
-        intent = (design_ent or {}).get("intent") or {}
-        reality = (code_ent or design_ent or {}).get("reality") or {}
-        children = (design_ent or code_ent or {}).get("children") or []
-        deps = (design_ent or code_ent or {}).get("dependencies") or []
-        contracts = (design_ent or code_ent or {}).get("outgoing_contracts") or []
-        return {
-            "id": nid,
-            "intent": intent,
-            "reality": reality,
-            "children": children,
-            "dependencies": deps,
-            "outgoing_contracts": contracts,
-        }
+        base = design_ent or code_ent or {}
+        fill = code_ent or design_ent or {}
+        out = dict(empty_entity(nid))
+        out["id"] = nid
+        for key in ("children", "dependencies", "narrative", "blueprint", "protocol", "profile", "governance", "symbol", "traits", "topology_actual", "preview", "outgoing_contracts"):
+            out[key] = fill.get(key, base.get(key, out[key]))
+        return out
 
     def _get_info_hub_content(self) -> Union[str, RenderableType]:
         """Inspector: node from blueprints. Returns str or Rich Group (diff view table)."""
@@ -591,7 +589,7 @@ class ManifestViewApp(App[None]):
             return build_info_hub_node_content(
                 header, PROJECT_ROOT_ID, root_entity, deviating, view_ent, self._id_to_display_name_map()
             )
-        entity = data if (data.get("intent") is not None and data.get("reality") is not None) else self._get_entity_for_inspector(nid)
+        entity = data if (data.get("narrative") is not None or data.get("symbol") is not None) else self._get_entity_for_inspector(nid)
         view_ent = self._get_view_entity_by_id(nid)
         return build_info_hub_node_content(
             header, nid, entity, deviating, view_ent, self._id_to_display_name_map()
@@ -619,31 +617,23 @@ class ManifestViewApp(App[None]):
 
     def _get_root_entity_for_inspector(self) -> Dict[str, Any]:
         """Root (System Core) as entity; same shape as other entities."""
+        from manifest.audit.entity_schema import empty_entity
         design = self._get_design_blueprint()
         code = self._get_code_blueprint()
         root_design = get_root_entity(design) if design else None
         root_code = get_root_entity(code) if code else None
-        if root_design:
-            out = dict(root_design)
-            out.setdefault("id", PROJECT_ROOT_ID)
-            out.setdefault("intent", root_intent(design or {}))
-            out.setdefault("reality", {})
-            out.setdefault("children", [])
-            out.setdefault("dependencies", [])
-            out.setdefault("outgoing_contracts", [])
-            if root_code and root_code.get("reality") is not None:
-                out["reality"] = root_code.get("reality") or {}
-            return out
-        intent = root_intent(design or {})
-        child_ids = [e.get("id") for e in top_layer_entities(design or {}) if e.get("id")]
-        return {
-            "id": PROJECT_ROOT_ID,
-            "intent": intent,
-            "reality": (root_code.get("reality") or {}) if root_code else {},
-            "children": child_ids,
-            "dependencies": [],
-            "outgoing_contracts": [],
-        }
+        out = dict(empty_entity(PROJECT_ROOT_ID))
+        out["id"] = PROJECT_ROOT_ID
+        base = root_design or root_code
+        if base:
+            for key in ("children", "dependencies", "narrative", "blueprint", "protocol", "profile", "governance", "symbol", "traits", "topology_actual", "preview", "outgoing_contracts"):
+                out[key] = base.get(key, out[key])
+        if root_code:
+            for key in ("narrative", "blueprint", "protocol", "profile", "governance", "symbol", "traits", "topology_actual", "preview"):
+                if root_code.get(key) is not None:
+                    out[key] = root_code.get(key)
+        out["children"] = [e.get("id") for e in top_layer_entities(design or {}) if e.get("id")]
+        return out
 
     def compose(self) -> ComposeResult:
         with Container(id="header-strip"):

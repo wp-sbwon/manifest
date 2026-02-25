@@ -61,8 +61,8 @@ def test_create_blueprint_from_prd_creates_blueprint_and_starts_expansion(tmp_pa
     from manifest.io.blueprint_io import load_blueprint
     data = load_blueprint(tmp_path)
     assert len(data.get("entities") or []) == 1
-    mission = (data["entities"][0].get("intent") or {}).get("narrative") or {}
-    assert "small CLI app" in (mission.get("mission") or "")
+    mission = (data["entities"][0].get("narrative") or {}).get("mission") or ""
+    assert "small CLI app" in mission
     mock_popen.assert_called_once()
     call_args = mock_popen.call_args[0][0]
     assert "--parent" in call_args and "PROJECT_ROOT" in call_args

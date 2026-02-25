@@ -157,8 +157,7 @@ def build_diagram_spec(
 
     layout_type = "STACK"
     layout_topology: Dict[str, Any] = {}
-    root_intent = root.get("intent") or {}
-    root_blueprint = root_intent.get("blueprint") or {}
+    root_blueprint = root.get("blueprint") or {}
     if isinstance(root_blueprint, dict):
         layout_type = (root_blueprint.get("type") or "STACK").strip().upper()
         if layout_type not in ("FLOW", "GRID", "STACK"):

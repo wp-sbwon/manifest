@@ -1,6 +1,6 @@
 """
-Build blueprint_code from design and extraction; enrich intent via opencode.
-Same schema and entity ids as design.
+Build blueprint_code from design and extraction; mechanical fields from code, rest from enricher (LLM) with design context.
+Same entity-layer schema as design.
 """
 import re
 from pathlib import Path
@@ -8,8 +8,7 @@ from typing import Dict, Any, List, Optional
 
 from manifest.audit.entity_schema import (
     PROJECT_ROOT_ID,
-    empty_intent,
-    empty_reality,
+    empty_entity,
     entity_display_name,
 )
 from manifest.audit.entity_validation import normalize_for_schema
@@ -18,29 +17,26 @@ from manifest.core.logger import get_logger
 logger = get_logger(__name__)
 
 
-def _reality_from_entity(ent: Dict[str, Any]) -> Dict[str, Any]:
-    r = ent.get("reality") or {}
+def _mechanical_from_extracted(ent: Dict[str, Any]) -> Dict[str, Any]:
+    """Symbol, protocol, profile, dependencies, traits, topology_actual, preview from extracted entity."""
     return {
-        "symbol": r.get("symbol") or "",
-        "protocol": r.get("protocol") or {"input": [], "output": []},
-        "profile": r.get("profile") or {"language": "", "platform": "", "io_model": "", "state_model": ""},
-        "dependencies": list(r.get("dependencies") or []),
-        "traits": list(r.get("traits") or []),
-        "topology_actual": r.get("topology_actual") or {"type": "", "map": []},
-        "preview": r.get("preview") or "",
+        "symbol": ent.get("symbol") or "",
+        "protocol": ent.get("protocol") or {"input": [], "output": []},
+        "profile": ent.get("profile") or {"language": "", "platform": "", "io_model": "", "state_model": ""},
+        "dependencies": list(ent.get("dependencies") or []),
+        "traits": list(ent.get("traits") or []),
+        "topology_actual": ent.get("topology_actual") or {"type": "", "map": []},
+        "preview": ent.get("preview") or "",
     }
 
 
 def _normalize_for_match(s: str) -> str:
-    """Lowercase, collapse separators and spaces for fuzzy matching."""
     if not s:
         return ""
-    out = re.sub(r"[\s_\-\.]+", "", (s or "").lower())
-    return out
+    return re.sub(r"[\s_\-\.]+", "", (s or "").lower())
 
 
 def _module_path_from_extracted_id(eid: str) -> str:
-    """Extract module path from ids like comp-src.manifest.cli.parser-ParseArgs."""
     if not eid or not eid.startswith("comp-"):
         return ""
     rest = eid[5:]
@@ -51,15 +47,11 @@ def _module_path_from_extracted_id(eid: str) -> str:
 
 
 def _tokens_for_match(s: str) -> set:
-    """Tokenize: split on non-alnum, camelCase, lowercase."""
     if not s:
         return set()
     normalized = _normalize_for_match(s)
     parts = re.split(r"(?=[A-Z])|[\s_\-\.]+", s)
-    tokens = set()
-    for p in parts:
-        if p:
-            tokens.add(_normalize_for_match(p))
+    tokens = {_normalize_for_match(p) for p in parts if p}
     if normalized:
         tokens.add(normalized)
     return tokens
@@ -83,28 +75,21 @@ def _find_best_extracted_match(
     extracted_list: List[Dict[str, Any]],
     extracted_by_exact: Dict[str, Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
-    """
-    Find best extracted entity for a design entity using multiple heuristics.
-    Order: exact id/name, module path suffix, normalized partial, token overlap.
-    """
     name = (entity_display_name(design_ent) or "").strip().lower()
     ext = extracted_by_exact.get(design_id) or extracted_by_exact.get(name)
     if ext:
         return ext
-
     design_norm = _normalize_for_match(design_id)
     design_tokens = _tokens_for_match(design_id) | _tokens_for_match(name)
-    role = ((design_ent.get("intent") or {}).get("narrative") or {}).get("role") or ""
+    role = ((design_ent.get("narrative") or {}).get("role") or "").strip()
     design_tokens |= _tokens_for_match(role)
     design_path_seg = _design_id_as_path_segment(design_id)
-
     candidates: List[tuple] = []
     for e in extracted_list:
         eid = (e.get("id") or "").strip()
         disp = (entity_display_name(e) or "").strip()
         mod_path = _module_path_from_extracted_id(eid)
-        symbol = (e.get("reality") or {}).get("symbol") or ""
-
+        symbol = (e.get("symbol") or "").strip()
         mod_segments = mod_path.split(".")
         mod_segments_underscore = mod_path.replace(".", "_").split("_")
         if design_path_seg and design_path_seg in mod_segments:
@@ -122,7 +107,6 @@ def _find_best_extracted_match(
             overlap = len(design_tokens & ext_tokens)
             if overlap > 0:
                 candidates.append((e, 1, overlap))
-
     if not candidates:
         return None
     candidates.sort(key=lambda x: (-x[1], -(x[2] if isinstance(x[2], int) else 0)))
@@ -145,16 +129,11 @@ def merge_design_and_extraction(
     design_blueprint: Dict[str, Any],
     extracted_blueprint: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """
-    Build code blueprint with same root_id and entity ids/children as design;
-    reality from extraction. Match by exact id/name, then module path suffix,
-    normalized partial name, and token overlap.
-    """
+    """Build code blueprint: same schema and entity ids as design; mechanical fields from extraction; rest filled by enricher."""
     design_entities = {e.get("id"): e for e in (design_blueprint.get("entities") or []) if e.get("id")}
     extracted_list = [e for e in (extracted_blueprint.get("entities") or []) if (e.get("id") or "") != PROJECT_ROOT_ID]
     extracted_by_exact = _extracted_by_exact(extracted_list)
     root_id = design_blueprint.get("root_id") or extracted_blueprint.get("root_id") or PROJECT_ROOT_ID
-
     used_extracted: set = set()
 
     def pick_extracted(eid: str, design_ent: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -165,46 +144,52 @@ def merge_design_and_extraction(
         if eid != PROJECT_ROOT_ID:
             design_name = entity_display_name(design_ent) or design_ent.get("name") or eid
             logger.warning(
-                "Fuzzy match failed for design entity %s (%s): no extracted match; tried exact id/name, path segment, partial, token overlap",
+                "Fuzzy match failed for design entity %s (%s): no extracted match",
                 eid, design_name,
             )
         return None
 
     entities: List[Dict[str, Any]] = []
     for eid, design_ent in design_entities.items():
-        ext = pick_extracted(eid, design_ent) if eid != PROJECT_ROOT_ID else None
+        base = dict(empty_entity(eid))
+        base["id"] = eid
+        base["children"] = list(design_ent.get("children") or [])
+        base["dependencies"] = list(design_ent.get("dependencies") or [])
+        base["outgoing_contracts"] = list(design_ent.get("outgoing_contracts") or [])
+        for key in ("narrative", "blueprint", "protocol", "profile", "governance", "symbol", "traits", "topology_actual", "preview"):
+            base[key] = design_ent.get(key, base[key])
         if eid == PROJECT_ROOT_ID:
-            reality = empty_reality()
-            intent = design_ent.get("intent") or empty_intent()
-        else:
-            intent = empty_intent()
-            if ext:
-                reality = _reality_from_entity(ext)
-                reality["dependencies"] = list(ext.get("dependencies") or (ext.get("reality") or {}).get("dependencies") or [])
-            else:
-                reality = empty_reality()
-
-        entities.append({
-            "id": eid,
-            "children": list(design_ent.get("children") or []),
-            "dependencies": list(design_ent.get("dependencies") or []),
-            "intent": intent,
-            "reality": reality,
-            "outgoing_contracts": list(design_ent.get("outgoing_contracts") or []),
-        })
+            entities.append(base)
+            continue
+        ext = pick_extracted(eid, design_ent)
+        if ext:
+            mech = _mechanical_from_extracted(ext)
+            base["symbol"] = mech["symbol"]
+            base["protocol"] = mech["protocol"]
+            base["profile"] = mech["profile"]
+            deps = mech["dependencies"]
+            design_ids = set(design_entities)
+            mapped = []
+            for d in deps:
+                if d in design_ids:
+                    mapped.append(d)
+                else:
+                    head = (d.split(".")[0] if isinstance(d, str) else "").strip()
+                    if head in design_ids and head not in mapped:
+                        mapped.append(head)
+            base["dependencies"] = mapped
+            base["traits"] = mech["traits"]
+            base["topology_actual"] = mech["topology_actual"]
+            base["preview"] = mech["preview"]
+        entities.append(base)
 
     root_first = [e for e in entities if (e.get("id") or "") == PROJECT_ROOT_ID]
     rest = [e for e in entities if (e.get("id") or "") != PROJECT_ROOT_ID]
     ordered = (root_first or []) + rest
     if not root_first and ordered:
-        root_entity = {
-            "id": PROJECT_ROOT_ID,
-            "children": [e["id"] for e in rest],
-            "dependencies": [],
-            "intent": empty_intent(),
-            "reality": empty_reality(),
-            "outgoing_contracts": [],
-        }
+        root_entity = dict(empty_entity(PROJECT_ROOT_ID))
+        root_entity["id"] = PROJECT_ROOT_ID
+        root_entity["children"] = [e["id"] for e in rest]
         ordered = [root_entity] + rest
 
     return normalize_for_schema({
@@ -220,9 +205,7 @@ def build_code_blueprint(
     design_blueprint: Dict[str, Any],
     extracted_blueprint: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """
-    Produce blueprint_code: same schema and ids as design; reality from extraction; intent from opencode.
-    """
+    """Produce blueprint_code: same schema as design; mechanical from extraction; narrative/governance etc. from enricher with design context."""
     from manifest.opencode.code_blueprint_enricher import enrich_code_blueprint
 
     code_draft = merge_design_and_extraction(design_blueprint, extracted_blueprint)

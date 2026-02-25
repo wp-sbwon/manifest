@@ -25,9 +25,8 @@ def entities_for_display(entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     for e in entities or []:
         if (e.get("id") or "") == PROJECT_ROOT_ID:
             continue
-        r = e.get("reality") or {}
         name = entity_display_name(e) or "?"
-        file_path = r.get("symbol", e.get("file", ""))
+        file_path = e.get("symbol") or e.get("file", "")
         parts = (file_path or "").replace("\\", "/").split("/")
         module_path = "/".join(parts[:-1]) if len(parts) > 1 else (parts[0] if parts else "")
         out.append({
@@ -35,13 +34,13 @@ def entities_for_display(entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]
             "name": name,
             "file": file_path,
             "module_path": module_path,
-            "type": r.get("type", e.get("type", "?")),
-            "methods": r.get("methods", e.get("methods", [])),
-            "attributes": r.get("attributes", e.get("attributes", [])),
-            "line": r.get("line", e.get("line")),
-            "algorithm": r.get("algorithm", e.get("algorithm")),
-            "design_pattern": r.get("design_pattern", e.get("design_pattern")),
-            "complexity": r.get("complexity", e.get("complexity")),
+            "type": e.get("type", "?"),
+            "methods": e.get("methods", []),
+            "attributes": e.get("attributes", []),
+            "line": e.get("line"),
+            "algorithm": e.get("algorithm"),
+            "design_pattern": e.get("design_pattern"),
+            "complexity": e.get("complexity"),
             "notes": e.get("notes"),
         })
     return out

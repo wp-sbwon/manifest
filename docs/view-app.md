@@ -18,7 +18,7 @@ Keys: **n** next node, **p** previous node, **D** Differences, **Tab** next tab,
 | Shown | Data source |
 |-------|-------------|
 | Planning / Differences | App state (Inspector mode) |
-| STATUS (Deviation / Partial / Healthy / Planned) | `comp_status` from BlueprintSynchronizer (blueprint_design vs blueprint_code) |
+| STATUS (Deviation / Partial / Healthy / Planned) | `comp_status` from blueprint view (design vs code) |
 | TIME | Local time |
 
 ---
@@ -28,7 +28,7 @@ Keys: **n** next node, **p** previous node, **D** Differences, **Tab** next tab,
 - **1:DIAGRAM** – Architecture flow diagram
 - **2:FILES** – File list
 - **3:TIMELINE** – Design history + Git by time
-- **4:MISSION** – Goals (from blueprint root intent)
+- **4:MISSION** – Goals (from blueprint root)
 
 ---
 
@@ -40,7 +40,7 @@ Top-left: **Status legend** (■ Planned, ■ Healthy, ■ Partial, ■ Deviatio
 |-------|-------------|
 | Title | Blueprint root → `diagram_title` or default "ARCHITECTURE FLOW" |
 | Nodes | `get_entities_for_view()`: entity-tree (root_id, children) or flat component list from blueprint. Components/entities from blueprint or blueprint_code. |
-| Node status (■) | `comp_status` from BlueprintSynchronizer (same as header) |
+| Node status (■) | `comp_status` from blueprint view (same as header) |
 | Colors | `diagram_config.json` |
 
 Selectable nodes: root (PROJECT_ROOT) then each diagram component. Inspector shows the selected node. View uses a single integration source (`get_entities_for_view`) for blueprint, code_blueprint, comp_status, and per-entity validation (status, deviations).
@@ -64,19 +64,19 @@ Selection: **Root** (System Core) or **Component** (diagram node). **[D]** toggl
 
 | Section | Data source |
 |--------|-------------|
-| Goal Intent | Blueprint root intent → `mission` |
-| Interface Contract | Blueprint root intent → `interface` |
-| Logic Style | Blueprint root intent → `architecture_style` |
+| Goal Intent | Blueprint root → narrative.mission |
+| Interface Contract | Blueprint root (protocol, etc.) |
+| Logic Style | Blueprint root (blueprint.type, topology) |
 | Dependencies / Side Effects / Complexity | — (fixed "—") |
 | Last Output, Shadow Trace | State (shadow-*) |
-| Essential Rules | Blueprint root intent → `global_rules` |
+| Essential Rules | Blueprint root → governance.rules |
 
 ### Component (design view)
 
 | Section | Data source |
 |--------|-------------|
-| Goal Intent, Interface Contract, Logic Style, Essential Rules | `blueprint_design.json` (BlueprintLoader), component matched by id |
-| Actual Code (dependencies, side_effects, complexity, detected_interface) | `blueprint_code.json` (BlueprintLoader.load_code_blueprint), match by id then name |
+| Identity, Spec (narrative, blueprint, protocol, profile, governance, symbol, traits, etc.) | `blueprint_design.json` / `blueprint_code.json` (same entity shape), component matched by id |
+| Outgoing contracts, Validation | View (from blueprint view) |
 | Last Output, Shadow Trace | State (shadow-*) |
 
 ### Diff view (Planned | Code)
@@ -90,9 +90,9 @@ Selection: **Root** (System Core) or **Component** (diagram node). **[D]** toggl
 
 ## Entity model integration
 
-The view loads design and code blueprints, runs comparison, and attaches validation per entity via `get_entities_for_view(manifest_dir)` (`src/manifest/view/entity_model.py`). That returns blueprint, code_blueprint, comp_status, validation_by_id (entity_id → { status, deviations }), view_schema, and conflicts. Validation (status, deviations) exists only in the integrated view, not in persisted blueprint/blueprint_code files.
+The view loads design and code blueprints, builds the blueprint view, and attaches validation per entity via `get_entities_for_view(manifest_dir)` (`src/manifest/view/entity_model.py`). That returns blueprint, code_blueprint, comp_status, validation_by_id (entity_id → { status, deviations }), and view_schema. Validation (status, deviations) comes from the view, not from persisted blueprint/blueprint_code files.
 
-**Diagram** shows structure (root → L1 → L2), labels (name / role / symbol), status, edges from outgoing_contracts, and layout from root intent.blueprint (type, topology). **Inspector (Design)** shows all entity fields: Identity (id, children, dependencies), Intent (design): narrative, blueprint (type, topology), protocol, profile, governance, Reality (code): symbol, protocol, profile, dependencies, traits, topology_actual, preview, plus Outgoing contracts and Validation. **Inspector (Differences)** shows plan vs code for role, mission, blueprint.type, protocol, profile.language, governance.rules, symbol, dependencies, traits.
+**Diagram** shows structure (root → L1 → L2), labels (role / symbol), status, edges from outgoing_contracts, and layout from root blueprint (type, topology). **Inspector (Design)** shows all entity fields: Identity (id, children, dependencies), Spec (narrative, blueprint, protocol, profile, governance, symbol, traits, topology_actual, preview), Outgoing contracts, Validation. **Inspector (Differences)** shows plan vs code for role, mission, blueprint.type, protocol, profile, governance.rules, symbol, dependencies, traits.
 
 ---
 
@@ -103,7 +103,7 @@ The view loads design and code blueprints, runs comparison, and attaches validat
 | Header | STATUS | comp_status (sync) | Bottom-up (comparison) |
 | Diagram | Nodes, title | blueprint | Top-down |
 | Diagram | Status ■, colors | comp_status + diagram_config | Bottom-up + config |
-| Inspector root | Goal, Interface, Style, Rules | blueprint (root intent) | Top-down |
+| Inspector root | Goal, Interface, Style, Rules | blueprint (root) | Top-down |
 | Inspector component | Design | blueprint.json | Top-down |
 | Inspector component / Diff | Actual Code | blueprint_code.json | Bottom-up |
 | Sidebar Health | Metrics | state.json | Bottom-up |

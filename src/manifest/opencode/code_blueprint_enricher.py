@@ -1,9 +1,8 @@
-"""Fill blueprint intent from code; design used only for structure."""
+"""Fill narrative, governance, etc. from code; design blueprint as context for naming/wording."""
 import json
 import os
 import shutil
 import subprocess
-import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -12,18 +11,14 @@ from manifest.audit.entity_validation import normalize_for_schema, validate_blue
 from manifest.core.logger import get_logger
 from manifest.opencode.run_helpers import (
     extract_json_from_text,
-    opencode_run_session_id,
     parse_opencode_stdout,
 )
 
 logger = get_logger(__name__)
 
-ENRICH_INSTRUCTIONS = """
-Use the design blueprint ONLY for structure and entity identity: same root_id, entity ids, and children.
-Fill intent (narrative, profile, governance, protocol) from the CODE: describe what the code actually does.
-The draft has reality from extraction (file, symbol, methods, dependencies). Infer intent from that.
-Do not copy or paraphrase design intent. Output must be ground truth from the code.
-"""
+ENRICH_DIR_NAME = ".manifest_enrich"
+DESIGN_FILENAME = "design.json"
+DRAFT_FILENAME = "draft.json"
 
 DEFAULT_TIMEOUT = 300
 MAX_RETRIES = 3
@@ -31,9 +26,9 @@ RETRY_DELAYS = (5, 15, 30)
 
 ENRICH_PROMPT_TEMPLATE = (
     "Read design blueprint from {design_name} and code draft from {draft_name}. "
-    "Use design for structure (root_id, entity ids, children). "
-    "Fill intent (narrative, profile, governance, protocol) from the code draft. "
-    "Output a valid blueprint JSON object with version, root_id, entities. "
+    "Use design as context so names and wording align. Same structure (root_id, entity ids, children). "
+    "Fill narrative, profile, governance, protocol from the code draft (mechanical fields already set). "
+    "Output a valid blueprint JSON with version, root_id, entities (same schema as design). "
     "Output ONLY valid JSON, no markdown or explanation."
 )
 
@@ -63,11 +58,14 @@ def _run_enrich_once(
             msg += f"Last output: {excerpt}"
         raise RuntimeError(msg)
 
-    merged = parse_opencode_stdout(result.stdout or "")
+    combined = (result.stdout or "") + "\n" + (result.stderr or "")
+    merged = parse_opencode_stdout(combined)
     if not merged:
+        preview = (combined.strip()[:500] + "…") if len((combined or "").strip()) > 500 else (combined or "").strip()
         raise RuntimeError(
-            "No response from opencode. "
-            "Check opencode logs."
+            "No response from opencode (no JSONL text events in stdout/stderr). "
+            "Ensure opencode.json is in the project and the enrich-code-blueprint agent is defined. "
+            f"Output preview: {preview!r}"
         )
 
     try:
@@ -101,7 +99,7 @@ def enrich_code_blueprint(
     manifest_dir: Path,
 ) -> Dict[str, Any]:
     """
-    Fill intent in code_draft from code; design for structure only.
+    Fill narrative, governance, etc. in code_draft from code; design as context for alignment.
     Retries on transient failure. Validates and returns blueprint; raises if opencode unavailable or enrichment fails.
     """
     project_root = Path(project_root)
@@ -116,28 +114,31 @@ def enrich_code_blueprint(
 
     timeout = int(os.environ.get("MANIFEST_ENRICH_TIMEOUT", str(DEFAULT_TIMEOUT)))
 
-    with tempfile.TemporaryDirectory(prefix="manifest_enrich_") as tmp:
-        design_path = Path(tmp) / "design.json"
-        draft_path = Path(tmp) / "draft.json"
+    enrich_dir = project_root / ENRICH_DIR_NAME
+    enrich_dir.mkdir(parents=True, exist_ok=True)
+    design_path = enrich_dir / DESIGN_FILENAME
+    draft_path = enrich_dir / DRAFT_FILENAME
+    try:
         with open(design_path, "w", encoding="utf-8") as f:
             json.dump(design_blueprint, f, indent=2, ensure_ascii=False)
         with open(draft_path, "w", encoding="utf-8") as f:
             json.dump(code_draft, f, indent=2, ensure_ascii=False)
 
+        rel_design = f"{ENRICH_DIR_NAME}/{DESIGN_FILENAME}"
+        rel_draft = f"{ENRICH_DIR_NAME}/{DRAFT_FILENAME}"
         prompt = ENRICH_PROMPT_TEMPLATE.format(
-            design_name=design_path.name,
-            draft_name=draft_path.name,
+            design_name=rel_design,
+            draft_name=rel_draft,
         )
         cmd = [
             opencode_path,
             "run",
-            "-s", opencode_run_session_id(),
+            prompt,
             "--agent", "enrich-code-blueprint",
             "--dir", str(project_root.resolve()),
             "--format", "json",
             "-f", str(design_path.resolve()),
             "-f", str(draft_path.resolve()),
-            prompt,
         ]
 
         last_error: Optional[Exception] = None
@@ -170,3 +171,10 @@ def enrich_code_blueprint(
         if last_error is not None:
             raise last_error
         raise RuntimeError("Enrichment failed after retries")
+    finally:
+        if design_path.exists():
+            design_path.unlink(missing_ok=True)
+        if draft_path.exists():
+            draft_path.unlink(missing_ok=True)
+        if enrich_dir.exists() and not any(enrich_dir.iterdir()):
+            enrich_dir.rmdir()

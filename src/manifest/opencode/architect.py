@@ -60,18 +60,11 @@ def create_blueprint_from_prd(manifest_dir: Path, project_root: Optional[Path] =
 
     root = empty_blueprint_root()
     root["root_id"] = PROJECT_ROOT_ID
-    root["entities"] = [
-        {
-            **empty_entity(PROJECT_ROOT_ID),
-            "intent": {
-                "narrative": {"role": "project", "mission": mission},
-                "blueprint": {"type": "FLOW", "topology": {}},
-                "protocol": {"input": [], "output": []},
-                "profile": {"language": "", "platform": "", "io_model": "", "state_model": ""},
-                "governance": {"rules": [], "assertions": []},
-            },
-        }
-    ]
+    root_ent = dict(empty_entity(PROJECT_ROOT_ID))
+    root_ent["children"] = []
+    root_ent["narrative"] = {"role": "project", "mission": mission}
+    root_ent["blueprint"] = {"type": "FLOW", "topology": {}}
+    root["entities"] = [root_ent]
     if not save_blueprint(manifest_dir, root):
         return {"ok": False, "error": "Failed to write blueprint_design.json"}
 

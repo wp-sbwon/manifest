@@ -6,8 +6,8 @@ from typing import Any, Dict
 
 
 def opencode_run_session_id() -> str:
-    """Unique session ID for a single scripted opencode run. Subprocesses do not share sessions."""
-    return f"_manifest_run_{uuid.uuid4().hex[:12]}"
+    """Unique session ID for a single scripted opencode run. OpenCode expects sessionID to start with 'ses'."""
+    return f"ses_manifest_{uuid.uuid4().hex[:16]}"
 
 
 def parse_opencode_stdout(stdout: str) -> str:
@@ -22,6 +22,8 @@ def parse_opencode_stdout(stdout: str) -> str:
             continue
         try:
             ev = json.loads(line)
+            if not isinstance(ev, dict):
+                continue
             if ev.get("type") == "text" and "part" in ev:
                 txt = ev["part"].get("text")
                 if txt:

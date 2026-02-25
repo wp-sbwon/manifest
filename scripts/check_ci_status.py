@@ -158,13 +158,14 @@ def check_workflow_status(
 CI_TEST_CMD = [
     "pytest", "tests/", "-v",
 ]
-CI_TEST_TIMEOUT_SEC = 90
+CI_TEST_TIMEOUT_SEC = 180
 
 
 def run_ci_equivalent_tests() -> bool:
     """Run the same test command as CI. Returns True if all tests pass."""
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).parent.parent / "src")
+    env["MANIFEST_TEST_AGENTS"] = "1"
     try:
         r = subprocess.run(
             CI_TEST_CMD,

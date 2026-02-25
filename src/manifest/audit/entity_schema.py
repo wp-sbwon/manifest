@@ -1,15 +1,12 @@
 """
-Canonical schema for recursive universal entities.
+Canonical schema for blueprint entities.
 
-Persisted shape: version, root_id, entities. Each entity: id, children,
-dependencies, intent, reality, outgoing_contracts. No nulls; use "" or []/{}.
+Persisted shape: version, root_id, entities. Each entity: id, children, dependencies,
+narrative, blueprint, protocol, profile, governance, symbol, traits, topology_actual, preview,
+outgoing_contracts. No nulls; use "" or []/{}.
 """
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
-
-# ---------------------------------------------------------------------------
-# Protocol and nested intent/reality structures (doc §1.1)
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -17,14 +14,7 @@ class ProtocolItem:
     """Single input or output in protocol; name/type for mechanical check."""
     name: str = ""
     type: str = ""
-    req: bool = False  # for input items only
-
-
-@dataclass
-class Narrative:
-    """Intent narrative: role and mission."""
-    role: str = ""
-    mission: str = ""
+    req: bool = False
 
 
 @dataclass
@@ -35,44 +25,17 @@ class TopologyMapItem:
     label: str = ""
 
 
-@dataclass
-class Topology:
-    """Blueprint topology: dimensions and map."""
-    dimensions: Dict[str, int] = field(default_factory=lambda: {"rows": 12, "cols": 12})
-    map: List[TopologyMapItem] = field(default_factory=list)
-
-
-@dataclass
-class BlueprintIntent:
-    """Intent blueprint: type (GRID|STACK|FLOW) and topology."""
-    type: str = "FLOW"
-    topology: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class Profile:
-    """Profile: language, platform, io_model, state_model."""
-    language: str = ""
-    platform: str = ""
-    io_model: str = ""
-    state_model: str = ""
-
-
-@dataclass
-class Governance:
-    """Governance: rules and assertions."""
-    rules: List[str] = field(default_factory=list)
-    assertions: List[str] = field(default_factory=list)
-
-
 # ---------------------------------------------------------------------------
-# Intent (plan side) and Reality (actual side) — same key set per entity
+# Entity shape (single set of fields for design and code blueprints)
 # ---------------------------------------------------------------------------
 
 
 @dataclass
-class Intent:
-    """Entity intent: narrative, blueprint, protocol, profile, governance."""
+class Entity:
+    """Entity: id, structure, narrative/blueprint/governance, protocol/profile, symbol/traits/preview, contracts."""
+    id: str = ""
+    children: List[str] = field(default_factory=list)
+    dependencies: List[str] = field(default_factory=list)
     narrative: Dict[str, str] = field(default_factory=lambda: {"role": "", "mission": ""})
     blueprint: Dict[str, Any] = field(default_factory=lambda: {"type": "FLOW", "topology": {}})
     protocol: Dict[str, List[Dict[str, Any]]] = field(
@@ -84,51 +47,10 @@ class Intent:
     governance: Dict[str, List[str]] = field(
         default_factory=lambda: {"rules": [], "assertions": []}
     )
-
-
-@dataclass
-class Reality:
-    """Entity reality: symbol, protocol, profile, dependencies, traits, topology_actual, preview."""
     symbol: str = ""
-    protocol: Dict[str, List[Dict[str, Any]]] = field(
-        default_factory=lambda: {"input": [], "output": []}
-    )
-    profile: Dict[str, str] = field(
-        default_factory=lambda: {"language": "", "platform": "", "io_model": "", "state_model": ""}
-    )
-    dependencies: List[str] = field(default_factory=list)
     traits: List[str] = field(default_factory=list)
     topology_actual: Dict[str, Any] = field(default_factory=lambda: {"type": "", "map": []})
     preview: str = ""
-
-
-# ---------------------------------------------------------------------------
-# Entity and root shape
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class Entity:
-    """Recursive entity: id, children, dependencies, intent, reality, outgoing_contracts."""
-    id: str = ""
-    children: List[str] = field(default_factory=list)
-    dependencies: List[str] = field(default_factory=list)
-    intent: Dict[str, Any] = field(default_factory=lambda: {
-        "narrative": {"role": "", "mission": ""},
-        "blueprint": {"type": "FLOW", "topology": {}},
-        "protocol": {"input": [], "output": []},
-        "profile": {"language": "", "platform": "", "io_model": "", "state_model": ""},
-        "governance": {"rules": [], "assertions": []},
-    })
-    reality: Dict[str, Any] = field(default_factory=lambda: {
-        "symbol": "",
-        "protocol": {"input": [], "output": []},
-        "profile": {"language": "", "platform": "", "io_model": "", "state_model": ""},
-        "dependencies": [],
-        "traits": [],
-        "topology_actual": {"type": "", "map": []},
-        "preview": "",
-    })
     outgoing_contracts: List[Dict[str, Any]] = field(default_factory=list)
 
 
@@ -144,13 +66,13 @@ class Contract:
 
 @dataclass
 class Validation:
-    """Per-entity validation result."""
+    """Per-entity validation result (status, deviations from view)."""
     status: str = "planned"
     deviations: List[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
-# Root shape for blueprint_design.json and blueprint_code.json
+# Root shape for blueprint JSON
 # ---------------------------------------------------------------------------
 
 
@@ -184,22 +106,17 @@ def contracts_from_entities(entities: List[Dict[str, Any]]) -> List[Dict[str, An
     return out
 
 
-# Root entity id used in blueprint/blueprint_code (plan and actual)
 PROJECT_ROOT_ID = "PROJECT_ROOT"
 
 
 def entity_display_name(e: Dict[str, Any], prefer_name_first: bool = False) -> str:
-    """Display name: role, symbol, name, or id. If prefer_name_first, name is tried before role."""
+    """Display name: narrative.role, symbol, name, or id."""
     if not e:
         return ""
-    n = (e.get("intent") or {}).get("narrative") or {}
-    role = (n.get("role") or "").strip() if isinstance(n, dict) else ""
+    narrative = (e.get("narrative") or {}) if isinstance(e.get("narrative"), dict) else {}
+    role = (narrative.get("role") or "").strip()
     name = (e.get("name") or "").strip()
-    symbol = (e.get("reality") or {}).get("symbol") or ""
-    if isinstance(symbol, str):
-        symbol = symbol.strip()
-    else:
-        symbol = ""
+    symbol = (e.get("symbol") or "").strip() if isinstance(e.get("symbol"), str) else ""
     fallback = (e.get("id") or "").strip()
     if prefer_name_first:
         return name or role or symbol or fallback or ""
@@ -224,7 +141,7 @@ def get_root_entity(blueprint: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 
 
 def top_layer_entities(blueprint: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Return root's direct children (top-layer entities). No explicit type (e.g. modules)."""
+    """Return root's direct children (top-layer entities)."""
     root = get_root_entity(blueprint)
     if not root:
         return []
@@ -233,60 +150,44 @@ def top_layer_entities(blueprint: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [e for e in entities if (e.get("id") or "") in child_ids]
 
 
-def root_intent(blueprint: Dict[str, Any]) -> Dict[str, Any]:
-    """Return root entity's intent dict. Empty dict if no root."""
+def root_narrative(blueprint: Dict[str, Any]) -> Dict[str, str]:
+    """Return root entity's narrative dict. Empty dict if no root."""
     root = get_root_entity(blueprint)
     if not root:
         return {}
-    return root.get("intent") or {}
+    return (root.get("narrative") or {}) if isinstance(root.get("narrative"), dict) else {}
 
 
 def mission_from_blueprint(blueprint: Dict[str, Any], default: str = "") -> str:
     """Root mission text. Returns stripped mission or default."""
-    raw = (root_intent(blueprint).get("narrative") or {}).get("mission") or ""
-    out = (raw or "").strip()
-    return out if out else (default or "")
+    raw = (root_narrative(blueprint).get("mission") or "").strip()
+    return raw if raw else (default or "")
 
 
 # ---------------------------------------------------------------------------
-# Empty entity / intent / reality for defaults (no null)
+# Empty entity for defaults (no null)
 # ---------------------------------------------------------------------------
 
 
-def empty_intent() -> Dict[str, Any]:
+def empty_outgoing_contracts() -> List[Dict[str, Any]]:
+    return []
+
+
+def empty_entity(id: str = "") -> Dict[str, Any]:
+    """Entity with all keys present and empty defaults."""
     return {
+        "id": id,
+        "children": [],
+        "dependencies": [],
         "narrative": {"role": "", "mission": ""},
         "blueprint": {"type": "FLOW", "topology": {}},
         "protocol": {"input": [], "output": []},
         "profile": {"language": "", "platform": "", "io_model": "", "state_model": ""},
         "governance": {"rules": [], "assertions": []},
-    }
-
-
-def empty_reality() -> Dict[str, Any]:
-    return {
         "symbol": "",
-        "protocol": {"input": [], "output": []},
-        "profile": {"language": "", "platform": "", "io_model": "", "state_model": ""},
-        "dependencies": [],
         "traits": [],
         "topology_actual": {"type": "", "map": []},
         "preview": "",
-    }
-
-
-def empty_outgoing_contracts() -> List[Dict[str, Any]]:
-    """Returns an empty list."""
-    return []
-
-
-def empty_entity(id: str = "") -> Dict[str, Any]:
-    return {
-        "id": id,
-        "children": [],
-        "dependencies": [],
-        "intent": empty_intent(),
-        "reality": empty_reality(),
         "outgoing_contracts": empty_outgoing_contracts(),
     }
 

@@ -1,4 +1,4 @@
-"""Tests for entity schema and mechanical validation (Option B)."""
+"""Tests for entity schema and validation (unified entity shape)."""
 import json
 import tempfile
 from pathlib import Path
@@ -7,8 +7,6 @@ import pytest
 
 from manifest.audit.entity_schema import (
     PROJECT_ROOT_ID,
-    empty_intent,
-    empty_reality,
     empty_entity,
     empty_blueprint_root,
 )
@@ -20,41 +18,26 @@ from manifest.audit.entity_validation import (
 )
 
 
-# --- Schema: required keys, no null ---
-
-
-def test_empty_intent_has_no_none():
-    intent = empty_intent()
-    assert intent is not None
-    assert "narrative" in intent
-    assert None not in (intent.get("narrative") or {}).values()
-    assert intent.get("narrative", {}).get("role") == ""
-    assert intent.get("narrative", {}).get("mission") == ""
-
-
-def test_empty_reality_has_no_none():
-    reality = empty_reality()
-    assert reality is not None
-    assert "symbol" in reality
-    assert reality.get("symbol") == ""
-    assert reality.get("dependencies") == []
-    assert None not in (reality.get("protocol") or {}).values()
-
-
 def test_project_root_id_constant():
     assert PROJECT_ROOT_ID == "PROJECT_ROOT"
 
 
 def test_empty_entity_has_required_keys():
-    ent = empty_entity()
+    ent = empty_entity("")
     assert ent.get("id") == ""
     assert "children" in ent and ent["children"] == []
     assert "dependencies" in ent and ent["dependencies"] == []
-    assert "intent" in ent and isinstance(ent["intent"], dict)
-    assert "reality" in ent and isinstance(ent["reality"], dict)
+    assert "narrative" in ent and isinstance(ent["narrative"], dict)
+    assert "blueprint" in ent and isinstance(ent["blueprint"], dict)
+    assert "protocol" in ent and isinstance(ent["protocol"], dict)
+    assert "profile" in ent and isinstance(ent["profile"], dict)
+    assert "governance" in ent and isinstance(ent["governance"], dict)
+    assert "symbol" in ent and isinstance(ent["symbol"], str)
+    assert "traits" in ent and isinstance(ent["traits"], list)
+    assert "topology_actual" in ent and isinstance(ent["topology_actual"], dict)
+    assert "preview" in ent and isinstance(ent["preview"], str)
     assert "outgoing_contracts" in ent and ent["outgoing_contracts"] == []
-    assert None not in (ent.get("intent") or {}).values()
-    assert None not in (ent.get("reality") or {}).values()
+    assert None not in (ent.get("narrative") or {}).values()
 
 
 def test_empty_blueprint_root_has_required_keys():
@@ -66,49 +49,28 @@ def test_empty_blueprint_root_has_required_keys():
     assert None not in [root.get("version"), root.get("entities")]
 
 
-# --- Validation: validate_entity ---
-
-
 def test_validate_entity_valid():
-    ent = {
-        "id": "comp-1",
-        "children": [],
-        "dependencies": [],
-        "intent": empty_intent(),
-        "reality": empty_reality(),
-        "outgoing_contracts": [],
-    }
+    ent = dict(empty_entity("comp-1"))
+    ent["id"] = "comp-1"
     valid, errors = validate_entity(ent)
     assert valid is True
     assert errors == []
 
 
 def test_validate_entity_missing_id():
-    ent = {
-        "children": [],
-        "dependencies": [],
-        "intent": {},
-        "reality": {},
-    }
+    ent = dict(empty_entity(""))
+    ent.pop("id", None)
     valid, errors = validate_entity(ent)
     assert valid is False
     assert any("id" in e for e in errors)
 
 
 def test_validate_entity_null_children_invalid():
-    ent = {
-        "id": "x",
-        "children": None,
-        "dependencies": [],
-        "intent": {},
-        "reality": {},
-    }
+    ent = dict(empty_entity("x"))
+    ent["children"] = None
     valid, errors = validate_entity(ent)
     assert valid is False
     assert any("children" in e or "null" in e for e in errors)
-
-
-# --- normalize_for_schema ---
 
 
 def test_normalize_for_schema_coerces_null():
@@ -126,23 +88,20 @@ def test_normalize_for_schema_adds_missing_keys():
     assert "root_id" in out
 
 
-def test_normalize_for_schema_entity_intent_reality_defaults():
+def test_normalize_for_schema_entity_defaults():
     data = {
         "version": "1.0",
-        "entities": [{"id": "e1", "intent": None, "reality": None}],
+        "entities": [{"id": "e1"}],
         "root_id": "",
     }
     out = normalize_for_schema(data)
     assert len(out["entities"]) == 1
     ent = out["entities"][0]
-    assert isinstance(ent.get("intent"), dict)
-    assert isinstance(ent.get("reality"), dict)
+    assert isinstance(ent.get("narrative"), dict)
+    assert isinstance(ent.get("blueprint"), dict)
     assert ent.get("children") == []
     assert ent.get("dependencies") == []
     assert isinstance(ent.get("outgoing_contracts"), list)
-
-
-# --- validate_blueprint_data ---
 
 
 def test_validate_blueprint_data_valid():
@@ -150,24 +109,11 @@ def test_validate_blueprint_data_valid():
         "version": "1.0",
         "root_id": PROJECT_ROOT_ID,
         "entities": [
-            {
-                "id": PROJECT_ROOT_ID,
-                "children": ["comp-a"],
-                "dependencies": [],
-                "intent": empty_intent(),
-                "reality": empty_reality(),
-                "outgoing_contracts": [],
-            },
-            {
-                "id": "comp-a",
-                "children": [],
-                "dependencies": [],
-                "intent": empty_intent(),
-                "reality": empty_reality(),
-                "outgoing_contracts": [{"to": "external-x", "type": "dependency"}],
-            },
+            dict(empty_entity(PROJECT_ROOT_ID)),
+            {**dict(empty_entity("comp-a")), "outgoing_contracts": [{"to": "external-x", "type": "dependency", "file": "", "symbols": []}]},
         ],
     }
+    data["entities"][0]["children"] = ["comp-a"]
     valid, errors = validate_blueprint_data(data)
     assert valid is True, errors
     assert errors == []
@@ -178,8 +124,8 @@ def test_validate_blueprint_data_referential_integrity():
         "version": "1.0",
         "root_id": PROJECT_ROOT_ID,
         "entities": [
-            {"id": PROJECT_ROOT_ID, "children": ["ghost"], "dependencies": [], "intent": empty_intent(), "reality": empty_reality(), "outgoing_contracts": []},
-            {"id": "comp-a", "children": [], "dependencies": ["missing-dep"], "intent": empty_intent(), "reality": empty_reality(), "outgoing_contracts": []},
+            {**dict(empty_entity(PROJECT_ROOT_ID)), "children": ["ghost"]},
+            {**dict(empty_entity("comp-a")), "dependencies": ["missing-dep"]},
         ],
     }
     valid, errors = validate_blueprint_data(data)
@@ -193,9 +139,8 @@ def test_validate_blueprint_data_outgoing_contracts_referential_integrity():
         "version": "1.0",
         "root_id": PROJECT_ROOT_ID,
         "entities": [
-            {"id": PROJECT_ROOT_ID, "children": [], "dependencies": [], "intent": empty_intent(), "reality": empty_reality(), "outgoing_contracts": []},
-            {"id": "comp-a", "children": [], "dependencies": [], "intent": empty_intent(), "reality": empty_reality(),
-             "outgoing_contracts": [{"to": "nonexistent-target", "type": "dependency", "file": "", "symbols": []}]},
+            dict(empty_entity(PROJECT_ROOT_ID)),
+            {**dict(empty_entity("comp-a")), "outgoing_contracts": [{"to": "nonexistent-target", "type": "dependency", "file": "", "symbols": []}]},
         ],
     }
     valid, errors = validate_blueprint_data(data)
@@ -204,11 +149,10 @@ def test_validate_blueprint_data_outgoing_contracts_referential_integrity():
 
 
 def test_validate_blueprint_data_invalid_entity():
-    # normalize_for_schema fills missing keys; use invalid type so validation still fails
     data = {
         "version": "1.0",
         "root_id": "",
-        "entities": [{"id": "e1", "children": "not-a-list", "dependencies": [], "intent": {}, "reality": {}, "outgoing_contracts": []}],
+        "entities": [{"id": "e1", "children": "not-a-list", "dependencies": [], "narrative": {}, "blueprint": {}, "protocol": {}, "profile": {}, "governance": {}, "symbol": "", "traits": [], "topology_actual": {}, "preview": "", "outgoing_contracts": []}],
     }
     valid, errors = validate_blueprint_data(data)
     assert valid is False
@@ -227,9 +171,7 @@ def test_validate_blueprint_file_valid_new_format():
     data = {
         "version": "1.0",
         "root_id": PROJECT_ROOT_ID,
-        "entities": [
-            {"id": PROJECT_ROOT_ID, "children": [], "dependencies": [], "intent": empty_intent(), "reality": empty_reality(), "outgoing_contracts": []},
-        ],
+        "entities": [dict(empty_entity(PROJECT_ROOT_ID))],
     }
     path = Path(tempfile.mkdtemp()) / "blueprint_design.json"
     with open(path, "w", encoding="utf-8") as f:

@@ -1,4 +1,4 @@
-"""Integration: mock project data (tmp/.manifest) works with view pipeline."""
+"""Integration: mock project data (tmp/calculator/.manifest) works with view pipeline."""
 from pathlib import Path
 
 import pytest
@@ -8,14 +8,14 @@ from manifest.audit.entity_schema import PROJECT_ROOT_ID
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-TMP_MANIFEST = REPO_ROOT / "tmp" / ".manifest"
+TMP_MANIFEST = REPO_ROOT / "tmp" / "calculator" / ".manifest"
 
 
 @pytest.mark.integration
 def test_tmp_manifest_produces_valid_view_data() -> None:
-    """With tmp/.manifest populated by create_mock_project_data, get_entities_for_view returns valid comp_status and view_schema."""
+    """With tmp/calculator/.manifest populated by create_mock_project_data, get_entities_for_view returns valid comp_status and view_schema."""
     if not TMP_MANIFEST.exists() or not (TMP_MANIFEST / "blueprint_design.json").exists():
-        pytest.skip("Run: PYTHONPATH=src python scripts/create_mock_project_data.py tmp/.manifest")
+        pytest.skip("Run: PYTHONPATH=src python scripts/create_mock_project_data.py")
     data = get_entities_for_view(TMP_MANIFEST)
     assert data.get("comp_status") is not None
     assert data.get("view_schema") is not None

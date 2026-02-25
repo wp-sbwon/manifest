@@ -19,7 +19,6 @@ from manifest.io.blueprint_io import load_blueprint
 from manifest.io.prd_io import load_prd
 from manifest.opencode.run_helpers import (
     extract_json_from_text,
-    opencode_run_session_id,
     parse_opencode_stdout,
 )
 
@@ -145,12 +144,11 @@ def write_blueprint_layer(
         cmd = [
             opencode_path,
             "run",
-            "-s", opencode_run_session_id(),
+            LAYER_WRITER_PROMPT,
             "--agent", "layer-writer",
             "--dir", str(project_root.resolve()),
             "--format", "json",
             "-f", str(context_path.resolve()),
-            LAYER_WRITER_PROMPT,
         ]
 
         timeout = int(os.environ.get("MANIFEST_LAYER_TIMEOUT", "120"))

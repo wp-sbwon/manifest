@@ -1,17 +1,15 @@
 """Unit tests for blueprint_status.calculate_implementation_status."""
 import pytest
 
-from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity, empty_intent, empty_reality
+from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity
 from manifest.audit.blueprint.blueprint_status import calculate_implementation_status
 
 
 def _entity(eid: str, children: list = None, role: str = "", symbol: str = "") -> dict:
     e = dict(empty_entity(eid))
     e["children"] = children or []
-    e["intent"] = dict(empty_intent())
-    e["intent"]["narrative"] = {"role": role, "mission": ""}
-    e["reality"] = dict(empty_reality())
-    e["reality"]["symbol"] = symbol
+    e["narrative"] = {"role": role, "mission": ""}
+    e["symbol"] = symbol
     return e
 
 

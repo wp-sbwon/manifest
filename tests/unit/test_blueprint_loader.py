@@ -25,7 +25,7 @@ def test_load_blueprint_valid_returns_entities(tmp_path: Path) -> None:
         "root_id": PROJECT_ROOT_ID,
         "entities": [
             dict(empty_entity(PROJECT_ROOT_ID)),
-            {"id": "a", "children": [], "dependencies": [], "intent": {}, "reality": {}, "outgoing_contracts": []},
+            dict(empty_entity("a")),
         ],
     }
     design["entities"][0]["children"] = ["a"]

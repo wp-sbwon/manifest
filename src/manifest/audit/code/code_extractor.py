@@ -703,8 +703,7 @@ class CodeExtractor:
     def _generate_blueprint(self) -> Dict[str, Any]:
         """Generate blueprint dict: version, root_id, entities with outgoing_contracts."""
         from datetime import datetime
-        from manifest.audit.entity_schema import empty_intent, empty_reality
-        from manifest.audit.entity_schema import PROJECT_ROOT_ID as ROOT_ID
+        from manifest.audit.entity_schema import empty_entity, PROJECT_ROOT_ID as ROOT_ID
 
         entity_ids = {c.id for c in self.components.values()}
         comp_deps: Dict[str, List[str]] = {c.id: [] for c in self.components.values()}
@@ -760,44 +759,29 @@ class CodeExtractor:
             protocol_output = getattr(comp, "protocol_output", None) or []
             if not protocol_output and det_iface:
                 protocol_output = [{"name": "signature", "type": "string"}]
-            reality = {
-                "symbol": (comp.file or comp.module_path or "")[:500],
-                "protocol": {"input": protocol_input, "output": protocol_output},
-                "profile": {
-                    "language": "python",
-                    "platform": "",
-                    "io_model": getattr(comp, "io_model", "") or "",
-                    "state_model": getattr(comp, "state_model", "") or "",
-                },
-                "dependencies": comp.dependencies or comp_deps.get(comp.id, []),
-                "traits": traits,
-                "topology_actual": {"type": "", "map": []},
-                "preview": "",
+            entity = dict(empty_entity(comp.id))
+            entity["id"] = comp.id
+            entity["children"] = []
+            entity["dependencies"] = comp_deps.get(comp.id, [])
+            entity["outgoing_contracts"] = by_from.get(comp.id, [])
+            entity["symbol"] = (comp.file or comp.module_path or "")[:500]
+            entity["protocol"] = {"input": protocol_input, "output": protocol_output}
+            entity["profile"] = {
+                "language": "python",
+                "platform": "",
+                "io_model": getattr(comp, "io_model", "") or "",
+                "state_model": getattr(comp, "state_model", "") or "",
             }
-            entity = {
-                "id": comp.id,
-                "children": [],
-                "dependencies": comp_deps.get(comp.id, []),
-                "intent": empty_intent(),
-                "reality": reality,
-                "outgoing_contracts": by_from.get(comp.id, []),
-            }
-            entity["name"] = comp.name
-            entity["file"] = comp.file
-            if comp.methods:
-                entity["methods"] = comp.methods
-            if comp.attributes:
-                entity["attributes"] = comp.attributes
+            entity["traits"] = traits
+            entity["topology_actual"] = {"type": "", "map": []}
+            entity["preview"] = ""
             entities.append(entity)
 
-        root_entity = {
-            "id": ROOT_ID,
-            "children": root_children,
-            "dependencies": [],
-            "intent": empty_intent(),
-            "reality": empty_reality(),
-            "outgoing_contracts": [],
-        }
+        root_entity = dict(empty_entity(ROOT_ID))
+        root_entity["id"] = ROOT_ID
+        root_entity["children"] = root_children
+        root_entity["dependencies"] = []
+        root_entity["outgoing_contracts"] = []
         entities.insert(0, root_entity)
 
         result = {

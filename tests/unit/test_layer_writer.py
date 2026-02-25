@@ -24,12 +24,7 @@ def tmp_manifest(tmp_path):
         json.dumps({"title": "Test", "sections": [{"id": "s1", "name": "Section 1"}]}),
         encoding="utf-8",
     )
-    root = {
-        **empty_entity(PROJECT_ROOT_ID),
-        "id": PROJECT_ROOT_ID,
-        "children": [],
-        "intent": {"narrative": {"role": "Root", "mission": "Test mission"}},
-    }
+    root = {**empty_entity(PROJECT_ROOT_ID), "id": PROJECT_ROOT_ID, "children": [], "narrative": {"role": "Root", "mission": "Test mission"}}
     blueprint = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [root]}
     save_blueprint(tmp_path, blueprint)
     return tmp_path
@@ -108,7 +103,7 @@ def test_write_blueprint_layer_returns_new_dicts_not_mutated(tmp_manifest):
 
     ctx = {"layer_index": 1, "parent_entity": {"id": "p"}, "prd_excerpt": {}, "blueprint_excerpt": {}}
     # opencode --format json stdout: one text part with children JSON
-    payload = json.dumps({"children": [{"id": "c1", "intent": {}}]})
+    payload = json.dumps({"children": [{"id": "c1"}]})
     opencode_stdout = json.dumps({"type": "text", "part": {"text": payload}}) + "\n"
     mock_result = MagicMock(returncode=0, stdout=opencode_stdout, stderr="")
 

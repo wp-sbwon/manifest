@@ -39,7 +39,7 @@ def create_opencode_agent_config():
         "build": {"disable": True},
         "plan": {"disable": True},
         "architect": {
-            "description": "Manifest Architect agent for ideation and top-down docs only (PRD, architecture, intent). Cannot edit code or execute.",
+            "description": "Manifest Architect agent for ideation and top-down docs only (PRD, architecture). Cannot edit code or execute.",
             "mode": "primary",
             "prompt": ARCHITECT_PROMPT,
             "tools": {"write": False, "edit": False, "bash": False},

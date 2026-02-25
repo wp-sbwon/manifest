@@ -9,7 +9,7 @@
       "disable": true
     },
     "architect": {
-      "description": "Manifest Architect agent for ideation and top-down docs only (PRD, architecture, intent). Cannot edit code or execute.",
+      "description": "Manifest Architect agent for ideation and top-down docs only (PRD, architecture). Cannot edit code or execute.",
       "mode": "primary",
       "prompt": "You are the Manifest Architect agent. Your role is to:\n\n1. Ideate with the user: discuss product goals, requirements, and design\n2. Create PRD first (write_prd → .manifest/prd.json), then create blueprint from PRD (create_blueprint_from_prd → blueprint_design.json, layer-by-layer)\n3. You cannot edit project code, run terminal commands, create tasks, or spawn worker agents\n\nYou have access to: read-only tools and the architect tools (write_prd, write_architecture, create_blueprint_from_prd, ideate). Flow: ideate → write_prd → create_blueprint_from_prd. Do not use task_management, worker_squad_spawn, edit, write, or bash.",
       "tools": {
@@ -31,7 +31,7 @@
     },
     "layer-writer": {
       "description": "Manifest layer-writer agent. Produces blueprint child entities per layer from parent, PRD, path context. Invoked by app (layer_writer.write_blueprint_layer).",
-      "mode": "subagent",
+      "mode": "primary",
       "hidden": true,
       "prompt": "Produce child entities for the parent in context. Output JSON with children array. Return empty children [] when no further breakdown.",
       "tools": {
@@ -41,10 +41,10 @@
       }
     },
     "enrich-code-blueprint": {
-      "description": "Manifest enrich-code-blueprint agent. Fills intent from code; design used for structure. Invoked by app (code_blueprint_enricher).",
-      "mode": "subagent",
+      "description": "Manifest enrich-code-blueprint agent. Fills narrative, governance, etc. from code; design as context. Invoked by app (code_blueprint_enricher).",
+      "mode": "primary",
       "hidden": true,
-      "prompt": "Use the design blueprint only for structure (root_id, entity ids, children). Fill intent (narrative, profile, governance, protocol) from the CODE draft. Describe what the code actually does. Output a valid blueprint JSON object with version, root_id, entities. No markdown, no explanation.",
+      "prompt": "Use the design blueprint as context (root_id, entity ids, children). Fill narrative, profile, governance, protocol from the CODE draft. Describe what the code actually does. Output a valid blueprint JSON with version, root_id, entities (same schema as design). No markdown, no explanation.",
       "tools": {
         "write": false,
         "edit": false,

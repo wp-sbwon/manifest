@@ -56,7 +56,7 @@ def test_manifest_view_runs():
     env = {"PYTHONPATH": str(ROOT / "src")}
     try:
         proc = subprocess.run(
-            [sys.executable, "-m", "manifest.view.app", "--manifest-dir", str(ROOT / "tmp" / ".manifest")],
+            [sys.executable, "-m", "manifest.view.app", "--manifest-dir", str(ROOT / "tmp" / "calculator" / ".manifest")],
             cwd=ROOT,
             env={**__import__("os").environ, **env},
             capture_output=True,

@@ -10,11 +10,11 @@ from manifest.view.entity_model import get_entities_for_view
 
 def test_root_status_not_planned_and_no_healthy_with_deviations(tmp_path: Path) -> None:
     """Root must not be 'planned'; no entity may be healthy and have field-level deviations."""
-    # Use repo tmp/.manifest if present (after create_mock_project_data.py); else skip.
+    # Use repo tmp/calculator/.manifest if present (after create_mock_project_data.py); else skip.
     repo = Path(__file__).resolve().parent.parent
-    manifest_dir = repo / "tmp" / ".manifest"
+    manifest_dir = repo / "tmp" / "calculator" / ".manifest"
     if not (manifest_dir / "blueprint_design.json").exists():
-        pytest.skip("Run: PYTHONPATH=src python scripts/create_mock_project_data.py tmp/.manifest")
+        pytest.skip("Run: PYTHONPATH=src python scripts/create_mock_project_data.py tmp/calculator/.manifest")
 
     data = get_entities_for_view(manifest_dir)
     comp_status = data.get("comp_status") or {}
@@ -36,9 +36,9 @@ def test_root_status_not_planned_and_no_healthy_with_deviations(tmp_path: Path) 
 def test_system_core_and_cli_no_spurious_alerts(tmp_path: Path) -> None:
     """When System Core or CLI are healthy, they must have no deviation alerts."""
     repo = Path(__file__).resolve().parent.parent
-    manifest_dir = repo / "tmp" / ".manifest"
+    manifest_dir = repo / "tmp" / "calculator" / ".manifest"
     if not (manifest_dir / "blueprint_design.json").exists():
-        pytest.skip("Run: PYTHONPATH=src python scripts/create_mock_project_data.py tmp/.manifest")
+        pytest.skip("Run: PYTHONPATH=src python scripts/create_mock_project_data.py tmp/calculator/.manifest")
 
     data = get_entities_for_view(manifest_dir)
     view_schema = data.get("view_schema") or {}
