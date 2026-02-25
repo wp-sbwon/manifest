@@ -107,6 +107,5 @@ def test_load_view_schema_missing_returns_empty_structure(tmp_path: Path) -> Non
 
 @pytest.mark.unit
 def test_to_single_value() -> None:
-    """to_single_value extracts plan or actual from view pairs."""
-    assert to_single_value({"plan": "a", "actual": "b", "deviates": True}, use_actual=False) == "a"
-    assert to_single_value({"plan": "a", "actual": "b", "deviates": True}, use_actual=True) == "b"
+    """to_single_value extracts plan from view pairs."""
+    assert to_single_value({"plan": "a", "actual": "b", "deviates": True}) == "a"

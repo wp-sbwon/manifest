@@ -25,12 +25,12 @@ def entities_and_comp_status_from_view_schema(view_schema: Dict[str, Any]) -> tu
         comp_status[eid] = val.get("status") or "planned"
         single = {}
         for key in ("narrative", "blueprint", "protocol", "profile", "governance", "symbol", "traits", "topology_actual", "preview"):
-            single[key] = to_single_value(ve.get(key) or {}, use_actual=False)
+            single[key] = to_single_value(ve.get(key) or {})
         entities_out.append({
             "id": eid,
-            "children": unwrap_list_field(ve, "children", use_actual=False),
-            "dependencies": unwrap_list_field(ve, "dependencies", use_actual=False),
-            "outgoing_contracts": unwrap_list_field(ve, "outgoing_contracts", use_actual=False),
+            "children": unwrap_list_field(ve, "children"),
+            "dependencies": unwrap_list_field(ve, "dependencies"),
+            "outgoing_contracts": unwrap_list_field(ve, "outgoing_contracts"),
             **single,
         })
     return entities_out, comp_status

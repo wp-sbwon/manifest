@@ -216,15 +216,15 @@ def write_view_schema(manifest_dir: Path, view_schema: Dict[str, Any]) -> bool:
 _EMPTY_VIEW_SCHEMA: Dict[str, Any] = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": []}
 
 
-def to_single_value(val: Any, use_actual: bool = False) -> Any:
-    """Convert plan/actual/deviates pairs to a single value."""
+def to_single_value(val: Any) -> Any:
+    """Convert plan/actual/deviates pairs to a single value (plan)."""
     if isinstance(val, dict) and ("plan" in val or "actual" in val):
-        v = val.get("actual" if use_actual else "plan") or val.get("plan") or val.get("actual")
-        return to_single_value(v, use_actual) if isinstance(v, dict) else v
+        v = val.get("plan") or val.get("actual")
+        return to_single_value(v) if isinstance(v, dict) else v
     if isinstance(val, dict):
-        return {k: to_single_value(v, use_actual) for k, v in val.items()}
+        return {k: to_single_value(v) for k, v in val.items()}
     if isinstance(val, list):
-        return [to_single_value(item, use_actual) for item in val]
+        return [to_single_value(item) for item in val]
     return val
 
 
@@ -244,11 +244,11 @@ def entity_has_any_deviates(obj: Any) -> bool:
     return False
 
 
-def unwrap_list_field(ve: Dict[str, Any], key: str, use_actual: bool = False) -> List[Any]:
+def unwrap_list_field(ve: Dict[str, Any], key: str) -> List[Any]:
     raw = ve.get(key)
     if isinstance(raw, list):
         return raw
-    unwrapped = to_single_value(raw or {}, use_actual)
+    unwrapped = to_single_value(raw or {})
     return unwrapped if isinstance(unwrapped, list) else []
 
 
