@@ -183,12 +183,14 @@ def build_info_hub_node_content(
     spec_lines: List[str] = []
     any_spec_deviation = False
 
-    def _role_mission_line(label: str, val: Any, path: Tuple[str, ...], fmt_len: int = 200) -> str:
-        raw = format_for_display(val, fmt_len)
-        return f"{_cap(label)}: {raw}{_box(path)}"
-
-    spec_lines.append(_role_mission_line("role", narrative.get("role"), ("narrative", "role"), 80))
-    spec_lines.append(_role_mission_line("mission", narrative.get("mission"), ("narrative", "mission"), 240))
+    plan_role, actual_role = _plan_actual_at(("narrative", "role"))
+    ln, dev = _spec_line("role", plan_role, actual_role, ("narrative", "role"), 80)
+    spec_lines.append(f"{ln}{_box(('narrative', 'role'))}")
+    any_spec_deviation = any_spec_deviation or dev
+    plan_mission, actual_mission = _plan_actual_at(("narrative", "mission"))
+    ln, dev = _spec_line("mission", plan_mission, actual_mission, ("narrative", "mission"), 240)
+    spec_lines.append(f"{ln}{_box(('narrative', 'mission'))}")
+    any_spec_deviation = any_spec_deviation or dev
     spec_lines.append(f"{_cap('blueprint')}")
     spec_lines.append(f"  — {_cap('type')}: {format_for_display(blueprint.get('type'), 20)}{_box(('blueprint', 'type'))}")
     spec_lines.append(f"  — {_cap('topology')}: {topology_summary}{_box(('blueprint', 'topology'))}")

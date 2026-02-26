@@ -24,7 +24,7 @@ def _make_root() -> Dict[str, Any]:
     ent["children"] = ["cli", "arithmetic_engine", "output"]
     ent["narrative"] = {"role": "Calculator", "mission": "CLI calculator: parse args → compute → format → print."}
     ent["blueprint"] = {"type": "FLOW", "topology": {}}
-    ent["profile"] = {"language": "python", "platform": "cli", "io_model": "request_response", "state_model": "stateless"}
+    ent["profile"] = {"language": ["python"], "platform": "cli", "io_model": "request_response", "state_model": "stateless"}
     ent["governance"] = {"rules": ["Stateless flow.", "No I/O in arithmetic engine."], "assertions": []}
     ent["protocol"] = {"input": [{"name": "argv", "type": "list"}], "output": [{"name": "stdout", "type": "string"}]}
     ent["symbol"] = "main"
@@ -55,7 +55,7 @@ def _make_entity(
     ent["children"] = children or []
     ent["narrative"] = {"role": role, "mission": mission}
     ent["blueprint"] = {"type": "FLOW", "topology": {}}
-    ent["profile"] = {"language": "python", "platform": "cli", "io_model": "", "state_model": ""}
+    ent["profile"] = {"language": ["python"], "platform": "cli", "io_model": "", "state_model": ""}
     ent["governance"] = {"rules": rules or [], "assertions": []}
     ent["protocol"] = {"input": protocol_input or [], "output": protocol_output or []}
     ent["symbol"] = symbol
@@ -81,7 +81,7 @@ def build_design_blueprint() -> Dict[str, Any]:
         "add",
         "Add",
         "Return a + b.",
-        "calc.operations.add",
+        "engine.calculator",
         preview="engine/calculator.py: add(a, b) → float",
         rules=["Pure function."],
         protocol_input=[{"name": "a", "type": "float"}, {"name": "b", "type": "float"}],
@@ -92,7 +92,7 @@ def build_design_blueprint() -> Dict[str, Any]:
         "sub",
         "Sub",
         "Return a - b.",
-        "calc.operations.sub",
+        "engine.calculator",
         preview="engine/calculator.py: sub(a, b) → float",
         rules=["Pure function."],
         protocol_input=[{"name": "a", "type": "float"}, {"name": "b", "type": "float"}],
@@ -103,7 +103,7 @@ def build_design_blueprint() -> Dict[str, Any]:
         "mul",
         "Mul",
         "Return a * b.",
-        "calc.operations.mul",
+        "engine.calculator",
         preview="Planned.",
         rules=["Pure function."],
         protocol_input=[{"name": "a", "type": "float"}, {"name": "b", "type": "float"}],
@@ -153,7 +153,7 @@ def _code_entity_overrides(eid: str, design_ent: Dict[str, Any]) -> Dict[str, An
         overrides["governance"] = {"rules": ["Stateless flow.", "No I/O in arithmetic engine."], "assertions": []}
         return overrides
     if eid == "output":
-        overrides["narrative"] = {"role": "CLI formatter", "mission": "format_result(value) stub; not called by main."}
+        overrides["narrative"] = {"role": "Output", "mission": "Format numeric result for console."}
         overrides["protocol"] = {"input": [{"name": "value", "type": "float"}], "output": [{"name": "formatted", "type": "string"}]}
         return overrides
     design_narrative = design_ent.get("narrative") or {}
@@ -209,12 +209,16 @@ def main() -> int:
         arg = sys.argv[1].strip()
         if "/" in arg or "\\" in arg:
             manifest_dir = Path(arg).resolve()
+            project_root = manifest_dir.parent
         else:
             manifest_dir = (REPO / "tmp" / arg / ".manifest").resolve()
+            project_root = REPO / "tests" / "fixtures" / arg if (REPO / "tests" / "fixtures" / arg).is_dir() else manifest_dir.parent
     else:
         manifest_dir = REPO / "tmp" / "calculator" / ".manifest"
+        project_root = REPO / "tests" / "fixtures" / "calculator"
     manifest_dir.mkdir(parents=True, exist_ok=True)
-    project_root = manifest_dir.parent
+    if not project_root.is_dir():
+        project_root = manifest_dir.parent
 
     design = build_design_blueprint()
     if not save_blueprint(manifest_dir, design):
@@ -243,8 +247,27 @@ def main() -> int:
     except Exception as e:
         print(f"Warning: failed to write blueprint_view.json: {e}", file=sys.stderr)
 
+    if "calculator" in str(manifest_dir):
+        _write_calculator_state(manifest_dir)
+
     print("Mock project data ready. Run View with this manifest dir to see Diagram and Health.")
     return 0
+
+
+def _write_calculator_state(manifest_dir: Path) -> None:
+    import json
+    from datetime import datetime, timezone
+    state = {
+        "version": "1.0",
+        "health_metrics": None,
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    }
+    state_file = manifest_dir / "state.json"
+    try:
+        state_file.write_text(json.dumps(state, indent=2), encoding="utf-8")
+        print(f"Wrote {state_file}")
+    except Exception as e:
+        print(f"Warning: failed to write state.json: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

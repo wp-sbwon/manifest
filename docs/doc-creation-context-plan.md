@@ -227,7 +227,7 @@ Each task’s `context` is a single JSON-like dict stored in `doc_layer_writer_t
     },
     "profile": {"language": "python", "platform": "cli", "io_model": "", "state_model": ""},
     "governance": {"rules": ["Pure function."], "assertions": []},
-    "symbol": "calc.operations.add",
+    "symbol": "engine.calculator",
     "traits": ["pure", "O(1)"],
     "topology_actual": {"type": "", "map": []},
     "preview": "",

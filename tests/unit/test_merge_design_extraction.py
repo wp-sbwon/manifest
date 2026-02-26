@@ -53,7 +53,7 @@ def test_normalized_partial_match():
 def test_token_overlap():
     design = {"entities": [_design_ent("add"), _design_ent(PROJECT_ROOT_ID)], "root_id": PROJECT_ROOT_ID}
     extracted = {
-        "entities": [_extracted("comp-calc.operations-add", "add", "add")],
+        "entities": [_extracted("comp-engine.calculator-add", "add", "add")],
         "root_id": PROJECT_ROOT_ID,
     }
     out = merge_design_and_extraction(design, extracted)
