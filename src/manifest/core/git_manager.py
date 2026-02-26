@@ -32,7 +32,7 @@ class GitManager:
                     search_parent_directories=search_parent_directories,
                 )
             except Exception:
-                logger.warning("Not a git repository")
+                logger.warning("Not a git repository", exc_info=True)
 
     def is_available(self) -> bool:
         """Check if Git and repository are available."""
@@ -54,7 +54,7 @@ class GitManager:
                     "short_hash": commit.hexsha[:8]
                 })
         except Exception as e:
-            logger.error(f"Error getting commits: {e}")
+            logger.error("Error getting commits: %s", e, exc_info=True)
 
         return commits
 
@@ -77,5 +77,5 @@ class GitManager:
                     "short_hash": commit.hexsha[:8],
                 })
         except Exception as e:
-            logger.debug("get_commits_for_paths failed: %s", e)
+            logger.debug("get_commits_for_paths failed: %s", e, exc_info=True)
         return commits

@@ -7,7 +7,12 @@ from typing import Any, Dict, List, Tuple
 
 from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_VIEW_FILE
 from manifest.audit.blueprint.status_enums import ImplementationStatus
-from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity, top_layer_entities
+from manifest.audit.entity_schema import (
+    PROJECT_ROOT_ID,
+    empty_entity,
+    language_to_list,
+    top_layer_entities,
+)
 from manifest.core.logger import get_logger
 from manifest.io.json_io import read_json_or_default
 
@@ -30,15 +35,6 @@ def _nested_set(d: Dict[str, Any], path: Tuple[str, ...], value: Any) -> None:
     d[path[-1]] = value
 
 
-def _language_to_list(val: Any) -> list:
-    """Normalize profile.language to list of strings (string or list accepted)."""
-    if val is None or val == "":
-        return []
-    if isinstance(val, list):
-        return [x for x in val if x]
-    return [val] if val else []
-
-
 def _pair_nested(
     design_d: Dict[str, Any],
     code_d: Dict[str, Any],
@@ -53,8 +49,8 @@ def _pair_nested(
         plan_val = d_val if d_val is not None else empty_val
         actual_val = c_val if c_val is not None else empty_val
         if path == ("profile", "language"):
-            plan_val = _language_to_list(plan_val)
-            actual_val = _language_to_list(actual_val)
+            plan_val = language_to_list(plan_val)
+            actual_val = language_to_list(actual_val)
         _nested_set(out, path, _pair_deviates(plan_val, actual_val))
     return out
 

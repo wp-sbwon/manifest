@@ -2,6 +2,7 @@
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -78,7 +79,7 @@ def create_blueprint_from_prd(manifest_dir: Path, project_root: Optional[Path] =
     try:
         subprocess.Popen(
             [
-                "python",
+                sys.executable,
                 str(script),
                 "--manifest-dir", str(manifest_dir),
                 "--parent", PROJECT_ROOT_ID,

@@ -20,7 +20,6 @@ def is_path_under_base(path: Path, base: Path) -> bool:
     try:
         resolved = path.resolve()
         base_resolved = base.resolve()
-        resolved.relative_to(base_resolved)
-        return True
-    except (OSError, RuntimeError, ValueError):
+        return resolved.is_relative_to(base_resolved)
+    except OSError:
         return False

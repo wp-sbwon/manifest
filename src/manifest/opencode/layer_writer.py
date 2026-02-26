@@ -8,7 +8,9 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -295,23 +297,15 @@ def try_spawn_next_layer(
     spawned: List[Tuple[str, int]] = []
     procs: List[subprocess.Popen] = []
     for i, cid in enumerate(child_ids):
-        if len(procs) >= limit:
-            for p in procs:
-                try:
-                    p.wait(timeout=300)
-                except subprocess.TimeoutExpired:
-                    logger.warning("Layer writer process timed out (300s), killing")
-                    try:
-                        p.kill()
-                        p.wait(timeout=5)
-                    except Exception:
-                        pass
-            procs = []
+        while len(procs) >= limit:
+            procs = [p for p in procs if p.poll() is None]
+            if len(procs) >= limit:
+                time.sleep(0.5)
         try:
             env = os.environ.copy()
             env["PYTHONPATH"] = str(repo_root / "src")
             proc = subprocess.Popen(
-                ["python", str(script), "--manifest-dir", str(manifest_dir), "--parent", cid, "--layer", str(next_layer)],
+                [sys.executable, str(script), "--manifest-dir", str(manifest_dir), "--parent", cid, "--layer", str(next_layer)],
                 cwd=str(project_root),
                 env=env,
                 stdout=subprocess.DEVNULL,

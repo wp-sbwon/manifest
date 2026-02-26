@@ -41,8 +41,8 @@ class Entity:
     protocol: Dict[str, List[Dict[str, Any]]] = field(
         default_factory=lambda: {"input": [], "output": []}
     )
-    profile: Dict[str, str] = field(
-        default_factory=lambda: {"language": "", "platform": "", "io_model": "", "state_model": ""}
+    profile: Dict[str, Any] = field(
+        default_factory=lambda: {"language": [], "platform": "", "io_model": "", "state_model": ""}
     )
     governance: Dict[str, List[str]] = field(
         default_factory=lambda: {"rules": [], "assertions": []}
@@ -78,6 +78,15 @@ class Validation:
 
 def default_entities() -> List[Dict[str, Any]]:
     return []
+
+
+def language_to_list(val: Any) -> List[str]:
+    """Normalize profile.language to list of strings. Accepts raw value (string, list, or None)."""
+    if val is None or val == "":
+        return []
+    if isinstance(val, list):
+        return [x for x in val if x]
+    return [val] if val else []
 
 
 @dataclass
@@ -182,7 +191,7 @@ def empty_entity(id: str = "") -> Dict[str, Any]:
         "narrative": {"role": "", "mission": ""},
         "blueprint": {"type": "FLOW", "topology": {}},
         "protocol": {"input": [], "output": []},
-        "profile": {"language": "", "platform": "", "io_model": "", "state_model": ""},
+        "profile": {"language": [], "platform": "", "io_model": "", "state_model": ""},
         "governance": {"rules": [], "assertions": []},
         "symbol": "",
         "traits": [],

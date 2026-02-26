@@ -212,7 +212,7 @@ class CodeExtractor:
             self.contracts.extend(relationships)
 
         except Exception as e:
-            logger.warning("Skipping unparseable file %s: %s", file_path, e)
+            logger.warning("Skipping unparseable file %s: %s", file_path, e, exc_info=True)
 
     def _identify_entities(self, tree: ast.AST, file_path: Path, module_path: str) -> List[Component]:
         """Identify entities (classes, functions, variables) as components."""
@@ -686,10 +686,10 @@ class CodeExtractor:
         if getattr(fn, "args", None):
             for arg in fn.args.args:
                 if arg.arg != "self":
-                    t = ast.unparse(arg.annotation) if hasattr(ast, "unparse") and arg.annotation else ""
+                    t = ast.unparse(arg.annotation) if arg.annotation else ""
                     entity.protocol_input.append({"name": arg.arg, "type": t})
         if fn.returns:
-            t = ast.unparse(fn.returns) if hasattr(ast, "unparse") else ""
+            t = ast.unparse(fn.returns)
             entity.protocol_output.append({"name": "return", "type": t or ""})
         async_fn = getattr(ast, "AsyncFunctionDef", None)
         if async_fn and isinstance(fn, async_fn):
