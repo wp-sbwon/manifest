@@ -38,11 +38,8 @@ from manifest.view.diagram import (
 from manifest.audit.entity_schema import (
     PROJECT_ROOT_ID,
     entity_display_name,
-    non_root_entities,
-    contracts_from_entities,
     get_root_entity,
     top_layer_entities,
-    root_narrative,
     mission_from_blueprint,
 )
 from manifest.view.constants import (
@@ -62,17 +59,7 @@ from manifest.view.content import (
     get_sidebar_health_text,
     get_sidebar_viz_text,
 )
-from manifest.view.views_content import (
-    blueprint_component_names as _blueprint_component_names,
-    component_type_color as _component_type_color,
-    entities_for_display as _entities_for_display,
-    item_display_name as _item_display_name,
-    order_entities_by_flow as _order_entities_by_flow,
-    single_line_node as _single_line_node,
-    status_color_tag as _status_color_tag,
-    status_label as _status_label,
-    status_label_markup as _status_label_markup,
-)
+from manifest.view.views_content import status_label_markup as _status_label_markup
 
 logger = get_logger(__name__)
 

@@ -13,13 +13,3 @@ def default_manifest_dir(manifest_dir: Optional[Path] = None) -> Path:
     if manifest_dir is not None:
         return Path(manifest_dir).resolve()
     return (Path.cwd() / ".manifest").resolve()
-
-
-def is_path_under_base(path: Path, base: Path) -> bool:
-    """Return True if resolved path is under base (or equal). Rejects escapes like .. and symlinks outside base."""
-    try:
-        resolved = path.resolve()
-        base_resolved = base.resolve()
-        return resolved.is_relative_to(base_resolved)
-    except OSError:
-        return False

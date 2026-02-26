@@ -23,7 +23,7 @@ Quick links: [View app](docs/view-app.md) · [Manifest data](docs/manifest-data.
 
 ## Quick Start
 
-1. **Setup (installs venv, OpenCode, Podman if missing):**
+1. **Setup (installs venv, OpenCode if missing):**
    ```bash
    chmod +x scripts/setup.sh
    ./scripts/setup.sh
@@ -96,10 +96,9 @@ manifest/
 
 ## Docker (optional)
 
-If you use Docker Compose for deployment: ensure a container runtime (e.g. Podman) is available. The launcher can start Podman when needed. See `scripts/setup-docker.sh` and `docker-compose.yml`.
+A single `Dockerfile` is provided. The default `CMD` runs `python -m manifest`, which requires `opencode` on PATH; the image does not install it. For view-only: override with `python -m manifest.view.app --manifest-dir /path/to/.manifest`.
 
 ## Troubleshooting
 
 - **OpenCode not found:** Install so `opencode` is on PATH (e.g. via `scripts/setup.sh` or `pip install opencode-ai`).
 - **View not updating:** Bottom-up runs on commit; the View refreshes when `.manifest` files change (watchdog). Ensure `blueprint_design.json` exists and, after a commit, that `bin/run_bottom_up_docs.py` has run (check for updated `blueprint_code.json`).
-- **Podman:** On macOS run `podman machine start`; on Linux `sudo systemctl start podman.socket` if the launcher doesn’t start it.

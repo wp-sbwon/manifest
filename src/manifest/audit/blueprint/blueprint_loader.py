@@ -49,28 +49,3 @@ class BlueprintLoader:
         from manifest.audit.blueprint.blueprint_metadata import ensure_blueprint_metadata
         data = ensure_blueprint_metadata(data, "code_extraction", True, "ast_parsing")
         return data
-
-    @staticmethod
-    def save_blueprint(
-        manifest_dir: Path,
-        blueprint_data: Dict[str, Any],
-        backup: bool = True
-    ) -> bool:
-        """Save blueprint_design.json with optional backup."""
-        from manifest.audit.blueprint.blueprint_metadata import save_blueprint_with_metadata
-
-        manifest_dir = Path(manifest_dir)
-        blueprint_file = manifest_dir / BLUEPRINT_DESIGN_FILE
-
-        if backup and blueprint_file.exists():
-            backup_file = manifest_dir / (BLUEPRINT_DESIGN_FILE + ".backup")
-            import shutil
-            shutil.copy2(blueprint_file, backup_file)
-            logger.debug("Created backup: %s", backup_file)
-
-        ok = save_blueprint_with_metadata(
-            blueprint_data, blueprint_file, "llm_design", False, "manual"
-        )
-        if ok:
-            logger.info("Blueprint saved to %s", blueprint_file)
-        return ok

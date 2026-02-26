@@ -30,24 +30,6 @@ def _status_for(comp_status: Dict[str, str], comp_id: str) -> str:
     return comp_status.get(comp_id, "planned")
 
 
-def build_flat_diagram_spec(
-    node_list: List[Dict[str, Any]],
-    comp_status: Dict[str, str],
-    title: str = DEFAULT_DIAGRAM_TITLE,
-) -> Dict[str, Any]:
-    """Build flat spec (one diagram node per item in list)."""
-    nodes = []
-    for node in node_list:
-        nid = node.get("id") or ""
-        nodes.append({
-            "type": "module",
-            "label": _node_label(node),
-            "status": _status_for(comp_status, nid),
-            "node_id": nid,
-        })
-    return {"title": title, "nodes": nodes}
-
-
 def _tree_order(
     nodes: List[Dict[str, Any]],
     contracts: List[Dict[str, Any]],
@@ -79,20 +61,6 @@ def _tree_order(
         logger.info("Diagram: capping at %d nodes (had %d); set diagram_config max_tree_nodes to override.", max_nodes, len(ordered))
         return ordered[:max_nodes]
     return ordered
-
-
-def _flat_spec_from_tree(
-    nodes: List[Dict[str, Any]],
-    contracts: List[Dict[str, Any]],
-    comp_status: Dict[str, str],
-    root_id: str = PROJECT_ROOT_ID,
-    title: Optional[str] = DEFAULT_DIAGRAM_TITLE,
-    filter_app_only: bool = True,
-    max_nodes: int = DEFAULT_MAX_TREE_NODES,
-) -> Dict[str, Any]:
-    """Build flat diagram spec from tree (root_id, children)."""
-    ordered = _tree_order(nodes, contracts, root_id, filter_app_only=filter_app_only, max_nodes=max_nodes)
-    return build_flat_diagram_spec(ordered, comp_status, title=title or DEFAULT_DIAGRAM_TITLE)
 
 
 def _edges_for_layer(entities: List[Dict[str, Any]], layer_ids: Set[str]) -> List[Dict[str, str]]:

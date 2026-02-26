@@ -97,24 +97,6 @@ class BlueprintRoot:
     entities: List[Dict[str, Any]] = field(default_factory=default_entities)
 
 
-def contracts_from_entities(entities: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Derive flat contract list from entities' outgoing_contracts."""
-    out: List[Dict[str, Any]] = []
-    for e in entities or []:
-        eid = e.get("id") or ""
-        for oc in e.get("outgoing_contracts") or []:
-            if not isinstance(oc, dict):
-                continue
-            out.append({
-                "from": eid,
-                "to": oc.get("to") or "",
-                "type": oc.get("type") or "dependency",
-                "file": oc.get("file") or "",
-                "symbols": list(oc.get("symbols") or []),
-            })
-    return out
-
-
 PROJECT_ROOT_ID = "PROJECT_ROOT"
 
 
@@ -132,12 +114,6 @@ def entity_display_name(e: Dict[str, Any], prefer_name_first: bool = False) -> s
     if role:
         return role
     return symbol or name or fallback or ""
-
-
-def non_root_entities(blueprint: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Return entities except the root."""
-    entities = blueprint.get("entities") or []
-    return [e for e in entities if (e.get("id") or "") != PROJECT_ROOT_ID]
 
 
 def get_root_entity(blueprint: Dict[str, Any]) -> Optional[Dict[str, Any]]:

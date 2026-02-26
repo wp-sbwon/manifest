@@ -12,6 +12,11 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
 from typing import Any, Dict, List, Optional, Tuple
 
 from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity
@@ -210,43 +215,61 @@ def merge_children_into_blueprint(
     """
     Merge new children into blueprint_design.json: update parent's children list
     and append child entities. Returns True on success.
+    Uses a file lock (Unix) so concurrent layer-writer processes do not overwrite each other.
     """
     from manifest.io.blueprint_io import save_blueprint
 
     manifest_dir = Path(manifest_dir)
-    blueprint = load_blueprint(manifest_dir)
-    entities = list(blueprint.get("entities") or [])
-    by_id = {e.get("id"): e for e in entities if e.get("id")}
+    lock_path = manifest_dir / ".blueprint_design.lock"
+    lock_file = None
+    if fcntl is not None:
+        try:
+            manifest_dir.mkdir(parents=True, exist_ok=True)
+            lock_file = open(lock_path, "w")
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        except OSError as e:
+            logger.warning("Could not acquire blueprint lock: %s", e)
+    try:
+        blueprint = load_blueprint(manifest_dir)
+        entities = list(blueprint.get("entities") or [])
+        by_id = {e.get("id"): e for e in entities if e.get("id")}
 
-    child_ids = []
-    for c in children:
-        if not isinstance(c, dict):
-            continue
-        eid = (c.get("id") or "").strip()
-        if not eid or eid == PROJECT_ROOT_ID:
-            continue
-        child_ids.append(eid)
-        if eid not in by_id:
-            entities.append(normalize_for_schema(dict(c)))
-            by_id[eid] = entities[-1]
+        child_ids = []
+        for c in children:
+            if not isinstance(c, dict):
+                continue
+            eid = (c.get("id") or "").strip()
+            if not eid or eid == PROJECT_ROOT_ID:
+                continue
+            child_ids.append(eid)
+            if eid not in by_id:
+                entities.append(normalize_for_schema(dict(c)))
+                by_id[eid] = entities[-1]
 
-    if not child_ids:
-        return True
+        if not child_ids:
+            return True
 
-    parent = by_id.get(parent_entity_id)
-    if not parent:
-        return False
+        parent = by_id.get(parent_entity_id)
+        if not parent:
+            return False
 
-    existing = set(parent.get("children") or [])
-    for cid in child_ids:
-        existing.add(cid)
-    parent["children"] = sorted(existing)
+        existing = set(parent.get("children") or [])
+        for cid in child_ids:
+            existing.add(cid)
+        parent["children"] = sorted(existing)
 
-    data = {**blueprint, "entities": entities}
-    valid, _ = validate_blueprint_data(normalize_for_schema(data))
-    if not valid:
-        return False
-    return save_blueprint(manifest_dir, data)
+        data = {**blueprint, "entities": entities}
+        valid, _ = validate_blueprint_data(normalize_for_schema(data))
+        if not valid:
+            return False
+        return save_blueprint(manifest_dir, data)
+    finally:
+        if lock_file is not None:
+            try:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                lock_file.close()
+            except OSError:
+                pass
 
 
 DEFAULT_MAX_CONCURRENCY = 4
@@ -315,13 +338,5 @@ def try_spawn_next_layer(
             spawned.append((cid, next_layer))
         except Exception as e:
             logger.warning("Spawn layer writer for %s failed: %s", cid, e)
-    for p in procs:
-        try:
-            p.wait(timeout=1)
-        except subprocess.TimeoutExpired:
-            try:
-                p.kill()
-                p.wait(timeout=5)
-            except Exception:
-                pass
+    # Fire-and-forget: children run to completion (opencode takes 30–120s). No wait/kill.
     return spawned

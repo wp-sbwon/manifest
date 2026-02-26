@@ -4,7 +4,7 @@ Validation for blueprint data. Normalize null to ""/[]/{}; ensure required keys.
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from manifest.audit.entity_schema import empty_entity, empty_outgoing_contracts
+from manifest.audit.entity_schema import empty_entity
 
 
 def _normalize_value(value: Any) -> Any:

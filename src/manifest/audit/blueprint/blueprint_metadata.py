@@ -4,7 +4,7 @@ Blueprint Metadata Utilities - Ensures blueprint JSON files have proper metadata
 import json
 from pathlib import Path
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_CODE_FILE
 from manifest.core.logger import get_logger
@@ -23,7 +23,7 @@ def _default_blueprint_with_metadata(
         "root_id": "",
         "source": default_source,
         "ground_truth": default_ground_truth,
-        "last_updated": datetime.utcnow().isoformat(),
+        "last_updated": datetime.now(timezone.utc).isoformat(),
         "extraction_method": "llm_inference" if default_source.startswith("llm") else "ast_parsing",
         "entities": [],
     }
@@ -50,7 +50,7 @@ def ensure_blueprint_metadata(blueprint: Dict[str, Any], source: str,
     blueprint["ground_truth"] = ground_truth
 
     if "last_updated" not in blueprint:
-        blueprint["last_updated"] = datetime.utcnow().isoformat()
+        blueprint["last_updated"] = datetime.now(timezone.utc).isoformat()
 
     if extraction_method:
         blueprint["extraction_method"] = extraction_method
@@ -63,18 +63,6 @@ def ensure_blueprint_metadata(blueprint: Dict[str, Any], source: str,
             blueprint["extraction_method"] = "manual"
 
     return blueprint
-
-
-def load_blueprint_with_metadata(blueprint_file: Path, default_source: str = "llm_design",
-                                 default_ground_truth: bool = False) -> Dict[str, Any]:
-    """Load blueprint file and ensure it has metadata."""
-    default = _default_blueprint_with_metadata(default_source, default_ground_truth)
-    blueprint = read_json_or_default(
-        Path(blueprint_file), default, logger=logger
-    )
-    if blueprint_file.name == BLUEPRINT_CODE_FILE:
-        return ensure_blueprint_metadata(blueprint, "code_extraction", True, "ast_parsing")
-    return ensure_blueprint_metadata(blueprint, default_source, default_ground_truth)
 
 
 def save_blueprint_with_metadata(blueprint: Dict[str, Any], blueprint_file: Path,
@@ -100,7 +88,7 @@ def save_blueprint_with_metadata(blueprint: Dict[str, Any], blueprint_file: Path
         from manifest.audit.entity_validation import validate_blueprint_data
 
         blueprint = ensure_blueprint_metadata(blueprint, source, ground_truth, extraction_method)
-        blueprint["last_updated"] = datetime.utcnow().isoformat()
+        blueprint["last_updated"] = datetime.now(timezone.utc).isoformat()
 
         valid, errors = validate_blueprint_data(blueprint)
         if not valid and errors:

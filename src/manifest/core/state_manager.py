@@ -15,7 +15,7 @@ logger = get_logger(__name__)
 class StateManager:
     """Manages state.json with health_metrics."""
 
-    def __init__(self, manifest_dir: Path = None):
+    def __init__(self, manifest_dir: Optional[Path] = None):
         self.manifest_dir = manifest_dir or Path(".manifest")
         self.state_file = self.manifest_dir / STATE_FILE
         self._state: Dict[str, Any] = {}

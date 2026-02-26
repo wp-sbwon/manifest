@@ -19,5 +19,6 @@ COPY . .
 # Set PYTHONPATH to include src/ for src layout
 ENV PYTHONPATH=/app/src
 
-# Default command
+# Launcher (python -m manifest) requires opencode on PATH; it is not installed in this image.
+# For view-only, override: docker run ... python -m manifest.view.app --manifest-dir /app/.manifest
 CMD ["python", "-m", "manifest"]

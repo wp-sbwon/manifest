@@ -4,7 +4,6 @@ Bottom-up pipeline: CodeExtractor + opencode enricher → blueprint_code.json, b
 Run on commit (GitManager or post-commit hook). Requires blueprint_design.json and opencode on PATH.
 """
 import argparse
-import asyncio
 import sys
 from pathlib import Path
 
@@ -42,7 +41,7 @@ def _refresh_blueprint_view(manifest_dir: Path) -> bool:
         return False
 
 
-async def main(project_root: Path, manifest_dir: Path) -> int:
+def main(project_root: Path, manifest_dir: Path) -> int:
     manifest_dir.mkdir(parents=True, exist_ok=True)
     try:
         updated = _refresh_blueprint_code(project_root, manifest_dir)
@@ -78,7 +77,7 @@ def main_sync() -> int:
     args = parser.parse_args()
     project_root = (args.project_root or Path.cwd()).resolve()
     manifest_dir = (args.manifest_dir or (project_root / ".manifest")).resolve()
-    return asyncio.run(main(project_root, manifest_dir))
+    return main(project_root, manifest_dir)
 
 
 if __name__ == "__main__":

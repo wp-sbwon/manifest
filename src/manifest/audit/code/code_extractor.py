@@ -705,7 +705,7 @@ class CodeExtractor:
 
     def _generate_blueprint(self) -> Dict[str, Any]:
         """Generate blueprint dict: version, root_id, entities with outgoing_contracts."""
-        from datetime import datetime
+        from datetime import datetime, timezone
         from manifest.audit.entity_schema import empty_entity, PROJECT_ROOT_ID as ROOT_ID
 
         entity_ids = {c.id for c in self.components.values()}
@@ -793,21 +793,8 @@ class CodeExtractor:
             "entities": entities,
             "source": "code_extraction",
             "ground_truth": True,
-            "last_updated": datetime.utcnow().isoformat(),
+            "last_updated": datetime.now(timezone.utc).isoformat(),
             "extraction_method": "ast_parsing",
         }
         from manifest.audit.entity_validation import normalize_for_schema
         return normalize_for_schema(result)
-
-    def save_blueprint(self, blueprint: Dict[str, Any], output_path: Path) -> bool:
-        """Save blueprint to file with metadata. Validates before write; aborts on failure."""
-        from manifest.audit.entity_validation import validate_blueprint_data
-        from manifest.audit.blueprint.blueprint_metadata import save_blueprint_with_metadata
-        valid, errors = validate_blueprint_data(blueprint)
-        if not valid and errors:
-            from manifest.core.logger import get_logger
-            get_logger(__name__).error("Blueprint validation failed: %s", errors)
-            return False
-        return save_blueprint_with_metadata(
-            blueprint, output_path, "code_extraction", True, "ast_parsing"
-        )
