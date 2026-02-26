@@ -1,5 +1,6 @@
 """Start View TUI and OpenCode. Uses tmp/<name> as project dir when MANIFEST_DEV=1 in repo."""
 import os
+import shlex
 import sys
 import shutil
 import subprocess
@@ -64,10 +65,10 @@ def _start_view(manifest_dir: Path) -> None:
                 "#!/bin/bash\n"
                 "unset NO_COLOR\n"
                 'export TERM="${TERM:-xterm-256color}"\n'
-                f'cd "{cwd}"\n'
+                f"cd {shlex.quote(cwd)}\n"
                 "[ -f venv/bin/activate ] && source venv/bin/activate\n"
-                f'export PYTHONPATH="{pypath}"\n'
-                f'exec python -m manifest.view.app --manifest-dir "{manifest_dir}"\n',
+                f"export PYTHONPATH={shlex.quote(pypath)}\n"
+                f"exec python -m manifest.view.app --manifest-dir {shlex.quote(str(manifest_dir))}\n",
                 encoding="utf-8",
             )
             script.chmod(0o755)

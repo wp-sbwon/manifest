@@ -4,8 +4,7 @@
 #
 # Refreshes blueprint_code.json from code. Process is always bottom-up.
 # Does not block or fail the commit; errors are logged to stderr.
-
-set -e
+# Not using set -e so a failing bottom-up run does not make the hook exit non-zero.
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 cd "$ROOT" || exit 0
@@ -26,5 +25,5 @@ if [ ! -f "bin/run_bottom_up_docs.py" ]; then
 fi
 
 export PYTHONPATH="${ROOT}/src${PYTHONPATH:+:${PYTHONPATH}}"
-python3 bin/run_bottom_up_docs.py --project-root "$ROOT" 2>&1 | head -20
+python3 bin/run_bottom_up_docs.py --project-root "$ROOT" 2>&1 | head -20 || true
 exit 0

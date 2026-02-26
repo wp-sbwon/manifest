@@ -202,7 +202,7 @@ class ManifestViewApp(App[None]):
             view_data = self._view_data or {}
             blueprint = view_data.get("blueprint") or {}
             code_blueprint = view_data.get("code_blueprint") or {}
-            comp_status = view_data["comp_status"]
+            comp_status = view_data.get("comp_status") or {}
             view_schema = view_data.get("view_schema") or {}
             # Use comparison output for diagram when available.
             if view_schema.get("entities"):

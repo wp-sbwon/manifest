@@ -6,6 +6,10 @@ from typing import Dict, Any, Optional, List, Tuple, Set, Union
 
 from manifest.audit.blueprint.blueprint_loader import BlueprintLoader
 from manifest.audit.blueprint.status_enums import ImplementationStatus
+from manifest.audit.blueprint.view_schema import (
+    _parent_aggregate_status_from_children,
+    _root_status_from_children,
+)
 from manifest.audit.entity_schema import (
     PROJECT_ROOT_ID,
     entity_display_name,
@@ -69,40 +73,12 @@ def parent_aggregate_status_from_children(
     entity_status: Dict[str, str],
 ) -> Dict[str, str]:
     """Aggregate status per parent entity id (root's children) from its children's statuses."""
-    out: Dict[str, str] = {}
-    for e in top_layer_entities(blueprint):
-        parent_id = e.get("id")
-        child_ids = list(e.get("children") or [])
-        if not parent_id:
-            continue
-        if not child_ids:
-            continue
-        statuses = [entity_status.get(eid, ImplementationStatus.PLANNED.value) for eid in child_ids]
-        if any(s == ImplementationStatus.DEVIATION.value for s in statuses):
-            out[parent_id] = ImplementationStatus.DEVIATION.value
-        elif all(s == ImplementationStatus.HEALTHY.value for s in statuses):
-            out[parent_id] = ImplementationStatus.HEALTHY.value
-        elif all(s == ImplementationStatus.PLANNED.value for s in statuses):
-            out[parent_id] = ImplementationStatus.PLANNED.value
-        else:
-            out[parent_id] = ImplementationStatus.PARTIAL.value
-    return out
+    return _parent_aggregate_status_from_children(blueprint, entity_status)
 
 
 def root_status_from_children(blueprint: Dict[str, Any], entity_status: Dict[str, str]) -> str:
     """Root status from its direct children (same aggregation as parent_aggregate)."""
-    child_entities = top_layer_entities(blueprint)
-    child_ids = [e.get("id") for e in child_entities if e.get("id")]
-    if not child_ids:
-        return ImplementationStatus.PLANNED.value
-    statuses = [entity_status.get(eid, ImplementationStatus.PLANNED.value) for eid in child_ids]
-    if any(s == ImplementationStatus.DEVIATION.value for s in statuses):
-        return ImplementationStatus.DEVIATION.value
-    if all(s == ImplementationStatus.HEALTHY.value for s in statuses):
-        return ImplementationStatus.HEALTHY.value
-    if all(s == ImplementationStatus.PLANNED.value for s in statuses):
-        return ImplementationStatus.PLANNED.value
-    return ImplementationStatus.PARTIAL.value
+    return _root_status_from_children(blueprint, entity_status)
 
 
 def box(name: str, width: int) -> Tuple[str, str, str]:

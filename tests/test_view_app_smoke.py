@@ -21,8 +21,6 @@ def test_view_app_smoke():
         app.current_view = view_type
         content = app._get_current_view_content()
         assert content is not None
-        if isinstance(content, str):
-            assert len(content) >= 0
 
     app.current_view = ViewType.INSPECTOR
     for mode in InspectorMode:

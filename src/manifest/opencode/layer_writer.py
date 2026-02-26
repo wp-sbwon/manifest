@@ -300,7 +300,12 @@ def try_spawn_next_layer(
                 try:
                     p.wait(timeout=300)
                 except subprocess.TimeoutExpired:
-                    logger.warning("Layer writer process timed out (300s), continuing")
+                    logger.warning("Layer writer process timed out (300s), killing")
+                    try:
+                        p.kill()
+                        p.wait(timeout=5)
+                    except Exception:
+                        pass
             procs = []
         try:
             env = os.environ.copy()
@@ -320,5 +325,9 @@ def try_spawn_next_layer(
         try:
             p.wait(timeout=1)
         except subprocess.TimeoutExpired:
-            pass
+            try:
+                p.kill()
+                p.wait(timeout=5)
+            except Exception:
+                pass
     return spawned

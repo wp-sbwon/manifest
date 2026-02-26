@@ -44,4 +44,5 @@ def test_calculate_implementation_status_parent_completion_deviation_counts_full
     assert info["node_statuses"].get("a") == "deviation"
     assert info["node_statuses"].get("b") == "healthy"
     completions = info["parent_completions"]
-    assert completions.get("mod") == 100.0
+    # mod has two children: a (deviation), b (healthy). Deviations do not count as completion.
+    assert completions.get("mod") == 50.0

@@ -117,6 +117,20 @@ def build_info_hub_node_content(
     def _box(path: Tuple[str, ...]) -> str:
         return deviation_box(deviates_at(view_entity, path))
 
+    def _plan_actual_at(path: Tuple[str, ...]) -> Tuple[Any, Any]:
+        """From view_entity, get (plan, actual) at path; else (data_val, data_val) from data."""
+        cur: Any = view_entity
+        for key in path:
+            cur = (cur or {}).get(key) if isinstance(cur, dict) else None
+            if cur is None:
+                break
+        if isinstance(cur, dict) and "plan" in cur and "actual" in cur:
+            return cur.get("plan"), cur.get("actual")
+        cur = data
+        for key in path:
+            cur = (cur or {}).get(key) if isinstance(cur, dict) else None
+        return cur, cur
+
     def _spec_line(
         label: str,
         plan_val: Any,
@@ -179,16 +193,18 @@ def build_info_hub_node_content(
     spec_lines.append(f"  — {_cap('type')}: {format_for_display(blueprint.get('type'), 20)}{_box(('blueprint', 'type'))}")
     spec_lines.append(f"  — {_cap('topology')}: {topology_summary}{_box(('blueprint', 'topology'))}")
     spec_lines.append(f"{_cap('protocol')}")
-    ln, dev = _spec_line("input", protocol.get("input"), protocol.get("input"), ("protocol", "input"))
+    plan_in, actual_in = _plan_actual_at(("protocol", "input"))
+    ln, dev = _spec_line("input", plan_in, actual_in, ("protocol", "input"))
     spec_lines.append(f"  — {ln}{_box(('protocol', 'input'))}")
     any_spec_deviation = any_spec_deviation or dev
-    ln, dev = _spec_line("output", protocol.get("output"), protocol.get("output"), ("protocol", "output"))
+    plan_out, actual_out = _plan_actual_at(("protocol", "output"))
+    ln, dev = _spec_line("output", plan_out, actual_out, ("protocol", "output"))
     spec_lines.append(f"  — {ln}{_box(('protocol', 'output'))}")
     any_spec_deviation = any_spec_deviation or dev
     spec_lines.append(f"{_cap('profile')}")
     for key in ("language", "platform", "io_model", "state_model"):
-        pv = profile.get(key)
-        ln, dev = _spec_line(key, pv, pv, ("profile", key))
+        plan_v, actual_v = _plan_actual_at(("profile", key))
+        ln, dev = _spec_line(key, plan_v, actual_v, ("profile", key))
         spec_lines.append(f"  — {ln}{_box(('profile', key))}")
         any_spec_deviation = any_spec_deviation or dev
     spec_lines.append(f"{_cap('governance')}")

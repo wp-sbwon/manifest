@@ -20,6 +20,10 @@ from manifest.core.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Both sync and async function AST node types (AsyncFunctionDef exists in Python 3.5+).
+_FUNCTION_NODE_TYPES = (ast.FunctionDef, getattr(ast, "AsyncFunctionDef", ast.FunctionDef))
+_ENTITY_NODE_TYPES = (ast.ClassDef,) + _FUNCTION_NODE_TYPES
+
 
 @dataclass
 class Component:
@@ -221,7 +225,7 @@ class CodeExtractor:
                 attributes = []
 
                 for item in node.body:
-                    if isinstance(item, ast.FunctionDef):
+                    if isinstance(item, _FUNCTION_NODE_TYPES):
                         methods.append(item.name)
                     elif isinstance(item, ast.Assign):
                         # Class attributes
@@ -242,12 +246,12 @@ class CodeExtractor:
                 )
                 entities.append(entity)
 
-            elif isinstance(node, ast.FunctionDef):
-                # Check if it's a module-level function (not inside a class)
+            elif isinstance(node, _FUNCTION_NODE_TYPES):
+                # Exclude functions that are inside a class or inside another function (closure).
                 is_module_level = True
                 for parent in ast.walk(tree):
-                    if isinstance(parent, ast.ClassDef):
-                        if node in parent.body:
+                    if isinstance(parent, (ast.ClassDef,) + _FUNCTION_NODE_TYPES):
+                        if node in getattr(parent, "body", []):
                             is_module_level = False
                             break
 
@@ -448,7 +452,7 @@ class CodeExtractor:
         # Look for distance/cost tracking patterns in the entity's code
         entity_node = None
         for node in ast.walk(tree):
-            if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+            if isinstance(node, _ENTITY_NODE_TYPES):
                 if node.name == entity.name:
                     entity_node = node
                     break
@@ -476,7 +480,7 @@ class CodeExtractor:
         # Find the entity's AST node
         entity_node = None
         for node in ast.walk(tree):
-            if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+            if isinstance(node, _ENTITY_NODE_TYPES):
                 if node.name == entity.name:
                     entity_node = node
                     break
@@ -488,7 +492,7 @@ class CodeExtractor:
         if isinstance(entity_node, ast.ClassDef):
             has_new = False
             for item in entity_node.body:
-                if isinstance(item, ast.FunctionDef) and item.name == "__new__":
+                if isinstance(item, _FUNCTION_NODE_TYPES) and item.name == "__new__":
                     has_new = True
                     break
             if has_new:
@@ -497,7 +501,7 @@ class CodeExtractor:
             # Factory Pattern: create_* or make_* methods
             create_methods = []
             for item in entity_node.body:
-                if isinstance(item, ast.FunctionDef):
+                if isinstance(item, _FUNCTION_NODE_TYPES):
                     if item.name.startswith("create_") or item.name.startswith("make_"):
                         create_methods.append(item.name)
             if len(create_methods) >= 2:
@@ -515,7 +519,7 @@ class CodeExtractor:
             if has_abstract:
                 # Check for abstract methods
                 for item in entity_node.body:
-                    if isinstance(item, ast.FunctionDef):
+                    if isinstance(item, _FUNCTION_NODE_TYPES):
                         for decorator in item.decorator_list:
                             if isinstance(decorator, ast.Name):
                                 if "abstractmethod" in decorator.id.lower():
@@ -545,7 +549,7 @@ class CodeExtractor:
         # Find the entity's AST node
         entity_node = None
         for node in ast.walk(tree):
-            if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+            if isinstance(node, _ENTITY_NODE_TYPES):
                 if node.name == entity.name:
                     entity_node = node
                     break
@@ -597,7 +601,7 @@ class CodeExtractor:
         # Find the entity's AST node
         entity_node = None
         for node in ast.walk(tree):
-            if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+            if isinstance(node, _ENTITY_NODE_TYPES):
                 if node.name == entity.name:
                     entity_node = node
                     break
@@ -608,7 +612,7 @@ class CodeExtractor:
         # Get function names in this entity
         function_names = set()
         for node in ast.walk(entity_node):
-            if isinstance(node, ast.FunctionDef):
+            if isinstance(node, _FUNCTION_NODE_TYPES):
                 function_names.add(node.name)
 
         # Check for self-recursive calls
@@ -624,7 +628,7 @@ class CodeExtractor:
         """Infer side effects from entity AST so Inspector can show them."""
         entity_node = None
         for node in ast.walk(tree):
-            if isinstance(node, (ast.ClassDef, ast.FunctionDef)) and node.name == entity.name:
+            if isinstance(node, _ENTITY_NODE_TYPES) and node.name == entity.name:
                 entity_node = node
                 break
         if not entity_node:
@@ -656,7 +660,7 @@ class CodeExtractor:
     def _extract_protocol_and_profile(self, tree: ast.AST, entity: Component) -> None:
         entity_node = None
         for node in ast.walk(tree):
-            if isinstance(node, (ast.ClassDef, ast.FunctionDef)) and node.name == entity.name:
+            if isinstance(node, _ENTITY_NODE_TYPES) and node.name == entity.name:
                 entity_node = node
                 break
         if not entity_node:
@@ -664,15 +668,15 @@ class CodeExtractor:
         fn = entity_node
         if isinstance(entity_node, ast.ClassDef):
             for item in entity_node.body:
-                if isinstance(item, ast.FunctionDef) and item.name in ("__init__", "__new__"):
+                if isinstance(item, _FUNCTION_NODE_TYPES) and item.name in ("__init__", "__new__"):
                     fn = item
                     break
             else:
                 for item in entity_node.body:
-                    if isinstance(item, ast.FunctionDef):
+                    if isinstance(item, _FUNCTION_NODE_TYPES):
                         fn = item
                         break
-        if not isinstance(fn, ast.FunctionDef):
+        if not isinstance(fn, _FUNCTION_NODE_TYPES):
             return
         for dec in fn.decorator_list:
             if isinstance(dec, ast.Name):
@@ -687,12 +691,11 @@ class CodeExtractor:
         if fn.returns:
             t = ast.unparse(fn.returns) if hasattr(ast, "unparse") else ""
             entity.protocol_output.append({"name": "return", "type": t or ""})
-        if isinstance(fn, ast.FunctionDef):
-            async_fn = getattr(ast, "AsyncFunctionDef", None)
-            if async_fn and isinstance(fn, async_fn):
-                entity.io_model = "async"
-            elif any(isinstance(n, ast.Yield) for n in ast.walk(fn)):
-                entity.io_model = "generator"
+        async_fn = getattr(ast, "AsyncFunctionDef", None)
+        if async_fn and isinstance(fn, async_fn):
+            entity.io_model = "async"
+        elif isinstance(fn, ast.FunctionDef) and any(isinstance(n, ast.Yield) for n in ast.walk(fn)):
+            entity.io_model = "generator"
         for node in ast.walk(fn):
             if isinstance(node, ast.Assign):
                 for t in node.targets:
@@ -767,7 +770,7 @@ class CodeExtractor:
             entity["symbol"] = (comp.file or comp.module_path or "")[:500]
             entity["protocol"] = {"input": protocol_input, "output": protocol_output}
             entity["profile"] = {
-                "language": "python",
+                "language": ["python"],
                 "platform": "",
                 "io_model": getattr(comp, "io_model", "") or "",
                 "state_model": getattr(comp, "state_model", "") or "",

@@ -17,12 +17,28 @@ from manifest.core.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _language_to_list(ent_or_profile: Any) -> list:
+    """Normalize profile.language to list of strings. Accepts entity dict or profile dict."""
+    if not ent_or_profile or not isinstance(ent_or_profile, dict):
+        return []
+    prof = ent_or_profile.get("profile", ent_or_profile) if "profile" in ent_or_profile else ent_or_profile
+    lang = (prof or {}).get("language")
+    if lang is None or lang == "":
+        return []
+    if isinstance(lang, list):
+        return [x for x in lang if x]
+    return [lang]
+
+
 def _mechanical_from_extracted(ent: Dict[str, Any]) -> Dict[str, Any]:
     """Symbol, protocol, profile, dependencies, traits, topology_actual, preview from extracted entity."""
+    raw_profile = ent.get("profile") or {"language": "", "platform": "", "io_model": "", "state_model": ""}
+    lang_list = _language_to_list({"profile": raw_profile})
+    profile = {**raw_profile, "language": lang_list if lang_list else []}
     return {
         "symbol": ent.get("symbol") or "",
         "protocol": ent.get("protocol") or {"input": [], "output": []},
-        "profile": ent.get("profile") or {"language": "", "platform": "", "io_model": "", "state_model": ""},
+        "profile": profile,
         "dependencies": list(ent.get("dependencies") or []),
         "traits": list(ent.get("traits") or []),
         "topology_actual": ent.get("topology_actual") or {"type": "", "map": []},
@@ -192,6 +208,29 @@ def merge_design_and_extraction(
         root_entity["children"] = [e["id"] for e in rest]
         ordered = [root_entity] + rest
 
+    # Aggregate profile.language from children for every entity that has children (root and parents).
+    # Language is a list so a system can have multiple languages (e.g. frontend JS, backend Python).
+    by_id = {e.get("id"): e for e in ordered if e.get("id")}
+    for e in ordered:
+        child_ids = e.get("children") or []
+        if not child_ids:
+            continue
+        languages = set()
+        for cid in child_ids:
+            child = by_id.get(cid)
+            if child:
+                languages.update(_language_to_list(child))
+        if languages:
+            prof = dict(e.get("profile") or {})
+            prof["language"] = sorted(languages)
+            e["profile"] = prof
+
+    # Normalize every entity's profile.language to list (string or list accepted).
+    for e in ordered:
+        prof = dict(e.get("profile") or {})
+        prof["language"] = _language_to_list(e)
+        e["profile"] = prof
+
     return normalize_for_schema({
         "version": design_blueprint.get("version") or "1.0",
         "root_id": root_id,
@@ -209,4 +248,10 @@ def build_code_blueprint(
     from manifest.opencode.code_blueprint_enricher import enrich_code_blueprint
 
     code_draft = merge_design_and_extraction(design_blueprint, extracted_blueprint)
-    return enrich_code_blueprint(design_blueprint, code_draft, project_root, manifest_dir)
+    result = enrich_code_blueprint(design_blueprint, code_draft, project_root, manifest_dir)
+    # Enricher may return profile.language as string; normalize to list.
+    for e in result.get("entities") or []:
+        prof = dict(e.get("profile") or {})
+        prof["language"] = _language_to_list(e)
+        e["profile"] = prof
+    return result

@@ -7,7 +7,7 @@ from manifest.audit.blueprint.view_schema import build_view_schema
 from manifest.audit.blueprint.status_enums import ImplementationStatus
 from manifest.audit.entity_schema import PROJECT_ROOT_ID, top_layer_entities
 
-DEVIATION_COMPLETION_WEIGHT = 1.0
+DEVIATION_COMPLETION_WEIGHT = 0.0
 
 
 def calculate_implementation_status(
