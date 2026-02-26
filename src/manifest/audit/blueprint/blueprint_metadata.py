@@ -13,22 +13,6 @@ from manifest.io.json_io import read_json_or_default
 logger = get_logger(__name__)
 
 
-def _default_blueprint_with_metadata(
-    default_source: str = "llm_design",
-    default_ground_truth: bool = False,
-) -> Dict[str, Any]:
-    """Default blueprint dict with metadata fields set."""
-    return {
-        "version": "1.0",
-        "root_id": "",
-        "source": default_source,
-        "ground_truth": default_ground_truth,
-        "last_updated": datetime.now(timezone.utc).isoformat(),
-        "extraction_method": "llm_inference" if default_source.startswith("llm") else "ast_parsing",
-        "entities": [],
-    }
-
-
 def ensure_blueprint_metadata(blueprint: Dict[str, Any], source: str,
                               ground_truth: bool, extraction_method: str = None) -> Dict[str, Any]:
     """

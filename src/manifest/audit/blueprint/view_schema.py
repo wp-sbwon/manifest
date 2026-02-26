@@ -259,9 +259,6 @@ def write_view_schema(manifest_dir: Path, view_schema: Dict[str, Any]) -> bool:
         return False
 
 
-_EMPTY_VIEW_SCHEMA: Dict[str, Any] = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": []}
-
-
 def to_single_value(val: Any) -> Any:
     """Convert plan/actual/deviates pairs to a single value (plan)."""
     if isinstance(val, dict) and ("plan" in val or "actual" in val):

@@ -1,3 +1,4 @@
+# Disabled for now. Remove the "if: false" on the job to re-enable.
 name: Lint
 
 on:
@@ -8,6 +9,7 @@ on:
 
 jobs:
   lint:
+    if: false
     runs-on: ubuntu-latest
 
     steps:

@@ -144,31 +144,6 @@ def build_design_blueprint() -> Dict[str, Any]:
     })
 
 
-def _match_extracted_to_design_id(raw_entities: List[Dict[str, Any]], design_id: str) -> Optional[Dict[str, Any]]:
-    for ent in raw_entities:
-        eid = (ent.get("id") or "").strip()
-        name = (ent.get("narrative") or {}).get("role") or (ent.get("symbol") or "").strip()
-        if eid == PROJECT_ROOT_ID:
-            continue
-        eid_lower = eid.lower()
-        name_lower = name.lower()
-        if design_id == "cli" and ("cli.parser" in eid_lower or "parser" in name_lower):
-            return ent
-        if design_id == "arithmetic_engine":
-            if "engine" in eid_lower and "calculator" in eid_lower and "-add" not in eid and "-sub" not in eid and "-mul" not in eid:
-                return ent
-            continue
-        if design_id == "add" and (eid_lower.endswith("-add") or name_lower == "add"):
-            return ent
-        if design_id == "sub" and (eid_lower.endswith("-sub") or name_lower == "sub"):
-            return ent
-        if design_id == "mul" and (eid_lower.endswith("-mul") or name_lower == "mul"):
-            return ent
-        if design_id == "output" and ("output" in eid_lower or "formatter" in eid_lower or "format_result" in name_lower):
-            return ent
-    return None
-
-
 def _code_entity_overrides(eid: str, design_ent: Dict[str, Any]) -> Dict[str, Any]:
     """Overrides for code blueprint; output entity has different narrative (deviation)."""
     overrides: Dict[str, Any] = {}

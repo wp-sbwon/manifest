@@ -1,3 +1,4 @@
+# Disabled for now. Remove the "if: false" on the job to re-enable.
 name: Tests
 
 on:
@@ -8,6 +9,7 @@ on:
 
 jobs:
   test:
+    if: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:

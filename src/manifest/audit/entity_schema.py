@@ -76,10 +76,6 @@ class Validation:
 # ---------------------------------------------------------------------------
 
 
-def default_entities() -> List[Dict[str, Any]]:
-    return []
-
-
 def language_to_list(val: Any) -> List[str]:
     """Normalize profile.language to list of strings. Accepts raw value (string, list, or None)."""
     if val is None or val == "":
@@ -94,7 +90,7 @@ class BlueprintRoot:
     """Root shape for blueprint JSON."""
     version: str = "1.0"
     root_id: str = ""
-    entities: List[Dict[str, Any]] = field(default_factory=default_entities)
+    entities: List[Dict[str, Any]] = field(default_factory=list)
 
 
 PROJECT_ROOT_ID = "PROJECT_ROOT"
@@ -135,7 +131,7 @@ def top_layer_entities(blueprint: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [e for e in entities if (e.get("id") or "") in child_ids]
 
 
-def root_narrative(blueprint: Dict[str, Any]) -> Dict[str, str]:
+def _root_narrative(blueprint: Dict[str, Any]) -> Dict[str, str]:
     """Return root entity's narrative dict. Empty dict if no root."""
     root = get_root_entity(blueprint)
     if not root:
@@ -145,7 +141,7 @@ def root_narrative(blueprint: Dict[str, Any]) -> Dict[str, str]:
 
 def mission_from_blueprint(blueprint: Dict[str, Any], default: str = "") -> str:
     """Root mission text. Returns stripped mission or default."""
-    raw = (root_narrative(blueprint).get("mission") or "").strip()
+    raw = (_root_narrative(blueprint).get("mission") or "").strip()
     return raw if raw else (default or "")
 
 
