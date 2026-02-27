@@ -80,10 +80,8 @@ def _pair_deviates(plan_val: Any, actual_val: Any) -> Dict[str, Any]:
     return {"plan": p, "actual": a, "deviates": not _values_equal(p, a)}
 
 
-# Comparable paths for unified entity (top-level and nested)
+# Comparable paths for unified entity (mechanical contract only; narrative/governance not in strict diff)
 _ENTITY_COMPARE_PATHS: List[Tuple[str, ...]] = [
-    ("narrative", "role"),
-    ("narrative", "mission"),
     ("blueprint", "type"),
     ("blueprint", "topology"),
     ("protocol", "input"),
@@ -92,8 +90,6 @@ _ENTITY_COMPARE_PATHS: List[Tuple[str, ...]] = [
     ("profile", "platform"),
     ("profile", "io_model"),
     ("profile", "state_model"),
-    ("governance", "rules"),
-    ("governance", "assertions"),
     ("symbol",),
     ("dependencies",),
     ("traits",),

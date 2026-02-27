@@ -1,4 +1,4 @@
-"""Integration: run OpenCode agents (layer-writer, enricher) with default model and assert output shape.
+"""Integration: run OpenCode agents (layer-writer) with default model and assert output shape.
 
 Run when MANIFEST_TEST_AGENTS=1. Requires opencode on PATH and opencode.json at repo root; fails if missing.
 """
@@ -8,8 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity
-from manifest.audit.entity_validation import normalize_for_schema, validate_blueprint_data
+from manifest.audit.entity_schema import PROJECT_ROOT_ID
 from manifest.io.blueprint_io import save_blueprint
 from manifest.io.prd_io import save_prd
 from tests.blueprint_helpers import minimal_blueprint
@@ -61,36 +60,3 @@ def test_layer_writer_produces_valid_output(tmp_path: Path, monkeypatch: pytest.
         assert isinstance(c, dict), "each child must be a dict"
         assert "id" in c, "each child must have id"
         assert isinstance(c.get("id"), str), "id must be string"
-
-
-@pytest.mark.integration
-def test_enricher_produces_valid_blueprint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """With MANIFEST_TEST_AGENTS=1, enricher returns a valid blueprint with same root_id and entity ids as design."""
-    _require_agents_env()
-    shutil.copy2(OPENCODE_JSON, tmp_path / "opencode.json")
-    from manifest.opencode.code_blueprint_enricher import enrich_code_blueprint
-
-    design = minimal_blueprint(["a"])
-    design["entities"][1]["symbol"] = "a.py"
-    code_draft = normalize_for_schema(
-        {
-            "version": "1.0",
-            "root_id": PROJECT_ROOT_ID,
-            "entities": [
-                {**empty_entity(PROJECT_ROOT_ID), "children": ["a"], "symbol": "main"},
-                {**empty_entity("a"), "children": [], "symbol": "a.py"},
-            ],
-        }
-    )
-    manifest_dir = tmp_path / ".manifest"
-    manifest_dir.mkdir(parents=True, exist_ok=True)
-    timeout = min(int(os.environ.get("MANIFEST_ENRICH_TIMEOUT", "120")), 90)
-    monkeypatch.setenv("MANIFEST_ENRICH_TIMEOUT", str(timeout))
-    result = enrich_code_blueprint(design, code_draft, tmp_path, manifest_dir)
-    assert result.get("root_id") == design.get("root_id")
-    assert "entities" in result
-    design_ids = {e.get("id") for e in (design.get("entities") or []) if e.get("id")}
-    result_ids = {e.get("id") for e in (result.get("entities") or []) if e.get("id")}
-    assert design_ids == result_ids, "enricher must preserve design entity ids"
-    valid, errors = validate_blueprint_data(result)
-    assert valid, f"enricher output must pass blueprint validation: {errors}"

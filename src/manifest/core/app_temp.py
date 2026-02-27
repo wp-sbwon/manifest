@@ -1,4 +1,4 @@
-"""Application temp directory for pipeline artifacts (enrich inputs, etc.)."""
+"""Application temp directory for pipeline artifacts."""
 import os
 import tempfile
 from pathlib import Path

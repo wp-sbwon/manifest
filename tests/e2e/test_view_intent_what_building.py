@@ -38,11 +38,6 @@ def test_view_data_exposes_structure_and_plan_actual(tmp_path: Path) -> None:
     assert PROJECT_ROOT_ID in by_id
     assert "m1" in by_id
     for e in entities:
-        assert "narrative" in e
         assert "validation" in e
-        narrative = e.get("narrative") or {}
-        role_val = narrative.get("role")
-        if isinstance(role_val, dict):
-            assert "plan" in role_val and "actual" in role_val
-        else:
-            assert role_val is not None or e.get("id") == PROJECT_ROOT_ID
+        assert "status" in (e.get("validation") or {})
+        assert "protocol" in e or "symbol" in e

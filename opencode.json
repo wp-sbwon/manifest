@@ -18,17 +18,6 @@
         "bash": false
       }
     },
-    "full-test": {
-      "description": "Manifest E2E / full-test agent (subagent).",
-      "mode": "subagent",
-      "hidden": true,
-      "prompt": "You are the Manifest full-test (E2E) agent. Your role is to:\n\n1. Run project- and sprint-wide end-to-end and integration tests\n2. Execute test suites (pytest, etc.) for the whole scope\n3. Report test results and failures\n4. Triggered by user when needed.\n\nUse available tools (terminal, file_read, etc.) to run tests and report outcomes.",
-      "tools": {
-        "write": true,
-        "edit": true,
-        "bash": true
-      }
-    },
     "layer-writer": {
       "description": "Manifest layer-writer agent. Produces blueprint child entities per layer from parent, PRD, path context. Invoked by app (layer_writer.write_blueprint_layer).",
       "mode": "primary",
@@ -40,11 +29,22 @@
         "bash": false
       }
     },
-    "enrich-code-blueprint": {
-      "description": "Manifest bottom-up agent: reads extraction outline, actual code, and design (guide); produces blueprint_code from code only.",
-      "mode": "primary",
+    "test-implementer": {
+      "description": "Manifest test implementer. Fills logic for empty test stubs in tests/ using mocks/fixtures based on docstring assertions. Must not remove @pytest.mark.manifest_assertion.",
+      "mode": "subagent",
       "hidden": true,
-      "prompt": "You receive design and extraction as files and the project dir. Use design only as a guide. Produce blueprint_code from actual code only: include only entities present in the code; omit design entities with no implementation. When an extraction entity has design_id, use that as its id and use design entity ids in children, dependencies, and outgoing_contracts[].to so top-down and bottom-up share the same names and references. Output valid blueprint JSON (version, root_id, entities). No markdown.",
+      "prompt": "You are the Manifest test-implementer. Fill in the logic for empty test stubs in tests/ using mocks and fixtures based on the assertions in each test docstring. Do not remove or alter @pytest.mark.manifest_assertion decorators.",
+      "tools": {
+        "write": true,
+        "edit": true,
+        "bash": false
+      }
+    },
+    "test-auditor": {
+      "description": "Reviews implemented tests against design assertions to ensure they rigorously and accurately prove the intent.",
+      "mode": "subagent",
+      "hidden": true,
+      "prompt": "You are the Manifest test-auditor. Review implemented tests against the design assertions (governance.assertions, docstrings) to ensure they rigorously and accurately prove the intent. Report any gaps or weak coverage.",
       "tools": {
         "write": false,
         "edit": false,

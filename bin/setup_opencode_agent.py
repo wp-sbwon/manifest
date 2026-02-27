@@ -20,18 +20,8 @@ ARCHITECT_PROMPT = """You are the Manifest Architect agent. Your role is to:
 
 Flow: ideate → write_prd (prd.json) → create_blueprint_from_prd (blueprint_design.json). You have access to: read-only tools and architect tools (write_prd, write_architecture, create_blueprint_from_prd, ideate). Do not use task_management, worker_squad_spawn, edit, write, or bash."""
 
-FULL_TEST_PROMPT = """You are the Manifest full-test (E2E) agent. Your role is to:
-
-1. Run project- and sprint-wide end-to-end and integration tests
-2. Execute test suites (pytest, etc.) for the whole scope
-3. Report test results and failures
-4. Triggered by user when needed.
-
-Use available tools (terminal, file_read, etc.) to run tests and report outcomes."""
-
-
 def create_opencode_agent_config():
-    """Create or update opencode.json: architect default; full-test subagent."""
+    """Create or update opencode.json: architect default; test-implementer and test-auditor subagents."""
     project_root = Path.cwd()
     opencode_json = project_root / "opencode.json"
 
@@ -44,12 +34,19 @@ def create_opencode_agent_config():
             "prompt": ARCHITECT_PROMPT,
             "tools": {"write": False, "edit": False, "bash": False},
         },
-        "full-test": {
-            "description": "Manifest E2E / full-test agent (subagent).",
+        "test-implementer": {
+            "description": "Manifest test implementer. Fills logic for empty test stubs in tests/ using mocks/fixtures based on docstring assertions. Must not remove @pytest.mark.manifest_assertion.",
             "mode": "subagent",
             "hidden": True,
-            "prompt": FULL_TEST_PROMPT,
-            "tools": {"write": True, "edit": True, "bash": True},
+            "prompt": "You are the Manifest test-implementer. Fill in the logic for empty test stubs in tests/ using mocks and fixtures based on the assertions in each test docstring. Do not remove or alter @pytest.mark.manifest_assertion decorators.",
+            "tools": {"write": True, "edit": True, "bash": False},
+        },
+        "test-auditor": {
+            "description": "Reviews implemented tests against design assertions to ensure they rigorously and accurately prove the intent.",
+            "mode": "subagent",
+            "hidden": True,
+            "prompt": "You are the Manifest test-auditor. Review implemented tests against the design assertions (governance.assertions, docstrings) to ensure they rigorously and accurately prove the intent. Report any gaps or weak coverage.",
+            "tools": {"write": False, "edit": False, "bash": False},
         },
     }
 
@@ -76,7 +73,6 @@ def create_opencode_agent_config():
 
     print(f"✅ Updated OpenCode config: {opencode_json}")
     print(f"✅ Default agent: architect")
-    print(f"✅ full-test: subagent")
     return True
 
 

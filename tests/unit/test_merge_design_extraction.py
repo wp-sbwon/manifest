@@ -1,4 +1,4 @@
-"""Tests for design-to-extraction matching (merge_design_and_extraction)."""
+"""Tests for design-to-extraction merge (exact ID only)."""
 from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity
 from manifest.audit.code.code_blueprint_builder import merge_design_and_extraction
 
@@ -21,6 +21,7 @@ def _extracted(eid: str, name: str = "", symbol: str = ""):
 
 
 def test_exact_id_match():
+    """When extracted id equals design id, merge takes mechanical from extraction."""
     design = {"entities": [_design_ent("cli"), _design_ent(PROJECT_ROOT_ID)], "root_id": PROJECT_ROOT_ID}
     extracted = {"entities": [_extracted("cli", "CLI", "cli.parser")], "root_id": PROJECT_ROOT_ID}
     out = merge_design_and_extraction(design, extracted)
@@ -28,41 +29,38 @@ def test_exact_id_match():
     assert cli_ent["symbol"] == "cli.parser"
 
 
-def test_module_path_suffix_match():
+def test_no_match_design_entity_remains_planned():
+    """When extracted id differs from design id, design entity stays with no extraction data."""
     design = {"entities": [_design_ent("cli"), _design_ent(PROJECT_ROOT_ID)], "root_id": PROJECT_ROOT_ID}
     extracted = {
         "entities": [_extracted("comp-src.manifest.cli.parser-ParseArgs", "ParseArgs", "cli.parser")],
         "root_id": PROJECT_ROOT_ID,
     }
     out = merge_design_and_extraction(design, extracted)
+    code_ids = {e["id"] for e in out["entities"]}
+    assert "cli" in code_ids
+    assert "comp-src.manifest.cli.parser-ParseArgs" in code_ids
     cli_ent = next(e for e in out["entities"] if e["id"] == "cli")
-    assert "cli" in (cli_ent.get("symbol") or "") or "parser" in (cli_ent.get("symbol") or "")
+    assert (cli_ent.get("symbol") or "") == ""
 
 
-def test_normalized_partial_match():
-    design = {"entities": [_design_ent("arithmetic_engine"), _design_ent(PROJECT_ROOT_ID)], "root_id": PROJECT_ROOT_ID}
-    extracted = {
-        "entities": [_extracted("comp-engine.ArithmeticEngine", "ArithmeticEngine", "engine.calculator")],
-        "root_id": PROJECT_ROOT_ID,
-    }
-    out = merge_design_and_extraction(design, extracted)
-    eng_ent = next(e for e in out["entities"] if e["id"] == "arithmetic_engine")
-    assert eng_ent["symbol"] or eng_ent.get("preview") or "ArithmeticEngine" in str(eng_ent)
-
-
-def test_token_overlap():
+def test_extracted_without_design_id_appears_as_orphan():
+    """Extracted entities whose id is not in design are included as orphans."""
     design = {"entities": [_design_ent("add"), _design_ent(PROJECT_ROOT_ID)], "root_id": PROJECT_ROOT_ID}
     extracted = {
-        "entities": [_extracted("comp-engine.calculator-add", "add", "add")],
+        "entities": [_extracted("comp-engine.calculator-add", "add", "engine.calculator")],
         "root_id": PROJECT_ROOT_ID,
     }
     out = merge_design_and_extraction(design, extracted)
-    add_ent = next(e for e in out["entities"] if e["id"] == "add")
-    assert add_ent["symbol"] == "add" or add_ent.get("preview")
+    code_ids = {e["id"] for e in out["entities"]}
+    assert "add" in code_ids
+    assert "comp-engine.calculator-add" in code_ids
+    orphan = next(e for e in out["entities"] if e["id"] == "comp-engine.calculator-add")
+    assert orphan["symbol"] == "engine.calculator"
 
 
-def test_design_only_entity_omitted_from_code_blueprint():
-    """Code blueprint is code-first: design entities with no extraction match are not included."""
+def test_design_only_entity_included_as_planned():
+    """Design entities with no extraction match are included (planned)."""
     design = {"entities": [_design_ent("auth"), _design_ent(PROJECT_ROOT_ID)], "root_id": PROJECT_ROOT_ID}
     extracted = {
         "entities": [_extracted("comp-src.authentication.service-AuthenticationService", "AuthenticationService", "service.main")],
@@ -70,12 +68,13 @@ def test_design_only_entity_omitted_from_code_blueprint():
     }
     out = merge_design_and_extraction(design, extracted)
     code_ids = {e["id"] for e in out["entities"]}
-    assert "auth" not in code_ids
+    assert "auth" in code_ids
+    assert "comp-src.authentication.service-AuthenticationService" in code_ids
     assert PROJECT_ROOT_ID in code_ids
 
 
-def test_planned_entity_mul_omitted_when_not_in_extraction():
-    """Design has add, sub, mul; extraction has add and sub only. Code blueprint must not contain mul."""
+def test_planned_entity_included_when_not_in_extraction():
+    """Design entities (e.g. mul) with no extraction match are included as planned."""
     design = {
         "entities": [
             _design_ent(PROJECT_ROOT_ID, "", ["add", "sub", "mul"]),
@@ -94,6 +93,8 @@ def test_planned_entity_mul_omitted_when_not_in_extraction():
     }
     out = merge_design_and_extraction(design, extracted)
     code_ids = {e["id"] for e in out["entities"]}
-    assert "mul" not in code_ids
+    assert "mul" in code_ids
     assert "add" in code_ids
     assert "sub" in code_ids
+    assert "comp-engine.calculator-add" in code_ids
+    assert "comp-engine.calculator-sub" in code_ids

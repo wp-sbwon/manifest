@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Bottom-up pipeline: CodeExtractor produces an outline; LLM agent reads outline + actual code + design (guide) and produces blueprint_code.json, then blueprint_view.json and health_metrics.
-Run on commit (GitManager or post-commit hook). Requires blueprint_design.json and opencode on PATH.
+Bottom-up pipeline: CodeExtractor produces an outline; deterministic merge with design produces blueprint_code.json, then blueprint_view.json and health_metrics.
+Run on commit (GitManager or post-commit hook). Requires blueprint_design.json.
 """
 import argparse
 import sys
@@ -45,13 +45,6 @@ def main(project_root: Path, manifest_dir: Path) -> int:
     manifest_dir.mkdir(parents=True, exist_ok=True)
     try:
         updated = _refresh_blueprint_code(project_root, manifest_dir)
-    except RuntimeError as e:
-        print(
-            f"Error: OpenCode enrichment failed. {e}\n"
-            "Check that opencode is installed and on PATH, and that the project parses correctly.",
-            file=sys.stderr,
-        )
-        return 1
     except Exception as e:
         print(f"Error: bottom-up extraction failed: {e}", file=sys.stderr)
         return 1
@@ -71,7 +64,7 @@ def main(project_root: Path, manifest_dir: Path) -> int:
 
 
 def main_sync() -> int:
-    parser = argparse.ArgumentParser(description="Run bottom-up: CodeExtractor outline + agent -> blueprint_code.")
+    parser = argparse.ArgumentParser(description="Run bottom-up: CodeExtractor + merge -> blueprint_code.")
     parser.add_argument("--project-root", type=Path, default=None, help="Project root (default: cwd)")
     parser.add_argument("--manifest-dir", type=Path, default=None, help="Manifest dir (default: project_root/.manifest)")
     args = parser.parse_args()

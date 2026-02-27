@@ -32,3 +32,10 @@ repos:
         always_run: false
         stages: [pre-push]  # Only run on push
         verbose: true
+      - id: verify-test-bindings
+        name: Verify test_* functions have @pytest.mark.manifest_assertion in stub files
+        entry: bash -c 'source venv/bin/activate 2>/dev/null || true; python scripts/verify_test_bindings.py'
+        language: system
+        pass_filenames: false
+        always_run: false
+        stages: [pre-push]

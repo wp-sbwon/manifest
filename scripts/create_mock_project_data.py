@@ -6,6 +6,8 @@ Usage: PYTHONPATH=src python scripts/create_mock_project_data.py [manifest_dir_o
   manifest_dir_or_project_name: path to .manifest dir, or project name for tmp/<name>/.manifest.
 Default: tmp/calculator/.manifest. Project root = manifest_dir.parent.
 """
+import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional
@@ -46,6 +48,7 @@ def _make_entity(
     children: Optional[List[str]] = None,
     contracts: Optional[List[Dict[str, Any]]] = None,
     rules: Optional[List[str]] = None,
+    assertions: Optional[List[str]] = None,
     protocol_input: Optional[List[Dict[str, Any]]] = None,
     protocol_output: Optional[List[Dict[str, Any]]] = None,
     traits: Optional[List[str]] = None,
@@ -56,7 +59,7 @@ def _make_entity(
     ent["narrative"] = {"role": role, "mission": mission}
     ent["blueprint"] = {"type": "FLOW", "topology": {}}
     ent["profile"] = {"language": ["python"], "platform": "cli", "io_model": "", "state_model": ""}
-    ent["governance"] = {"rules": rules or [], "assertions": []}
+    ent["governance"] = {"rules": rules or [], "assertions": assertions or []}
     ent["protocol"] = {"input": protocol_input or [], "output": protocol_output or []}
     ent["symbol"] = symbol
     ent["preview"] = preview or f"Module: {symbol}"
@@ -76,6 +79,7 @@ def build_design_blueprint() -> Dict[str, Any]:
         contracts=[{"to": "arithmetic_engine", "type": "flow", "file": "cli/parser.py", "symbols": ["parse_args"]}],
         protocol_input=[{"name": "argv", "type": "list"}],
         protocol_output=[{"name": "op", "type": "str"}, {"name": "a", "type": "float"}, {"name": "b", "type": "float"}],
+        assertions=["CLI parses argv into op, a, b."],
     )
     add_ent = _make_entity(
         "add",
@@ -147,7 +151,7 @@ def build_design_blueprint() -> Dict[str, Any]:
 def _build_code_blueprint_from_design_and_extraction(
     project_root: Path, manifest_dir: Path, design_blueprint: Dict[str, Any]
 ) -> Dict[str, Any]:
-    """Run extraction, then build blueprint_code via agent (reads extraction outline + actual code + design as guide)."""
+    """Run extraction, then build blueprint_code via deterministic merge (exact ID)."""
     from manifest.audit.code.code_blueprint_builder import build_code_blueprint
     from manifest.audit.code.code_extractor import CodeExtractor
 
@@ -157,7 +161,25 @@ def _build_code_blueprint_from_design_and_extraction(
     code["source"] = "code_extraction"
     code["ground_truth"] = True
     code["extraction_method"] = "ast_parsing"
-    return normalize_for_schema(code)
+    code = normalize_for_schema(code)
+    entities = code.get("entities") or []
+    orphan = dict(empty_entity("comp-legacy-stub"))
+    orphan["id"] = "comp-legacy-stub"
+    orphan["symbol"] = "legacy/stub.py"
+    orphan["children"] = []
+    orphan["dependencies"] = []
+    orphan["outgoing_contracts"] = []
+    entities.append(orphan)
+    root_ent = next((e for e in entities if (e.get("id") or "") == PROJECT_ROOT_ID), None)
+    if root_ent is not None:
+        root_ent["children"] = list(root_ent.get("children") or []) + ["comp-legacy-stub"]
+    for e in entities:
+        if (e.get("id") or "") == "cli":
+            proto = e.get("protocol") or {}
+            e["protocol"] = {"input": [{"name": "argv_list", "type": "list"}], "output": proto.get("output", [])}
+            break
+    code["entities"] = entities
+    return code
 
 
 def main() -> int:
@@ -197,6 +219,23 @@ def main() -> int:
 
     if "calculator" in str(manifest_dir):
         _write_calculator_state(manifest_dir)
+
+    tests_dir = project_root / "tests"
+    try:
+        r = subprocess.run(
+            [sys.executable, str(REPO / "bin" / "generate_test_stubs.py"), "--manifest-dir", str(manifest_dir), "--tests-dir", str(tests_dir)],
+            cwd=str(REPO),
+            env={**os.environ, "PYTHONPATH": str(REPO / "src")},
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if r.returncode == 0:
+            print(f"Wrote test stubs under {tests_dir}")
+        elif r.stderr:
+            print(f"Warning: generate_test_stubs: {r.stderr.strip()}", file=sys.stderr)
+    except Exception as e:
+        print(f"Warning: failed to generate test stubs: {e}", file=sys.stderr)
 
     print("Mock project data ready. Run View with this manifest dir to see Diagram and Health.")
     return 0

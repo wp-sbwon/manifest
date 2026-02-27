@@ -4,16 +4,16 @@
 
 ## Intent
 
-- **Blueprint-based alignment:** Design and code use the same entity shape (`id`, `children`, `dependencies`, `narrative`, `blueprint`, `protocol`, `profile`, `governance`, `symbol`, `traits`, `topology_actual`, `preview`, `outgoing_contracts`). Top-down agents write `blueprint_design.json`; bottom-up: CodeExtractor produces an outline, then the LLM agent reads that outline, the actual code, and design (guide only) and produces `blueprint_code.json`. The view builds `blueprint_view.json` from both (plan vs actual, per-entity status and deviations).
+- **Blueprint-based alignment:** Design and code use the same entity shape (`id`, `children`, `dependencies`, `narrative`, `blueprint`, `protocol`, `profile`, `governance`, `symbol`, `traits`, `topology_actual`, `preview`, `outgoing_contracts`). Top-down agents write `blueprint_design.json`; bottom-up: CodeExtractor produces an outline, then a deterministic merge maps extraction to design by symbol and combines design (narrative, governance) with extraction (symbol, protocol, dependencies) to produce `blueprint_code.json`. The view builds `blueprint_view.json` from both (plan vs actual, per-entity status and deviations).
 - **Single surface:** The Manifest View TUI shows diagram, files, timeline, mission, and inspector. All data comes from `.manifest/`. Chat, terminal, and LLM execution are provided by **OpenCode**; the View is visualization-only and does not execute tools.
-- **Bottom-up on commit:** When a commit is made (via the app’s GitManager or an optional git post-commit hook), the pipeline runs `bin/run_bottom_up_docs.py`: CodeExtractor produces an outline; the LLM agent reads that outline, the actual code, and blueprint_design (guide only) and produces `blueprint_code.json`, then view build and health metrics. The View refreshes when `.manifest` files change.
+- **Bottom-up on commit:** When a commit is made (via the app’s GitManager or an optional git post-commit hook), the pipeline runs `bin/run_bottom_up_docs.py`: CodeExtractor produces an outline; a deterministic merge with blueprint_design produces `blueprint_code.json`, then view build and health metrics. The View refreshes when `.manifest` files change.
 
 ## Implementation
 
 - **Launcher** (`python -m manifest`): Ensures OpenCode is on PATH; starts the Manifest View (TUI) in a separate window/process, then execs OpenCode for the project directory. When running from the manifest repo with `MANIFEST_DEV=1`, uses `tmp/<name>` as project dir; default name is `calculator` (override with `MANIFEST_DEV_PROJECT`).
 - **View** (`manifest.view.app`): Textual TUI. Reads `blueprint_design.json`, `blueprint_code.json`, `blueprint_view.json`, `state.json`, and related files from `.manifest/`. Renders diagram (with status), files, timeline, mission; inspector shows selected node and plan vs code. Status (Planned / Healthy / Partial / Deviation) comes from the blueprint view (design vs code). A file watcher (watchdog) refreshes when `.manifest` files change.
 - **Audit:** Entity schema and validation (`audit/entity_schema.py`, `entity_validation.py`); blueprint load, compare, sync (`audit/blueprint/`); code extraction and code blueprint (`audit/code/`); CodeWatcher and `bin/run_bottom_up_docs.py` for bottom-up. GitManager calls the bottom-up script after `create_commit()`.
-- **OpenCode:** Required. Used for chat, terminal, and agent execution. The bottom-up agent reads extraction outline, actual code, and design (guide only) and produces the code blueprint from the code.
+- **OpenCode:** Required. Used for chat, terminal, and agent execution. Bottom-up uses CodeExtractor and deterministic merge only; no agent for blueprint_code.
 
 ## Documentation
 
@@ -63,7 +63,7 @@ manifest/
 │   ├── view/                # TUI: app, diagram, entity_model, file_watcher
 │   ├── audit/               # Entity schema, blueprint load/compare/sync, code extraction, monitoring
 │   ├── core/                # State, git, paths, logger, constants
-│   ├── opencode/            # Architect, code_blueprint_enricher
+│   ├── opencode/            # Architect, layer_writer
 │   └── io/                  # Blueprint I/O
 ├── tests/
 ├── docs/

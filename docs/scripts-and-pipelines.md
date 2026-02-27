@@ -10,9 +10,9 @@ How data in `.manifest/` is created and refreshed. The view app only reads; it d
 
 **When it runs:** On commit. GitManager runs the script after `create_commit()`. For commits made with `git commit` in the terminal, install the post-commit hook so the script runs there too (see README Git hooks).
 
-- **Input:** Project root, manifest dir. Requires `blueprint_design.json` and `opencode` on PATH.
-- **Steps:** CodeExtractor produces an outline of the code; the LLM agent reads that outline, the actual code, and blueprint_design (guide only) and produces `blueprint_code.json`. Then the pipeline builds and writes `blueprint_view.json` (plan/actual + deviates) and `state.json` (health_metrics).
-- **Principle:** blueprint_code is based on actual code only; design is a guide. Entities not present in the code do not appear in blueprint_code.
+- **Input:** Project root, manifest dir. Requires `blueprint_design.json`.
+- **Steps:** CodeExtractor produces an outline of the code; a deterministic merge with design (exact ID, symbol-based mapping) produces `blueprint_code.json`. Then the pipeline builds and writes `blueprint_view.json` (plan/actual + deviates) and `state.json` (health_metrics).
+- **Principle:** blueprint_code combines design (narrative, governance) with extraction (symbol, protocol, dependencies). Design-only entities stay as planned; extraction-only entities appear as orphans.
 
 ```bash
 python bin/run_bottom_up_docs.py --project-root <project> --manifest-dir <project>/.manifest
@@ -41,9 +41,9 @@ Mock projects live under `tmp/<name>/` (e.g. `tmp/calculator/`). The **calculato
 - **Writes:** `tmp/<name>/.manifest/blueprint_design.json`, `blueprint_code.json`, `blueprint_view.json`, plus `prd.json`, `tasks.json`, `state.json`. Default name is `calculator`.
 - **Usage:** From repo root: `PYTHONPATH=src python scripts/create_mock_project_data.py [name_or_path]`. Omit for `tmp/calculator/.manifest`; pass a name (e.g. `myproject`) for `tmp/myproject/.manifest`; or pass a path to another `.manifest` dir.
 
-**How the mock code blueprint is built:** The script runs CodeExtractor, then `build_code_blueprint` (the same agent used by the bottom-up pipeline). The agent reads the extraction outline, the actual code, and blueprint_design (guide only) and produces blueprint_code. Requires `opencode` on PATH. Run the script to refresh `tmp/<name>/.manifest` JSON files.
+**How the mock code blueprint is built:** The script runs CodeExtractor, then `build_code_blueprint` (deterministic merge with design, same as the bottom-up pipeline). Merge maps extraction to design by symbol and combines design (narrative, governance) with extraction (mechanical fields). Run the script to refresh `tmp/<name>/.manifest` JSON files and stub tests.
 
-**Planned vs done:** Entities present only in design (not in the code) do not appear in blueprint_code and show as **planned** in the view; entities in the code show as **healthy** or **deviation** per comparison.
+**Planned vs done:** Entities present only in design (no extraction match) appear in blueprint_code and show as **planned**; entities in the code show as **healthy** or **deviation** per contract comparison; code-only entities show as **orphaned**.
 
 **Refresh mock data:**
 
