@@ -16,6 +16,6 @@ The project has **depth**: root → runner → [greeter, formatter]. It exercise
 
 **Golden file:** `bottom_up_expected.json`
 
-100% accurate expected output for running the bottom-up pipeline (CodeExtractor + merge with the design that has this tree and runner’s outgoing_contracts) on `bottom_up_project/`. Paths use the placeholder `<PROJECT_ROOT>`.
+100% accurate expected output for running the bottom-up pipeline (CodeExtractor outline + agent (design as guide) that has this tree and runner’s outgoing_contracts) on `bottom_up_project/`. Paths use the placeholder `<PROJECT_ROOT>`.
 
 The test runs the actual bottom-up pipeline and asserts the output matches this file. If they differ, the code is wrong and must be fixed to match the spec.

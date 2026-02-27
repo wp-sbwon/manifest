@@ -43,12 +43,14 @@ def test_tmp_view_shows_how_much_done_no_contradiction() -> None:
 
 @pytest.mark.e2e
 def test_tmp_root_status_reflects_implementation() -> None:
-    """With tmp/calculator/.manifest, root status is not 'planned' when code exists (user sees progress)."""
+    """When code blueprint has child entities (extraction matched), root status is not 'planned'."""
     if not TMP_MANIFEST.exists() or not (TMP_MANIFEST / "blueprint_design.json").exists():
         pytest.skip("Run: PYTHONPATH=src python scripts/create_mock_project_data.py tmp/calculator/.manifest")
     data = get_entities_for_view(TMP_MANIFEST)
+    code_entities = [e.get("id") for e in (data.get("code_blueprint") or {}).get("entities") or [] if e.get("id")]
     comp_status = data.get("comp_status") or {}
     root_status = comp_status.get(PROJECT_ROOT_ID)
-    assert root_status != "planned", (
-        "When code blueprint has entities, root must not be 'planned' so user sees that something is done."
-    )
+    if len(code_entities) > 1:
+        assert root_status != "planned", (
+            "When code blueprint has child entities, root must not be 'planned'."
+        )

@@ -144,64 +144,20 @@ def build_design_blueprint() -> Dict[str, Any]:
     })
 
 
-def _code_entity_overrides(eid: str, design_ent: Dict[str, Any]) -> Dict[str, Any]:
-    """Overrides for code blueprint; output entity has different narrative (deviation)."""
-    overrides: Dict[str, Any] = {}
-    if eid == PROJECT_ROOT_ID:
-        overrides["narrative"] = {"role": "Calculator", "mission": "CLI calculator: parse args → compute → format → print."}
-        overrides["protocol"] = {"input": [{"name": "argv", "type": "list"}], "output": [{"name": "stdout", "type": "string"}]}
-        overrides["governance"] = {"rules": ["Stateless flow.", "No I/O in arithmetic engine."], "assertions": []}
-        return overrides
-    if eid == "output":
-        overrides["narrative"] = {"role": "Output", "mission": "Format numeric result for console."}
-        overrides["protocol"] = {"input": [{"name": "value", "type": "float"}], "output": [{"name": "formatted", "type": "string"}]}
-        return overrides
-    design_narrative = design_ent.get("narrative") or {}
-    design_protocol = design_ent.get("protocol") or {}
-    design_governance = design_ent.get("governance") or {}
-    overrides["narrative"] = {"role": design_narrative.get("role", ""), "mission": design_narrative.get("mission", "")}
-    overrides["protocol"] = dict(design_protocol)
-    overrides["governance"] = dict(design_governance)
-    return overrides
-
-
-def build_code_blueprint_from_extraction(project_root: Path, design_blueprint: Dict[str, Any]) -> Dict[str, Any]:
-    """Run CodeExtractor; merge with design ids/structure; unified entity schema."""
-    from manifest.audit.code.code_blueprint_builder import merge_design_and_extraction
-
+def _build_code_blueprint_from_design_and_extraction(
+    project_root: Path, manifest_dir: Path, design_blueprint: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Run extraction, then build blueprint_code via agent (reads extraction outline + actual code + design as guide)."""
+    from manifest.audit.code.code_blueprint_builder import build_code_blueprint
     from manifest.audit.code.code_extractor import CodeExtractor
 
     extractor = CodeExtractor(project_root)
-    raw = extractor.extract_project_structure(project_root)
-    code_draft = merge_design_and_extraction(design_blueprint, raw)
-    design_entities = {e.get("id"): e for e in (design_blueprint.get("entities") or []) if e.get("id")}
-    implemented_ids = {PROJECT_ROOT_ID, "cli", "arithmetic_engine", "add", "sub", "output"}
-    code_entities = list(code_draft.get("entities") or [])
-    for ent in code_entities:
-        eid = ent.get("id")
-        if eid not in implemented_ids:
-            continue
-        design_ent = design_entities.get(eid) or {}
-        overrides = _code_entity_overrides(eid, design_ent)
-        for k, v in overrides.items():
-            ent[k] = v
-        if eid != PROJECT_ROOT_ID and eid == "output":
-            continue
-        if eid != "output":
-            ent["preview"] = (design_ent.get("preview") or ent.get("preview") or "")
-            ent["protocol"] = dict(design_ent.get("protocol") or ent.get("protocol") or {})
-            ent["traits"] = list(design_ent.get("traits") if (design_ent.get("traits") or []) else (ent.get("traits") or []))
-            ent["dependencies"] = list(design_ent.get("dependencies") if (design_ent.get("dependencies") or []) else (ent.get("dependencies") or []))
-            ent["symbol"] = (design_ent.get("symbol") or ent.get("symbol") or "")
-
-    return normalize_for_schema({
-        "version": "1.0",
-        "root_id": PROJECT_ROOT_ID,
-        "entities": code_entities,
-        "source": "code_extraction",
-        "ground_truth": True,
-        "extraction_method": "ast_parsing",
-    })
+    extracted = extractor.extract_project_structure(project_root)
+    code = build_code_blueprint(project_root, manifest_dir, design_blueprint, extracted)
+    code["source"] = "code_extraction"
+    code["ground_truth"] = True
+    code["extraction_method"] = "ast_parsing"
+    return normalize_for_schema(code)
 
 
 def main() -> int:
@@ -226,15 +182,7 @@ def main() -> int:
         return 1
     print(f"Wrote {manifest_dir / 'blueprint_design.json'}")
 
-    try:
-        code = build_code_blueprint_from_extraction(project_root, design)
-    except Exception as e:
-        code = normalize_for_schema({
-            "version": "1.0",
-            "root_id": PROJECT_ROOT_ID,
-            "entities": [dict(empty_entity(PROJECT_ROOT_ID))],
-        })
-        print(f"Extraction failed ({e}), wrote minimal blueprint_code.json", file=sys.stderr)
+    code = _build_code_blueprint_from_design_and_extraction(project_root, manifest_dir, design)
     if not save_code_blueprint(manifest_dir, code):
         print("Failed to write blueprint_code.json", file=sys.stderr)
         return 1

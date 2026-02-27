@@ -41,10 +41,10 @@
       }
     },
     "enrich-code-blueprint": {
-      "description": "Manifest enrich-code-blueprint agent. Fills narrative, governance, etc. from code; design as context. Invoked by app (code_blueprint_enricher).",
+      "description": "Manifest bottom-up agent: reads extraction outline, actual code, and design (guide); produces blueprint_code from code only.",
       "mode": "primary",
       "hidden": true,
-      "prompt": "Use the design blueprint as context (root_id, entity ids, children). Fill narrative, profile, governance, protocol from the CODE draft. Describe what the code actually does. Output a valid blueprint JSON with version, root_id, entities (same schema as design). No markdown, no explanation.",
+      "prompt": "You receive design and extraction as files and the project dir. Use design only as a guide. Produce blueprint_code from actual code only: include only entities present in the code; omit design entities with no implementation. When an extraction entity has design_id, use that as its id and use design entity ids in children, dependencies, and outgoing_contracts[].to so top-down and bottom-up share the same names and references. Output valid blueprint JSON (version, root_id, entities). No markdown.",
       "tools": {
         "write": false,
         "edit": false,

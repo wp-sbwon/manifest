@@ -1,9 +1,10 @@
-"""Unit: bottom-up pipeline final output (blueprint_code) matches golden.
+"""Unit: bottom-up pipeline output (blueprint_code) matches golden.
 
-Runs the full process that produces blueprint_code: extract → merge → enricher.
-Asserts structure and code-derived fields match the golden; does not require
-exact model output (narrative, preview, governance) so the test stays robust."""
+Runs extract then build_code_blueprint (agent reads outline + code + design).
+Asserts structure and code-derived fields match the golden.
+Requires MANIFEST_TEST_AGENTS=1 (calls opencode); skipped in default CI."""
 import json
+import os
 import shutil
 from pathlib import Path
 from typing import Any, Dict
@@ -15,7 +16,7 @@ from manifest.audit.code.code_extractor import CodeExtractor
 from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity
 from manifest.audit.entity_validation import normalize_for_schema, validate_blueprint_data
 
-# Keys we compare: structure + code-derived (extraction/enricher from code). Omit narrative/preview/governance text.
+# Keys we compare: structure + code-derived from agent output. Omit narrative/preview/governance text.
 _STRUCTURE_KEYS = ("id", "children", "symbol", "dependencies", "outgoing_contracts", "protocol", "profile", "traits")
 
 
@@ -73,7 +74,9 @@ def _blueprint_structure_subset(blueprint: Dict[str, Any]) -> Dict[str, Any]:
 
 @pytest.mark.unit
 def test_bottomup_final_output_matches_golden(tmp_path: Path) -> None:
-    """Full bottom-up pipeline (extract → merge → enricher) produces blueprint_code that matches golden."""
+    """Full bottom-up pipeline (extract → agent) produces blueprint_code that matches golden."""
+    if os.environ.get("MANIFEST_TEST_AGENTS") != "1":
+        pytest.skip("Set MANIFEST_TEST_AGENTS=1 to run bottom-up agent tests.")
     if not BOTTOM_UP_FIXTURE_SOURCE.exists():
         pytest.skip("Fixture missing: tests/fixtures/bottom_up_project")
     if not BOTTOM_UP_EXPECTED_JSON.exists():
@@ -107,6 +110,8 @@ def test_bottomup_final_output_matches_golden(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_bottomup_final_output_valid_schema(tmp_path: Path) -> None:
     """Full bottom-up pipeline produces valid blueprint_code (schema, referential integrity)."""
+    if os.environ.get("MANIFEST_TEST_AGENTS") != "1":
+        pytest.skip("Set MANIFEST_TEST_AGENTS=1 to run bottom-up agent tests.")
     if not BOTTOM_UP_FIXTURE_SOURCE.exists():
         pytest.skip("Fixture missing: tests/fixtures/bottom_up_project")
 

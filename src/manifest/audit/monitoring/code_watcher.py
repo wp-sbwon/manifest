@@ -1,5 +1,5 @@
 """
-Update blueprint_code.json from code (extraction + opencode enricher).
+Update blueprint_code.json from code: CodeExtractor outline + LLM agent (reads outline, actual code, design as guide).
 """
 from pathlib import Path
 from typing import Optional
@@ -18,7 +18,7 @@ CODE_EXTENSIONS = (".py",)
 
 
 class CodeWatcher:
-    """Update blueprint_code.json from code via extraction and opencode enricher."""
+    """Update blueprint_code.json from code via CodeExtractor and the bottom-up agent."""
 
     def __init__(
         self,

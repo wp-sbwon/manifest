@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 @dataclass
 class ProtocolItem:
-    """Single input or output in protocol; name/type for mechanical check."""
+    """Single input or output in protocol; name/type for type check."""
     name: str = ""
     type: str = ""
     req: bool = False

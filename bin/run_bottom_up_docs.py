@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Bottom-up pipeline: CodeExtractor + opencode enricher → blueprint_code.json, blueprint_view.json, health_metrics.
+Bottom-up pipeline: CodeExtractor produces an outline; LLM agent reads outline + actual code + design (guide) and produces blueprint_code.json, then blueprint_view.json and health_metrics.
 Run on commit (GitManager or post-commit hook). Requires blueprint_design.json and opencode on PATH.
 """
 import argparse
@@ -71,7 +71,7 @@ def main(project_root: Path, manifest_dir: Path) -> int:
 
 
 def main_sync() -> int:
-    parser = argparse.ArgumentParser(description="Run bottom-up: extraction + opencode enricher -> blueprint_code.")
+    parser = argparse.ArgumentParser(description="Run bottom-up: CodeExtractor outline + agent -> blueprint_code.")
     parser.add_argument("--project-root", type=Path, default=None, help="Project root (default: cwd)")
     parser.add_argument("--manifest-dir", type=Path, default=None, help="Manifest dir (default: project_root/.manifest)")
     args = parser.parse_args()

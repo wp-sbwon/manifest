@@ -109,3 +109,26 @@ def test_load_view_schema_missing_returns_empty_structure(tmp_path: Path) -> Non
 def test_to_single_value() -> None:
     """to_single_value extracts plan from view pairs."""
     assert to_single_value({"plan": "a", "actual": "b", "deviates": True}) == "a"
+
+
+@pytest.mark.unit
+def test_design_only_entity_has_status_planned() -> None:
+    """When code blueprint omits an entity (code-first), view schema gives that entity status 'planned'."""
+    root_d = dict(empty_entity(PROJECT_ROOT_ID))
+    root_d["children"] = ["cli", "mul"]
+    root_d["narrative"] = {"role": "App", "mission": "App."}
+    cli_d = dict(empty_entity("cli"))
+    cli_d["narrative"] = {"role": "CLI", "mission": "Parse."}
+    mul_d = dict(empty_entity("mul"))
+    mul_d["narrative"] = {"role": "Mul", "mission": "Return a * b."}
+    design = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [root_d, cli_d, mul_d]}
+    root_c = dict(empty_entity(PROJECT_ROOT_ID))
+    root_c["children"] = ["cli", "mul"]
+    root_c["symbol"] = "main"
+    cli_c = dict(empty_entity("cli"))
+    cli_c["symbol"] = "cli.parser"
+    code = {"version": "1.0", "root_id": PROJECT_ROOT_ID, "entities": [root_c, cli_c]}
+    view = build_view_schema(design, code)
+    by_id = {e["id"]: e for e in view.get("entities") or []}
+    assert by_id["mul"]["validation"]["status"] == "planned"
+    assert by_id["cli"]["validation"]["status"] in ("healthy", "deviation")

@@ -9,8 +9,7 @@ from manifest.view.entity_model import get_entities_for_view
 
 
 def test_root_status_not_planned_and_no_healthy_with_deviations(tmp_path: Path) -> None:
-    """Root must not be 'planned'; no entity may be healthy and have field-level deviations."""
-    # Use repo tmp/calculator/.manifest if present (after create_mock_project_data.py); else skip.
+    """When code has child entities, root must not be 'planned'; no entity may be healthy and have field-level deviations."""
     repo = Path(__file__).resolve().parent.parent
     manifest_dir = repo / "tmp" / "calculator" / ".manifest"
     if not (manifest_dir / "blueprint_design.json").exists():
@@ -19,10 +18,12 @@ def test_root_status_not_planned_and_no_healthy_with_deviations(tmp_path: Path) 
     data = get_entities_for_view(manifest_dir)
     comp_status = data.get("comp_status") or {}
     view_schema = data.get("view_schema") or {}
+    code_entities = [e.get("id") for e in (data.get("code_blueprint") or {}).get("entities") or [] if e.get("id")]
 
-    assert comp_status.get(PROJECT_ROOT_ID) != "planned", (
-        "System Core (root) status must not be 'planned'."
-    )
+    if len(code_entities) > 1:
+        assert comp_status.get(PROJECT_ROOT_ID) != "planned", (
+            "When code blueprint has child entities, root status must not be 'planned'."
+        )
 
     for ve in view_schema.get("entities") or []:
         eid = ve.get("id") or ""

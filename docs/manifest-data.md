@@ -19,7 +19,7 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 | File | Role | Created by |
 |------|------|------------|
 | **blueprint_design.json** | Design (top-down). All entity fields filled. | Architect / design agents |
-| **blueprint_code.json** | Code (bottom-up). Same schema and entity ids as design; mechanical fields from CodeExtractor; narrative/governance etc. from enricher (LLM) with design as context. | bin/run_bottom_up_docs.py (on commit) |
+| **blueprint_code.json** | Code (bottom-up). CodeExtractor produces an outline; the LLM agent reads that outline, the actual code, and blueprint_design (guide only) and produces blueprint_code. Result is based on actual code only; entities not in the code do not appear. | bin/run_bottom_up_docs.py (on commit) |
 | **blueprint_view.json** | **View blueprint.** Same keys as design/code; each comparable value is `{ "plan", "actual", "deviates" }`. Status and deviations per entity from comparison. | `build_view_schema` (on view refresh, mock script, or bin/run_bottom_up_docs) |
 
 **Design and code:** Same shape: `version`, `root_id`, `entities`; per entity: `id`, `children`, `dependencies`, `narrative`, `blueprint`, `protocol`, `profile`, `governance`, `symbol`, `traits`, `topology_actual`, `preview`, `outgoing_contracts`. Both files align to this schema; comparison is done only when building the view.

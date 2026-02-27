@@ -1,13 +1,15 @@
-"""Fill narrative, governance, etc. from code; design blueprint as context for naming/wording."""
+"""Bottom-up agent: reads extraction outline, actual code, and design (guide); produces blueprint_code from code."""
 import json
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from manifest.audit.entity_validation import normalize_for_schema, validate_blueprint_data
+from manifest.core.app_temp import get_manifest_tmp_dir
 from manifest.core.logger import get_logger
 from manifest.opencode.run_helpers import (
     extract_json_from_text,
@@ -16,20 +18,51 @@ from manifest.opencode.run_helpers import (
 
 logger = get_logger(__name__)
 
-ENRICH_DIR_NAME = ".manifest_enrich"
+
+def _normalize_agent_refs_to_entity_ids(blueprint: Dict[str, Any]) -> None:
+    """Rewrite refs like 'entity.symbol' to 'entity' so validation passes. Mutates blueprint."""
+    entities = blueprint.get("entities") or []
+    valid_ids = {e.get("id") for e in entities if e.get("id")}
+    if not valid_ids:
+        return
+
+    def to_entity_id(ref: str) -> str:
+        s = (ref or "").strip()
+        if not s or s in valid_ids or s.startswith("external-"):
+            return s
+        if "." in s:
+            prefix = s.split(".", 1)[0]
+            if prefix in valid_ids:
+                return prefix
+        return s
+
+    for e in entities:
+        deps = e.get("dependencies") or []
+        normalized_deps = [
+            to_entity_id(d if isinstance(d, str) else (d.get("to") or d.get("id") or ""))
+            for d in deps
+        ]
+        e["dependencies"] = list(dict.fromkeys(d for d in normalized_deps if d in valid_ids))
+        oc = e.get("outgoing_contracts") or []
+        for c in oc:
+            if isinstance(c, dict) and "to" in c:
+                c["to"] = to_entity_id(c.get("to") or "")
+        e["outgoing_contracts"] = [c for c in oc if isinstance(c, dict) and (c.get("to") or "").strip() in valid_ids]
+
+
 DESIGN_FILENAME = "design.json"
-DRAFT_FILENAME = "draft.json"
+EXTRACTION_FILENAME = "extraction.json"
 
 DEFAULT_TIMEOUT = 300
 MAX_RETRIES = 3
 RETRY_DELAYS = (5, 15, 30)
 
 ENRICH_PROMPT_TEMPLATE = (
-    "Read design blueprint from {design_name} and code draft from {draft_name}. "
-    "Use design as context so names and wording align. Same structure (root_id, entity ids, children). "
-    "Fill narrative, profile, governance, protocol from the code draft (mechanical fields already set). "
-    "Output a valid blueprint JSON with version, root_id, entities (same schema as design). "
-    "Output ONLY valid JSON, no markdown or explanation."
+    "You have three inputs: (1) the code extraction outline in {extraction_name}, (2) the actual code in this project (read the source files), (3) the design blueprint in {design_name}. "
+    "Produce the blueprint_code document (entity-layer: version, root_id, entities with id, children, narrative, blueprint, protocol, profile, governance, symbol, traits, topology_actual, preview, outgoing_contracts). "
+    "RULES: The result MUST be based strictly on the actual code. Include ONLY entities present in the code; omit any design entity not in the code. "
+    "NAMING: When an extraction entity has design_id, use that as its id and use design entity ids everywhere: in children, dependencies, and outgoing_contracts[].to (so top-down and bottom-up share the same names and references). Use extraction id only when there is no design_id. "
+    "Output a valid blueprint JSON. Output ONLY valid JSON, no markdown or explanation."
 )
 
 
@@ -84,6 +117,7 @@ def _run_enrich_once(
         )
 
     out = normalize_for_schema(raw)
+    _normalize_agent_refs_to_entity_ids(out)
     valid, errors = validate_blueprint_data(out)
     if not valid and errors:
         raise RuntimeError(
@@ -94,13 +128,14 @@ def _run_enrich_once(
 
 def enrich_code_blueprint(
     design_blueprint: Dict[str, Any],
-    code_draft: Dict[str, Any],
+    extracted_blueprint: Dict[str, Any],
     project_root: Path,
     manifest_dir: Path,
 ) -> Dict[str, Any]:
     """
-    Fill narrative, governance, etc. in code_draft from code; design as context for alignment.
-    Retries on transient failure. Validates and returns blueprint; raises if opencode unavailable or enrichment fails.
+    Bottom-up: agent reads (1) extraction outline, (2) actual code in project_root, (3) blueprint_design.
+    Produces blueprint_code from actual code only. Design is a guide; entities not in the code must not appear.
+    Temp files are written to the manifest app temp dir (MANIFEST_TMP_DIR or system temp / manifest). Retries on transient failure.
     """
     project_root = Path(project_root)
     manifest_dir = Path(manifest_dir)
@@ -114,35 +149,33 @@ def enrich_code_blueprint(
 
     timeout = int(os.environ.get("MANIFEST_ENRICH_TIMEOUT", str(DEFAULT_TIMEOUT)))
 
-    enrich_dir = project_root / ENRICH_DIR_NAME
-    enrich_dir.mkdir(parents=True, exist_ok=True)
+    # Use app temp dir (system temp / manifest or MANIFEST_TMP_DIR); run-unique subdir per invocation.
+    enrich_dir = Path(tempfile.mkdtemp(dir=get_manifest_tmp_dir(), prefix="enrich_"))
     design_path = enrich_dir / DESIGN_FILENAME
-    draft_path = enrich_dir / DRAFT_FILENAME
+    extraction_path = enrich_dir / EXTRACTION_FILENAME
+    rel_design = DESIGN_FILENAME
+    rel_extraction = EXTRACTION_FILENAME
+    prompt = ENRICH_PROMPT_TEMPLATE.format(
+        design_name=rel_design,
+        extraction_name=rel_extraction,
+    )
+    cmd = [
+        opencode_path,
+        "run",
+        prompt,
+        "--agent", "enrich-code-blueprint",
+        "--dir", str(project_root.resolve()),
+        "--format", "json",
+        "-f", str(design_path.resolve()),
+        "-f", str(extraction_path.resolve()),
+    ]
     try:
-        with open(design_path, "w", encoding="utf-8") as f:
-            json.dump(design_blueprint, f, indent=2, ensure_ascii=False)
-        with open(draft_path, "w", encoding="utf-8") as f:
-            json.dump(code_draft, f, indent=2, ensure_ascii=False)
-
-        rel_design = f"{ENRICH_DIR_NAME}/{DESIGN_FILENAME}"
-        rel_draft = f"{ENRICH_DIR_NAME}/{DRAFT_FILENAME}"
-        prompt = ENRICH_PROMPT_TEMPLATE.format(
-            design_name=rel_design,
-            draft_name=rel_draft,
-        )
-        cmd = [
-            opencode_path,
-            "run",
-            prompt,
-            "--agent", "enrich-code-blueprint",
-            "--dir", str(project_root.resolve()),
-            "--format", "json",
-            "-f", str(design_path.resolve()),
-            "-f", str(draft_path.resolve()),
-        ]
-
         last_error: Optional[Exception] = None
         for attempt in range(MAX_RETRIES):
+            with open(design_path, "w", encoding="utf-8") as f:
+                json.dump(design_blueprint, f, indent=2, ensure_ascii=False)
+            with open(extraction_path, "w", encoding="utf-8") as f:
+                json.dump(extracted_blueprint, f, indent=2, ensure_ascii=False)
             try:
                 return _run_enrich_once(cmd, project_root, timeout)
             except subprocess.TimeoutExpired:
@@ -172,9 +205,4 @@ def enrich_code_blueprint(
             raise last_error
         raise RuntimeError("Enrichment failed after retries")
     finally:
-        if design_path.exists():
-            design_path.unlink(missing_ok=True)
-        if draft_path.exists():
-            draft_path.unlink(missing_ok=True)
-        if enrich_dir.exists() and not any(enrich_dir.iterdir()):
-            enrich_dir.rmdir()
+        shutil.rmtree(enrich_dir, ignore_errors=True)

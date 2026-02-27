@@ -1,6 +1,7 @@
 """
-Build blueprint_code from design and extraction; mechanical fields from code, rest from enricher (LLM) with design context.
-Same entity-layer schema as design.
+Bottom-up blueprint_code: CodeExtractor produces an outline of actual code; the LLM agent reads that
+outline, the actual code, and blueprint_design (guide only), and produces blueprint_code. Result must
+be based on actual code only; entities not present in the code must not appear in blueprint_code.
 """
 import re
 from pathlib import Path
@@ -18,7 +19,7 @@ from manifest.core.logger import get_logger
 logger = get_logger(__name__)
 
 
-def _mechanical_from_extracted(ent: Dict[str, Any]) -> Dict[str, Any]:
+def _fields_from_extracted(ent: Dict[str, Any]) -> Dict[str, Any]:
     """Symbol, protocol, profile, dependencies, traits, topology_actual, preview from extracted entity."""
     raw_profile = ent.get("profile") or {"language": [], "platform": "", "io_model": "", "state_model": ""}
     profile = {**raw_profile, "language": language_to_list(raw_profile.get("language"))}
@@ -128,11 +129,36 @@ def _extracted_by_exact(extracted_entities: List[Dict[str, Any]]) -> Dict[str, D
     return by_exact
 
 
+def _extraction_with_design_id_hints(
+    design_blueprint: Dict[str, Any],
+    extracted_blueprint: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Add design_id to each extracted entity when it matches a design entity, so the agent can use design naming."""
+    design_entities = {e.get("id"): e for e in (design_blueprint.get("entities") or []) if e.get("id")}
+    extracted_list = [e for e in (extracted_blueprint.get("entities") or []) if (e.get("id") or "") != PROJECT_ROOT_ID]
+    extracted_by_exact = _extracted_by_exact(extracted_list)
+    extracted_to_design: Dict[str, str] = {}
+    for eid, design_ent in design_entities.items():
+        if eid == PROJECT_ROOT_ID:
+            continue
+        ext = _find_best_extracted_match(eid, design_ent, extracted_list, extracted_by_exact)
+        if ext:
+            ext_id = (ext.get("id") or "").strip()
+            if ext_id and ext_id not in extracted_to_design:
+                extracted_to_design[ext_id] = eid
+    new_entities = [dict(e) for e in (extracted_blueprint.get("entities") or [])]
+    for ent in new_entities:
+        eid = (ent.get("id") or "").strip()
+        if eid in extracted_to_design:
+            ent["design_id"] = extracted_to_design[eid]
+    return {**extracted_blueprint, "entities": new_entities}
+
+
 def merge_design_and_extraction(
     design_blueprint: Dict[str, Any],
     extracted_blueprint: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Build code blueprint: same schema and entity ids as design; mechanical fields from extraction; rest filled by enricher."""
+    """Match design entity ids to extracted entities; output root and matched entities with fields from extraction. Used by tests."""
     design_entities = {e.get("id"): e for e in (design_blueprint.get("entities") or []) if e.get("id")}
     extracted_list = [e for e in (extracted_blueprint.get("entities") or []) if (e.get("id") or "") != PROJECT_ROOT_ID]
     extracted_by_exact = _extracted_by_exact(extracted_list)
@@ -154,6 +180,19 @@ def merge_design_and_extraction(
 
     entities: List[Dict[str, Any]] = []
     for eid, design_ent in design_entities.items():
+        if eid == PROJECT_ROOT_ID:
+            base = dict(empty_entity(eid))
+            base["id"] = eid
+            base["children"] = list(design_ent.get("children") or [])
+            base["dependencies"] = list(design_ent.get("dependencies") or [])
+            base["outgoing_contracts"] = list(design_ent.get("outgoing_contracts") or [])
+            for key in ("narrative", "blueprint", "protocol", "profile", "governance", "symbol", "traits", "topology_actual", "preview"):
+                base[key] = design_ent.get(key, base[key])
+            entities.append(base)
+            continue
+        ext = pick_extracted(eid, design_ent)
+        if ext is None:
+            continue
         base = dict(empty_entity(eid))
         base["id"] = eid
         base["children"] = list(design_ent.get("children") or [])
@@ -161,30 +200,34 @@ def merge_design_and_extraction(
         base["outgoing_contracts"] = list(design_ent.get("outgoing_contracts") or [])
         for key in ("narrative", "blueprint", "protocol", "profile", "governance", "symbol", "traits", "topology_actual", "preview"):
             base[key] = design_ent.get(key, base[key])
-        if eid == PROJECT_ROOT_ID:
-            entities.append(base)
-            continue
-        ext = pick_extracted(eid, design_ent)
-        if ext:
-            mech = _mechanical_from_extracted(ext)
-            base["symbol"] = mech["symbol"]
-            base["protocol"] = mech["protocol"]
-            base["profile"] = mech["profile"]
-            deps = mech["dependencies"]
-            design_ids = set(design_entities)
-            mapped = []
-            for d in deps:
-                if d in design_ids:
-                    mapped.append(d)
-                else:
-                    head = (d.split(".")[0] if isinstance(d, str) else "").strip()
-                    if head in design_ids and head not in mapped:
-                        mapped.append(head)
-            base["dependencies"] = mapped
-            base["traits"] = mech["traits"]
-            base["topology_actual"] = mech["topology_actual"]
-            base["preview"] = mech["preview"]
+        mech = _fields_from_extracted(ext)
+        base["symbol"] = mech["symbol"]
+        base["protocol"] = mech["protocol"]
+        base["profile"] = mech["profile"]
+        deps = mech["dependencies"]
+        design_ids = set(design_entities)
+        mapped = []
+        for d in deps:
+            if d in design_ids:
+                mapped.append(d)
+            else:
+                head = (d.split(".")[0] if isinstance(d, str) else "").strip()
+                if head in design_ids and head not in mapped:
+                    mapped.append(head)
+        base["dependencies"] = mapped
+        base["traits"] = mech["traits"]
+        base["topology_actual"] = mech["topology_actual"]
+        base["preview"] = mech["preview"]
         entities.append(base)
+
+    code_entity_ids = {e.get("id") for e in entities if e.get("id")}
+    for e in entities:
+        children = e.get("children") or []
+        e["children"] = [c for c in children if c in code_entity_ids]
+        deps = e.get("dependencies") or []
+        e["dependencies"] = [d for d in deps if (d if isinstance(d, str) else (d.get("to") or d.get("id") or "")) in code_entity_ids]
+        oc = e.get("outgoing_contracts") or []
+        e["outgoing_contracts"] = [c for c in oc if isinstance(c, dict) and (c.get("to") or "").strip() in code_entity_ids]
 
     root_first = [e for e in entities if (e.get("id") or "") == PROJECT_ROOT_ID]
     rest = [e for e in entities if (e.get("id") or "") != PROJECT_ROOT_ID]
@@ -231,12 +274,17 @@ def build_code_blueprint(
     design_blueprint: Dict[str, Any],
     extracted_blueprint: Dict[str, Any],
 ) -> Dict[str, Any]:
-    """Produce blueprint_code: same schema as design; mechanical from extraction; narrative/governance etc. from enricher with design context."""
+    """
+    Produce blueprint_code: agent reads extraction outline + actual code + design (guide only).
+    Result is based on actual code; entities not present in code must not appear in blueprint_code.
+    Extraction is augmented with design_id per entity when matched so top-down and bottom-up use the same names.
+    """
     from manifest.opencode.code_blueprint_enricher import enrich_code_blueprint
 
-    code_draft = merge_design_and_extraction(design_blueprint, extracted_blueprint)
-    result = enrich_code_blueprint(design_blueprint, code_draft, project_root, manifest_dir)
-    # Enricher may return profile.language as string; normalize to list.
+    extraction_with_hints = _extraction_with_design_id_hints(design_blueprint, extracted_blueprint)
+    result = enrich_code_blueprint(
+        design_blueprint, extraction_with_hints, project_root, manifest_dir
+    )
     for e in result.get("entities") or []:
         prof = dict(e.get("profile") or {})
         prof["language"] = language_to_list((e.get("profile") or {}).get("language"))
