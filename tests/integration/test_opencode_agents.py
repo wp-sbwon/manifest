@@ -1,6 +1,6 @@
-"""Integration: run OpenCode agents (layer-writer) with default model and assert output shape.
+"""Integration: run OpenCode agents (layer-writer) with real invocation and assert output shape.
 
-Run when MANIFEST_TEST_AGENTS=1. Requires opencode on PATH and opencode.json at repo root; fails if missing.
+Requires opencode on PATH and opencode.json at repo root; skips if unavailable.
 """
 import os
 import shutil
@@ -17,20 +17,18 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 OPENCODE_JSON = REPO_ROOT / "opencode.json"
 
 
-def _require_agents_env() -> None:
-    """Skip unless MANIFEST_TEST_AGENTS=1; fail if opencode or opencode.json missing."""
-    if os.environ.get("MANIFEST_TEST_AGENTS") != "1":
-        pytest.skip("Set MANIFEST_TEST_AGENTS=1 to run OpenCode agent tests.")
+def _require_opencode() -> None:
+    """Skip if opencode binary or config is physically unavailable."""
     if not shutil.which("opencode"):
-        pytest.fail("opencode required on PATH when MANIFEST_TEST_AGENTS=1.")
+        pytest.skip("opencode not on PATH")
     if not OPENCODE_JSON.exists():
-        pytest.fail("opencode.json required at repo root when MANIFEST_TEST_AGENTS=1.")
+        pytest.skip("opencode.json not at repo root")
 
 
 @pytest.mark.integration
 def test_layer_writer_produces_valid_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """With MANIFEST_TEST_AGENTS=1, layer-writer returns a dict with 'children' list; each child has id and valid shape."""
-    _require_agents_env()
+    """layer-writer returns a dict with 'children' list; each child has id and valid shape."""
+    _require_opencode()
     shutil.copy2(OPENCODE_JSON, tmp_path / "opencode.json")
     from manifest.opencode.layer_writer import write_blueprint_layer
 
@@ -51,7 +49,7 @@ def test_layer_writer_produces_valid_output(tmp_path: Path, monkeypatch: pytest.
             "root_id": PROJECT_ROOT_ID,
         },
     }
-    timeout = min(int(os.environ.get("MANIFEST_LAYER_TIMEOUT", "90")), 90)
+    timeout = int(os.environ.get("MANIFEST_LAYER_TIMEOUT", "180"))
     monkeypatch.setenv("MANIFEST_LAYER_TIMEOUT", str(timeout))
     result = write_blueprint_layer(context, tmp_path, manifest_dir)
     assert "children" in result

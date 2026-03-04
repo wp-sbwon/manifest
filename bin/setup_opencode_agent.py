@@ -36,14 +36,14 @@ def create_opencode_agent_config():
         },
         "test-implementer": {
             "description": "Manifest test implementer. Fills logic for empty test stubs in tests/ using mocks/fixtures based on docstring assertions. Must not remove @pytest.mark.manifest_assertion.",
-            "mode": "subagent",
+            "mode": "primary",
             "hidden": True,
             "prompt": "You are the Manifest test-implementer. Fill in the logic for empty test stubs in tests/ using mocks and fixtures based on the assertions in each test docstring. Do not remove or alter @pytest.mark.manifest_assertion decorators.",
             "tools": {"write": True, "edit": True, "bash": False},
         },
         "test-auditor": {
             "description": "Reviews implemented tests against design assertions to ensure they rigorously and accurately prove the intent.",
-            "mode": "subagent",
+            "mode": "primary",
             "hidden": True,
             "prompt": "You are the Manifest test-auditor. Review implemented tests against the design assertions (governance.assertions, docstrings) to ensure they rigorously and accurately prove the intent. Report any gaps or weak coverage.",
             "tools": {"write": False, "edit": False, "bash": False},

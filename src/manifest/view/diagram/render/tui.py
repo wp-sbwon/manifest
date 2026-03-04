@@ -54,12 +54,14 @@ def render_diagram(
     leg_healthy = _status_color("healthy", config)
     leg_partial = _status_color("partial", config)
     leg_deviation = _status_color("deviation", config)
+    leg_extra = _status_color("extra", config)
     legend = (
         f"[dim]Status: [/]"
         f"[{leg_planned}]{S}[/] Planned  "
         f"[{leg_healthy}]{S}[/] Healthy  "
         f"[{leg_partial}]{S}[/] Partial  "
-        f"[{leg_deviation}]{S}[/] Deviation"
+        f"[{leg_deviation}]{S}[/] Deviation  "
+        f"[{leg_extra}]{S}[/] Extra"
     )
     lines.append(legend)
     lines.append("")

@@ -14,17 +14,17 @@ The view app reads from the project’s `.manifest/` directory. This page lists 
 
 ---
 
-## Three blueprint docs (design, code, view)
+## Three data sources and view
+
+The view uses **three sources**: blueprint (design), code (extracted contents), test results. It builds comparison and status on refresh. See [view-data-sources.md](view-data-sources.md).
 
 | File | Role | Created by |
 |------|------|------------|
-| **blueprint_design.json** | Design (top-down). All entity fields filled. | Architect / design agents |
-| **blueprint_code.json** | Code (bottom-up). CodeExtractor produces an outline; a deterministic merge with design produces blueprint_code (narrative/governance from design, mechanical from extraction). Design-only entities remain planned; extraction-only appear as orphans. | bin/run_bottom_up_docs.py (on commit) |
-| **blueprint_view.json** | **View blueprint.** Same keys as design/code; each comparable value is `{ "plan", "actual", "deviates" }`. Status and deviations per entity from comparison. | `build_view_schema` (on view refresh, mock script, or bin/run_bottom_up_docs) |
+| **blueprint_design.json** | Design (top-down). Entity layers, intent, contracts. | Architect / design agents |
+| **blueprint_code.json** | Code-extracted contents. Outline from CodeExtractor + deterministic merge with design. Design-only entities remain planned; extraction-only appear as orphans. | bin/run_bottom_up_docs.py (on commit) |
+| **blueprint_view.json** | Same keys as design/code; values `{ "plan", "actual", "deviates" }`. Pipeline may write when write_view=True; view builds from design and code when not present. | `get_entities_for_view(..., write_view=True)` (e.g. bin/run_bottom_up_docs, create_mock_project_data) |
 
-**Design and code:** Same shape: `version`, `root_id`, `entities`; per entity: `id`, `children`, `dependencies`, `narrative`, `blueprint`, `protocol`, `profile`, `governance`, `symbol`, `traits`, `topology_actual`, `preview`, `outgoing_contracts`. Both files align to this schema; comparison is done only when building the view.
-
-**View:** View schema has the same keys as design/code. Values are `{ "plan", "actual", "deviates" }` so the view can show plan vs actual and flag deviations. The pipeline loads design and code, builds the view schema (comparison and status), and writes `blueprint_view.json`.
+**Design and code:** Same shape: `version`, `root_id`, `entities`; per entity: `id`, `children`, `dependencies`, `narrative`, `blueprint`, `protocol`, `profile`, `governance`, `symbol`, `traits`, `topology_actual`, `preview`, `outgoing_contracts`. Comparison is done when building the view.
 
 ---
 

@@ -125,22 +125,17 @@ def write_blueprint_layer(
     """
     Produce children for the parent entity via opencode.
 
-    Returns dict with 'children' (list of entity dicts); empty if stub mode or no output.
-    Raises if opencode fails and stub is off.
+    Returns dict with 'children' (list of entity dicts); empty if no output.
+    Raises RuntimeError if opencode is missing or fails.
     """
     project_root = Path(project_root)
     manifest_dir = Path(manifest_dir)
-
-    if os.environ.get("MANIFEST_LAYER_WRITER_STUB") == "1":
-        logger.info("Layer writer stub mode: returning empty children")
-        return {"children": []}
 
     opencode_path = shutil.which("opencode")
     if not opencode_path:
         raise RuntimeError(
             "opencode not on PATH. "
-            "Layer writing requires opencode. "
-            "Set MANIFEST_LAYER_WRITER_STUB=1 to run pipeline without OpenCode."
+            "Layer writing requires opencode."
         )
 
     with tempfile.TemporaryDirectory(prefix="manifest_layer_") as tmp:
@@ -180,8 +175,7 @@ def write_blueprint_layer(
             excerpt = stderr[:400].replace("\n", " ") if stderr else ""
             raise RuntimeError(
                 f"Layer writer failed (exit {result.returncode}). "
-                f"Output: {excerpt}. "
-                "Set MANIFEST_LAYER_WRITER_STUB=1 to skip."
+                f"Output: {excerpt}."
             )
 
         merged = parse_opencode_stdout(result.stdout or "")

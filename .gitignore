@@ -63,6 +63,7 @@ htmlcov/
 .manifest/.key
 .manifest/conflicts/
 .manifest/blueprint_manifest.json
+.manifest/blueprint_view.json
 .manifest/view_launch.sh
 # Dev: temp project dir when running manifest from this repo
 tmp/

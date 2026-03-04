@@ -126,6 +126,7 @@ def _status_from_view_entity(
     view_ent: Dict[str, Any],
     design_entities: Dict[str, Dict[str, Any]],
     code_entities: Dict[str, Dict[str, Any]],
+    test_results: Dict[str, list] = None,
 ) -> str:
     in_design = eid in design_entities
     in_code = eid in code_entities
@@ -135,10 +136,19 @@ def _status_from_view_entity(
         return "planned"
     if entity_has_any_deviates(view_ent):
         return "deviation"
+    # Check test results: stub or missing assertions → partial
+    if test_results:
+        tests = test_results.get(eid, [])
+        if tests and any(t.get("status") == "stub" for t in tests):
+            return "partial"
     return "healthy"
 
 
-def build_view_schema(design: Dict[str, Any], code: Dict[str, Any]) -> Dict[str, Any]:
+def build_view_schema(
+    design: Dict[str, Any],
+    code: Dict[str, Any],
+    test_results: Dict[str, list] = None,
+) -> Dict[str, Any]:
     """Build view schema from design and code. Same keys as blueprints; values are plan/actual/deviates; status derived from comparison."""
     design_entities = {e.get("id"): e for e in (design.get("entities") or []) if e.get("id")}
     code_entities = {e.get("id"): e for e in (code.get("entities") or []) if e.get("id")}
@@ -152,22 +162,27 @@ def build_view_schema(design: Dict[str, Any], code: Dict[str, Any]) -> Dict[str,
         children_pd = _pair_deviates(de.get("children"), ce.get("children"))
         contracts_pd = _pair_deviates(de.get("outgoing_contracts"), ce.get("outgoing_contracts"))
         compared = _entity_view_fields(de, ce)
-        status = _status_from_view_entity(eid, {"children": children_pd, "outgoing_contracts": contracts_pd, **compared}, design_entities, code_entities)
-        deviations = _collect_deviations(compared) + _collect_deviations(children_pd) + _collect_deviations(contracts_pd)
+        status = _status_from_view_entity(eid, {"children": children_pd, "outgoing_contracts": contracts_pd, **compared}, design_entities, code_entities, test_results=test_results)
+        deviations = _collect_deviations(compared) + _collect_deviations(children_pd, "children") + _collect_deviations(contracts_pd, "outgoing_contracts")
+        entity_test_results = (test_results or {}).get(eid, [])
+        # Passthrough fields: not compared, but needed for display (narrative.role → diagram label)
+        narrative = de.get("narrative") or ce.get("narrative") or {"role": "", "mission": ""}
+        governance = de.get("governance") or ce.get("governance") or {"rules": [], "assertions": []}
         view_entities.append({
             "id": eid,
             "children": children_pd,
             "dependencies": compared.get("dependencies", _pair_deviates(None, None)),
-            "narrative": compared.get("narrative", {}),
+            "narrative": narrative,
+            "governance": governance,
             "blueprint": compared.get("blueprint", {}),
             "protocol": compared.get("protocol", {}),
             "profile": compared.get("profile", {}),
-            "governance": compared.get("governance", {}),
             "symbol": compared.get("symbol", _pair_deviates(None, None)),
             "traits": compared.get("traits", _pair_deviates(None, None)),
             "topology_actual": compared.get("topology_actual", _pair_deviates(None, None)),
             "preview": compared.get("preview", _pair_deviates(None, None)),
             "outgoing_contracts": contracts_pd,
+            "test_results": entity_test_results,
             "validation": {"status": status, "deviations": deviations},
         })
 

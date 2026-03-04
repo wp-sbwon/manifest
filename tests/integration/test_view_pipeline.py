@@ -24,6 +24,7 @@ def test_get_entities_for_view_produces_comp_status_and_view_schema(manifest_dir
     data = get_entities_for_view(manifest_dir)
     assert "comp_status" in data
     assert "view_schema" in data
+    assert "test_results" in data
     comp_status = data["comp_status"] or {}
     assert PROJECT_ROOT_ID in comp_status
     assert "a" in comp_status
@@ -34,17 +35,32 @@ def test_get_entities_for_view_produces_comp_status_and_view_schema(manifest_dir
 
 @pytest.mark.integration
 def test_get_entities_for_view_writes_blueprint_view_json(manifest_dir) -> None:
-    """get_entities_for_view writes blueprint_view.json to manifest dir."""
+    """get_entities_for_view with write_view=True writes blueprint_view.json to manifest dir."""
     design = minimal_blueprint([])
     code = minimal_blueprint([])
     with open(manifest_dir / BLUEPRINT_DESIGN_FILE, "w", encoding="utf-8") as f:
         json.dump(design, f, indent=2)
     with open(manifest_dir / BLUEPRINT_CODE_FILE, "w", encoding="utf-8") as f:
         json.dump(code, f, indent=2)
-    get_entities_for_view(manifest_dir)
+    get_entities_for_view(manifest_dir, write_view=True)
     view_file = manifest_dir / BLUEPRINT_VIEW_FILE
     assert view_file.exists()
     with open(view_file, "r", encoding="utf-8") as f:
         view_data = json.load(f)
     assert "entities" in view_data
     assert view_data.get("root_id") == PROJECT_ROOT_ID
+
+
+@pytest.mark.integration
+def test_get_entities_for_view_without_write_view_skips_file(manifest_dir) -> None:
+    """When write_view is False, view_schema is built but blueprint_view.json is not written."""
+    design = minimal_blueprint([])
+    code = minimal_blueprint([])
+    with open(manifest_dir / BLUEPRINT_DESIGN_FILE, "w", encoding="utf-8") as f:
+        json.dump(design, f, indent=2)
+    with open(manifest_dir / BLUEPRINT_CODE_FILE, "w", encoding="utf-8") as f:
+        json.dump(code, f, indent=2)
+    data = get_entities_for_view(manifest_dir, write_view=False)
+    assert data.get("view_schema") is not None
+    assert data.get("view_write_ok") is False
+    assert not (manifest_dir / BLUEPRINT_VIEW_FILE).exists()

@@ -163,16 +163,16 @@ def _build_code_blueprint_from_design_and_extraction(
     code["extraction_method"] = "ast_parsing"
     code = normalize_for_schema(code)
     entities = code.get("entities") or []
-    orphan = dict(empty_entity("comp-legacy-stub"))
-    orphan["id"] = "comp-legacy-stub"
-    orphan["symbol"] = "legacy/stub.py"
+    orphan = dict(empty_entity("comp-extra-stub"))
+    orphan["id"] = "comp-extra-stub"
+    orphan["symbol"] = "extra/stub.py"
     orphan["children"] = []
     orphan["dependencies"] = []
     orphan["outgoing_contracts"] = []
     entities.append(orphan)
     root_ent = next((e for e in entities if (e.get("id") or "") == PROJECT_ROOT_ID), None)
     if root_ent is not None:
-        root_ent["children"] = list(root_ent.get("children") or []) + ["comp-legacy-stub"]
+        root_ent["children"] = list(root_ent.get("children") or []) + ["comp-extra-stub"]
     for e in entities:
         if (e.get("id") or "") == "cli":
             proto = e.get("protocol") or {}
@@ -212,7 +212,7 @@ def main() -> int:
 
     try:
         from manifest.view.entity_model import get_entities_for_view
-        get_entities_for_view(manifest_dir)
+        get_entities_for_view(manifest_dir, write_view=True)
         print(f"Wrote {manifest_dir / 'blueprint_view.json'}")
     except Exception as e:
         print(f"Warning: failed to write blueprint_view.json: {e}", file=sys.stderr)
@@ -236,6 +236,17 @@ def main() -> int:
             print(f"Warning: generate_test_stubs: {r.stderr.strip()}", file=sys.stderr)
     except Exception as e:
         print(f"Warning: failed to generate test stubs: {e}", file=sys.stderr)
+
+    # Copy test files to manifest_dir.parent/tests/ so the view's test_result_collector finds them.
+    runtime_tests_dir = manifest_dir.parent / "tests"
+    if runtime_tests_dir.resolve() != tests_dir.resolve():
+        import shutil
+        runtime_tests_dir.mkdir(parents=True, exist_ok=True)
+        for tf in tests_dir.glob("*.py"):
+            shutil.copy2(tf, runtime_tests_dir / tf.name)
+        init_file = runtime_tests_dir / "__init__.py"
+        if not init_file.exists():
+            init_file.write_text("", encoding="utf-8")
 
     print("Mock project data ready. Run View with this manifest dir to see Diagram and Health.")
     return 0

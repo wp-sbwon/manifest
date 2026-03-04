@@ -49,7 +49,7 @@ def status_label(status: str) -> str:
     if status in (ImplementationStatus.DEVIATION.value, "drift"):
         return "Deviation"
     if status == ImplementationStatus.EXTRA.value:
-        return "extra"
+        return "Extra"
     return status
 
 

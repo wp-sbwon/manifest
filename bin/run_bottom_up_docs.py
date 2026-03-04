@@ -34,7 +34,7 @@ def _refresh_blueprint_view(manifest_dir: Path) -> bool:
     """Build and write blueprint_view.json (same keys as design/code; values = plan/actual + deviates)."""
     try:
         from manifest.view.entity_model import get_entities_for_view
-        data = get_entities_for_view(manifest_dir)
+        data = get_entities_for_view(manifest_dir, write_view=True)
         return data.get("view_write_ok", True)
     except Exception as e:
         print(f"Warning: failed to refresh blueprint_view: {e}", file=sys.stderr)

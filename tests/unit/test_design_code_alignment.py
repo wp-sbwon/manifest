@@ -35,7 +35,7 @@ def test_view_schema_entity_ids_are_union_of_design_and_code(manifest_dir: Path)
     assert view_ids == expected_ids, "view_schema must have exactly union of design and code entity ids"
     assert set(comp_status.keys()) == expected_ids, "comp_status must have entry per entity id"
     for ve in view_entities:
-        assert "narrative" in ve and "validation" in ve, "each view entity must have narrative and validation (plan/actual from comparison)"
+        assert "blueprint" in ve and "validation" in ve, "each view entity must have blueprint and validation (plan/actual from comparison)"
         assert "status" in (ve.get("validation") or {}), "each must have validation.status"
 
 
@@ -85,5 +85,5 @@ def test_build_view_schema_produces_comparable_structure() -> None:
     assert "node_statuses" in status_info
     view_schema = build_view_schema(design, code)
     for ve in view_schema.get("entities") or []:
-        assert isinstance(ve.get("narrative"), dict), "narrative must be dict (nested plan/actual/deviates)"
+        assert isinstance(ve.get("blueprint"), dict), "blueprint must be dict (nested plan/actual/deviates)"
         assert "validation" in ve and "status" in (ve.get("validation") or {}), "each entity must have validation.status"

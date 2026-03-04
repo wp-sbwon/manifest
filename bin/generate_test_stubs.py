@@ -57,6 +57,11 @@ def generate_stubs(manifest_dir: Path, tests_dir: Path) -> int:
             lines.append("    raise NotImplementedError")
             lines.append("")
         out_file = tests_dir / ("test_%s.py" % mod_name)
+        # Skip if file already has implementations (not just stubs).
+        if out_file.exists():
+            existing = out_file.read_text(encoding="utf-8")
+            if "manifest_assertion" in existing and "NotImplementedError" not in existing:
+                continue
         out_file.write_text("\n".join(lines), encoding="utf-8")
     return 0
 

@@ -105,6 +105,22 @@ def _cap(s: str) -> str:
     return " ".join(w.capitalize() for w in s.replace("_", " ").strip().split())
 
 
+def _test_badge(entity_id: str, index: int, test_results: Optional[Dict[str, list]]) -> str:
+    """Badge for a single assertion test: PASS/FAIL/STUB/—."""
+    if not test_results:
+        return "[dim]—[/]"
+    tests = test_results.get(entity_id, [])
+    for t in tests:
+        if t.get("index") == index:
+            status = t.get("status", "")
+            if status == "implemented":
+                return "[green] PASS [/]"
+            if status == "stub":
+                return "[yellow] STUB [/]"
+            return "[red] FAIL [/]"
+    return "[dim]—[/]"
+
+
 def build_info_hub_node_content(
     header: str,
     nid: str,
@@ -112,13 +128,13 @@ def build_info_hub_node_content(
     deviating: bool,
     view_entity: Optional[Dict[str, Any]],
     id_to_display_name: Dict[str, str],
+    test_results: Optional[Dict[str, list]] = None,
 ) -> str:
-    """Inspector: Identity, Spec (per-line deviation box), Outgoing contracts."""
+    """Inspector: Identity, Contract (mechanical fields), Intent (assertions + badges), Outgoing contracts."""
     def _box(path: Tuple[str, ...]) -> str:
         return deviation_box(deviates_at(view_entity, path))
 
     def _plan_actual_at(path: Tuple[str, ...]) -> Tuple[Any, Any]:
-        """From view_entity, get (plan, actual) at path; else (data_val, data_val) from data."""
         cur: Any = view_entity
         for key in path:
             cur = (cur or {}).get(key) if isinstance(cur, dict) else None
@@ -166,12 +182,19 @@ def build_info_hub_node_content(
     children_display = [id_to_display_name.get(cid, cid) for cid in children_ids]
     contracts = data.get("outgoing_contracts") or []
 
+    # --- Identity section ---
+    role_text = format_for_display(narrative.get("role"), 80)
+    mission_text = format_for_display(narrative.get("mission"), 240)
     identity_lines = [
         f"[white]{_cap('id')}[/]: {nid}",
         f"[white]{_cap('children')}[/]: {', '.join(children_display) or '—'}{_box(('children',))}",
         f"[white]{_cap('dependencies')}[/]: {', '.join(deps[:12]) or '—'}{_box(('dependencies',))}",
+        f"[white]{_cap('role')}[/]: {role_text}",
+        f"[white]{_cap('mission')}[/]: {mission_text}",
     ]
     identity_body = "\n".join(identity_lines)
+
+    # --- Contract section (mechanical fields with deviation boxes) ---
     topology_summary = "—"
     if isinstance(bp_topology, dict) and bp_topology:
         dims = bp_topology.get("dimensions") or {}
@@ -180,57 +203,52 @@ def build_info_hub_node_content(
     if isinstance(topology_actual, dict) and topology_actual:
         topology_actual_summary = format_for_display(topology_actual.get("type")) or "present"
 
-    spec_lines: List[str] = []
-    any_spec_deviation = False
-
-    plan_role, actual_role = _plan_actual_at(("narrative", "role"))
-    ln, dev = _spec_line("role", plan_role, actual_role, ("narrative", "role"), 80)
-    spec_lines.append(f"{ln}{_box(('narrative', 'role'))}")
-    any_spec_deviation = any_spec_deviation or dev
-    plan_mission, actual_mission = _plan_actual_at(("narrative", "mission"))
-    ln, dev = _spec_line("mission", plan_mission, actual_mission, ("narrative", "mission"), 240)
-    spec_lines.append(f"{ln}{_box(('narrative', 'mission'))}")
-    any_spec_deviation = any_spec_deviation or dev
-    spec_lines.append(f"{_cap('blueprint')}")
-    spec_lines.append(f"  — {_cap('type')}: {format_for_display(blueprint.get('type'), 20)}{_box(('blueprint', 'type'))}")
-    spec_lines.append(f"  — {_cap('topology')}: {topology_summary}{_box(('blueprint', 'topology'))}")
-    spec_lines.append(f"{_cap('protocol')}")
+    contract_lines: List[str] = []
+    contract_lines.append(f"{_cap('blueprint')}")
+    contract_lines.append(f"  — {_cap('type')}: {format_for_display(blueprint.get('type'), 20)}{_box(('blueprint', 'type'))}")
+    contract_lines.append(f"  — {_cap('topology')}: {topology_summary}{_box(('blueprint', 'topology'))}")
+    contract_lines.append(f"{_cap('protocol')}")
     plan_in, actual_in = _plan_actual_at(("protocol", "input"))
     ln, dev = _spec_line("input", plan_in, actual_in, ("protocol", "input"))
-    spec_lines.append(f"  — {ln}{_box(('protocol', 'input'))}")
-    any_spec_deviation = any_spec_deviation or dev
+    contract_lines.append(f"  — {ln}{_box(('protocol', 'input'))}")
     plan_out, actual_out = _plan_actual_at(("protocol", "output"))
     ln, dev = _spec_line("output", plan_out, actual_out, ("protocol", "output"))
-    spec_lines.append(f"  — {ln}{_box(('protocol', 'output'))}")
-    any_spec_deviation = any_spec_deviation or dev
-    spec_lines.append(f"{_cap('profile')}")
+    contract_lines.append(f"  — {ln}{_box(('protocol', 'output'))}")
+    contract_lines.append(f"{_cap('profile')}")
     for key in ("language", "platform", "io_model", "state_model"):
         plan_v, actual_v = _plan_actual_at(("profile", key))
         ln, dev = _spec_line(key, plan_v, actual_v, ("profile", key))
-        spec_lines.append(f"  — {ln}{_box(('profile', key))}")
-        any_spec_deviation = any_spec_deviation or dev
-    spec_lines.append(f"{_cap('governance')}")
-    spec_lines.append(f"  — {_cap('rules')}: {format_for_display(gov.get('rules'))}{_box(('governance', 'rules'))}")
-    spec_lines.append(f"  — {_cap('assertions')}: {format_for_display(gov.get('assertions'))}{_box(('governance', 'assertions'))}")
-    spec_lines.append(f"{_cap('symbol')}: {format_for_display(data.get('symbol'), 120)}{_box(('symbol',))}")
-    spec_lines.append(f"{_cap('dependencies')}: {', '.join(deps[:12]) or '—'}{_box(('dependencies',))}")
-    spec_lines.append(f"{_cap('traits')}: {', '.join(traits[:10]) or '—'}{_box(('traits',))}")
-    spec_lines.append(f"{_cap('topology_actual')}: {topology_actual_summary}{_box(('topology_actual',))}")
-    spec_lines.append(f"{_cap('preview')}: {format_for_display(data.get('preview'), 160)}{_box(('preview',))}")
+        contract_lines.append(f"  — {ln}{_box(('profile', key))}")
+    contract_lines.append(f"{_cap('symbol')}: {format_for_display(data.get('symbol'), 120)}{_box(('symbol',))}")
+    contract_lines.append(f"{_cap('traits')}: {', '.join(traits[:10]) or '—'}{_box(('traits',))}")
+    contract_lines.append(f"{_cap('topology_actual')}: {topology_actual_summary}{_box(('topology_actual',))}")
+    contract_lines.append(f"{_cap('preview')}: {format_for_display(data.get('preview'), 160)}{_box(('preview',))}")
+    contract_body = "\n".join(contract_lines)
 
-    spec_body = "\n".join(spec_lines)
-    contract_lines = [f"→ {c.get('to') or '—'} [{c.get('type') or 'dependency'}] {c.get('file') or ''} {', '.join((c.get('symbols') or [])[:4])}" for c in (contracts or [])[:10]]
-    contracts_body = "\n".join(contract_lines) if contract_lines else "—"
-    contracts_body += "  " + _box(("outgoing_contracts",))
+    # --- Intent section (governance assertions with test badges) ---
+    assertions = gov.get("assertions") or []
+    if assertions and isinstance(assertions, list):
+        intent_lines: List[str] = []
+        for i, assertion in enumerate(assertions):
+            text = assertion if isinstance(assertion, str) else format_for_display(assertion, 120)
+            badge = _test_badge(nid, i, test_results)
+            intent_lines.append(f"  {i}: \"{text}\"  {badge}")
+        intent_body = "\n".join(intent_lines)
+    else:
+        intent_body = "No assertions defined."
+
+    # --- Outgoing contracts section ---
+    outgoing_lines = [f"→ {c.get('to') or '—'} [{c.get('type') or 'dependency'}] {c.get('file') or ''} {', '.join((c.get('symbols') or [])[:4])}" for c in (contracts or [])[:10]]
+    outgoing_body = "\n".join(outgoing_lines) if outgoing_lines else "—"
+    outgoing_body += "  " + _box(("outgoing_contracts",))
 
     parts = [
         header.strip(),
         inspection_section("Identity", identity_body),
-        inspection_section("Spec", spec_body),
-        inspection_section("Outgoing contracts", contracts_body),
+        inspection_section("Contract", contract_body),
+        inspection_section("Intent", intent_body),
+        inspection_section("Outgoing contracts", outgoing_body),
     ]
-    if deviating or any_spec_deviation:
-        parts.append(inspection_section("Deviation", "Plan and code differ. [bold][D] DIFF[/] to compare."))
     return "\n".join(parts)
 
 
@@ -242,33 +260,26 @@ def build_info_hub_diff_view(
     design_ent: Optional[Dict[str, Any]],
     code_ent: Optional[Dict[str, Any]],
 ) -> Union[str, Group]:
-    """Diff view: Plan vs Code as a Rich table; only differing values in red."""
+    """Diff view: Plan vs Code as a Rich table; only contractual fields, differing values in red."""
     plan = design_ent or data
     actual = code_ent or data
-    plan_narr = plan.get("narrative") or {}
-    actual_narr = actual.get("narrative") or {}
     plan_blueprint = plan.get("blueprint") or {}
     actual_blueprint = actual.get("blueprint") or {}
     plan_protocol = plan.get("protocol") or {}
     actual_protocol = actual.get("protocol") or {}
     plan_profile = plan.get("profile") or {}
     actual_profile = actual.get("profile") or {}
-    plan_gov = plan.get("governance") or {}
-    actual_gov = actual.get("governance") or {}
     max_cell = 28
 
     def _s(v: Any, w: int = 28) -> str:
         return format_for_display(v, max_len=w, max_items=5)[:w].replace("\n", " ")
 
     rows = [
-        ("Role", _s(plan_narr.get("role")), _s(actual_narr.get("role"))),
-        ("Mission", _s(plan_narr.get("mission")), _s(actual_narr.get("mission"))),
         ("Type", _s(plan_blueprint.get("type")), _s(actual_blueprint.get("type"))),
         ("Protocol input", _s(plan_protocol.get("input")), _s(actual_protocol.get("input"))),
         ("Protocol output", _s(plan_protocol.get("output")), _s(actual_protocol.get("output"))),
         ("Language", _s(plan_profile.get("language")), _s(actual_profile.get("language"))),
         ("Platform", _s(plan_profile.get("platform")), _s(actual_profile.get("platform"))),
-        ("Governance rules", _s(plan_gov.get("rules")), _s(actual_gov.get("rules"))),
         ("Symbol", _s(plan.get("symbol")), _s(actual.get("symbol"))),
         ("Dependencies", _s(plan.get("dependencies")), _s(actual.get("dependencies"))),
         ("Traits", _s(plan.get("traits")), _s(actual.get("traits"))),

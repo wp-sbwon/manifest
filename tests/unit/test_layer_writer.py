@@ -89,14 +89,6 @@ def test_merge_children_into_blueprint(tmp_manifest):
     assert "child1" in ids and "child2" in ids
 
 
-def test_write_blueprint_layer_stub_returns_empty(tmp_manifest):
-    """Stub mode returns empty children without calling opencode."""
-    ctx = {"layer_index": 1, "parent_entity": {"id": "p"}, "prd_excerpt": {}, "blueprint_excerpt": {}}
-    with patch.dict("os.environ", {"MANIFEST_LAYER_WRITER_STUB": "1"}):
-        result = write_blueprint_layer(ctx, tmp_manifest.parent, tmp_manifest)
-    assert result["children"] == []
-
-
 def test_write_blueprint_layer_returns_new_dicts_not_mutated(tmp_manifest):
     """When opencode returns children in stdout, we build new dicts instead of mutating parsed objects."""
     from unittest.mock import MagicMock

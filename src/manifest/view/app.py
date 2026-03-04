@@ -20,10 +20,7 @@ from textual.widgets import Static, Header, Footer
 from textual.binding import Binding
 
 from manifest.core.logger import get_logger
-from manifest.view.data_access import (
-    get_health_metrics,
-    get_timeline_events,
-)
+from manifest.view.data_access import get_timeline_events
 from manifest.view.file_watcher import ViewFileWatcher
 from manifest.view.entity_model import (
     get_entities_for_view,
@@ -150,7 +147,6 @@ class ManifestViewApp(App[None]):
         self._diagram_root_stack: List[str] = []
         self._diagram_layered_spec: Optional[Dict[str, Any]] = None
         self._diagram_selectable_nodes: List[Tuple[str, str, Dict[str, Any]]] = []
-        self._health_metrics_populated: bool = False
 
     def _get_design_blueprint(self) -> Dict[str, Any]:
         """Design blueprint from view data; empty dict if not yet loaded."""
@@ -476,15 +472,11 @@ class ManifestViewApp(App[None]):
         return Panel("Unknown view", title="View", border_style="red")
 
     def _get_sidebar_health(self) -> str:
-        """Project Health: deviation % from blueprint sync; code quality/coverage/size from state."""
+        """Project Health: status distribution + assertion proof rate."""
         try:
             comp_status, _ = self._get_implementation_status()
-            skip_slow = os.environ.get("MANIFEST_VIEW_SKIP_SLOW_METRICS", "").strip() == "1"
-            populate = not self._health_metrics_populated and not skip_slow
-            metrics = get_health_metrics(self.manifest_dir, populate_if_blank=populate)
-            if populate:
-                self._health_metrics_populated = True
-            return get_sidebar_health_text(comp_status, metrics)
+            test_results = (self._view_data or {}).get("test_results") or {}
+            return get_sidebar_health_text(comp_status, test_results)
         except Exception as e:
             logger.debug("Sidebar health failed: %s", e)
             return "[bold cyan]Project Health[/]\n[dim]─────────────────────[/]\n  (—)"
@@ -568,18 +560,22 @@ class ManifestViewApp(App[None]):
             design_ent, code_ent = self._get_entities_by_id(nid)
             return build_info_hub_diff_view(header, nid, data, deviating, design_ent, code_ent)
 
+        test_results = (self._view_data or {}).get("test_results") or {}
+
         if kind == "up":
             return header + "\n\n  [dim]Press Backspace to go back.[/]"
         if kind == "root":
             root_entity = self._get_root_entity_for_inspector()
             view_ent = self._get_view_entity_by_id(PROJECT_ROOT_ID)
             return build_info_hub_node_content(
-                header, PROJECT_ROOT_ID, root_entity, deviating, view_ent, self._id_to_display_name_map()
+                header, PROJECT_ROOT_ID, root_entity, deviating, view_ent, self._id_to_display_name_map(),
+                test_results=test_results,
             )
         entity = data if (data.get("narrative") is not None or data.get("symbol") is not None) else self._get_entity_for_inspector(nid)
         view_ent = self._get_view_entity_by_id(nid)
         return build_info_hub_node_content(
-            header, nid, entity, deviating, view_ent, self._id_to_display_name_map()
+            header, nid, entity, deviating, view_ent, self._id_to_display_name_map(),
+            test_results=test_results,
         )
 
     def _id_to_display_name_map(self) -> Dict[str, str]:

@@ -4,6 +4,7 @@ Health stats from code: lint result, test coverage %, build size.
 import os
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 
@@ -103,7 +104,7 @@ def _pytest_coverage(project_root: Path) -> Optional[int]:
         cov_target = "src" if src_dir.is_dir() else "."
         result = subprocess.run(
             [
-                "python", "-m", "pytest",
+                sys.executable, "-m", "pytest",
                 "tests/",
                 f"--cov={cov_target}",
                 "--cov-report=term-missing",

@@ -165,7 +165,7 @@ def run_ci_equivalent_tests() -> bool:
     """Run the same test command as CI. Returns True if all tests pass."""
     env = os.environ.copy()
     env["PYTHONPATH"] = str(Path(__file__).parent.parent / "src")
-    # Do not set MANIFEST_TEST_AGENTS=1: OpenCode agent tests require opencode on PATH and opencode.json.
+    # OpenCode agent tests auto-skip if opencode is not on PATH.
     try:
         r = subprocess.run(
             CI_TEST_CMD,

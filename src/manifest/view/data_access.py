@@ -1,8 +1,8 @@
 """
-View data access: timeline events, health metrics.
+View data access: timeline events.
 """
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import List, Tuple
 
 from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_DESIGN_FILE, PRD_FILE
 from manifest.view.views_content import ACCENT_BLUE
@@ -44,36 +44,3 @@ def get_timeline_events(manifest_dir: Path) -> List[Tuple[str, str, str, str]]:
             pass
     events.sort(key=lambda x: x[0], reverse=True)
     return events
-
-
-def get_health_metrics(manifest_dir: Path, populate_if_blank: bool = False) -> Dict[str, Any]:
-    """
-    Load health_metrics from state.json. Optionally run write_health_to_state if blank.
-    """
-    import json
-
-    from manifest.core.constants import STATE_FILE
-
-    manifest_dir = Path(manifest_dir)
-    state_file = manifest_dir / STATE_FILE
-    metrics: Dict[str, Any] = {}
-    if state_file.exists():
-        try:
-            with open(state_file, "r", encoding="utf-8") as f:
-                state = json.load(f)
-            metrics = state.get("health_metrics") or {}
-        except Exception:
-            pass
-    if populate_if_blank:
-        blank = (metrics.get("code_quality") in (None, "—")) or (metrics.get("test_coverage") is None)
-        if blank:
-            try:
-                from manifest.audit.code.health_from_code import write_health_to_state
-
-                if write_health_to_state(manifest_dir):
-                    with open(state_file, "r", encoding="utf-8") as f:
-                        state = json.load(f)
-                    metrics = state.get("health_metrics") or {}
-            except Exception:
-                pass
-    return metrics

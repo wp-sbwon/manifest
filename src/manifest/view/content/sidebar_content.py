@@ -1,38 +1,55 @@
-"""Sidebar content: health summary and current view name."""
-import re
+"""Sidebar content: health summary (status distribution + assertion proof rate) and current view name."""
 from typing import Dict, Any
-
-from manifest.view.views_content import ACCENT_BLUE
 
 
 def get_sidebar_health_text(
     comp_status: Dict[str, str],
-    metrics: Dict[str, Any],
+    test_results: Dict[str, Any],
 ) -> str:
-    """Project Health panel text from comp_status and state health_metrics."""
-    total = len(comp_status) or 1
-    deviation_count = sum(1 for s in comp_status.values() if s in ("deviation", "partial"))
-    pct = int(100 * deviation_count / total)
-    dev_color = "yellow" if pct > 0 else "green"
-    quality_str = metrics.get("code_quality") or "—"
-    q = str(quality_str).lower()
-    if q in ("excellent", "good", "ok"):
-        quality_tag = "green"
-    elif "issues" in q:
-        n = re.search(r"(\d+)\s*issues", q)
-        quality_tag = "yellow" if (n and int(n.group(1)) <= 20) else "red"
+    """Project Health panel: status distribution and assertion proof rate."""
+    # Status distribution
+    counts = {"healthy": 0, "planned": 0, "partial": 0, "deviation": 0, "extra": 0}
+    for s in comp_status.values():
+        key = s if s in counts else "planned"
+        counts[key] += 1
+
+    status_lines = []
+    labels = [
+        ("healthy", "green", "Healthy"),
+        ("planned", "grey70", "Planned"),
+        ("partial", "yellow", "Partial"),
+        ("deviation", "red", "Deviation"),
+        ("extra", "cyan", "Extra"),
+    ]
+    for key, color, label in labels:
+        n = counts[key]
+        if n > 0:
+            status_lines.append(f"  [{color}]{label}: {n}[/]")
+
+    # Assertion proof rate
+    total_assertions = 0
+    implemented = 0
+    for tests in (test_results or {}).values():
+        if not isinstance(tests, list):
+            continue
+        for t in tests:
+            total_assertions += 1
+            if t.get("status") == "implemented":
+                implemented += 1
+    if total_assertions > 0:
+        pct = int(100 * implemented / total_assertions)
+        proof_color = "green" if pct == 100 else ("yellow" if pct >= 50 else "red")
+        proof_line = f"  [{proof_color}]{implemented}/{total_assertions} ({pct}%)[/]"
     else:
-        quality_tag = "dim"
-    cov_val = metrics.get("test_coverage")
-    cov_str = f"{cov_val}%" if cov_val is not None else "—"
-    size_str = metrics.get("binary_size") or "—"
+        proof_line = "  [dim]No assertions[/]"
+
     return (
         "[bold cyan]Project Health[/]\n"
         "[dim]─────────────────────[/]\n"
-        f"  Total Deviation:  [{dev_color}]{pct}%[/]\n"
-        f"  Code Quality:     [{quality_tag}]{quality_str}[/]\n"
-        f"  Test Coverage:   [{ACCENT_BLUE}]{cov_str}[/]\n"
-        f"  Binary Size:     [dim]{size_str}[/]"
+        + "\n".join(status_lines) + "\n"
+        "[dim]─────────────────────[/]\n"
+        "  [bold]Assertion proof rate[/]\n"
+        + proof_line
     )
 
 

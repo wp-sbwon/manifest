@@ -51,15 +51,15 @@ def test_build_view_schema_same_ids_produces_plan_actual_pairs() -> None:
     assert len(entities) == 2
     for ve in entities:
         assert "id" in ve
-        assert "narrative" in ve
+        assert "blueprint" in ve
         assert "symbol" in ve
         assert "validation" in ve
         assert "status" in (ve.get("validation") or {})
-        role = (ve.get("narrative") or {}).get("role")
-        if isinstance(role, dict):
-            assert "plan" in role
-            assert "actual" in role
-            assert "deviates" in role
+        bp_type = (ve.get("blueprint") or {}).get("type")
+        if isinstance(bp_type, dict):
+            assert "plan" in bp_type
+            assert "actual" in bp_type
+            assert "deviates" in bp_type
 
 
 @pytest.mark.unit
@@ -82,7 +82,6 @@ def test_write_and_load_view_schema_roundtrip(tmp_path: Path) -> None:
             {
                 "id": PROJECT_ROOT_ID,
                 "children": {"plan": [], "actual": [], "deviates": False},
-                "narrative": {},
                 "symbol": {"plan": "", "actual": "", "deviates": False},
                 "validation": {"status": "healthy", "deviations": []},
             },

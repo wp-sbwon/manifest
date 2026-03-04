@@ -14,19 +14,25 @@ def build_files_view_content(
     code_blueprint: Dict[str, Any],
     project_root: Path,
 ) -> str:
-    """Source tree: dirs and files with status dots."""
+    """Source tree: one row per file path; components that share a file listed under it."""
     root_label = project_root.name or "root"
     components = entities_for_display(code_blueprint.get("entities", []))
-    dirs: Dict[str, List[Tuple[str, Dict[str, Any], str]]] = {}
+    # Group by (dir_name, file_path) so each file appears once; value = list of (comp_id, comp_name, status)
+    by_file: Dict[Tuple[str, str], List[Tuple[str, str, str]]] = {}
     for c in components:
         if not isinstance(c, dict):
             continue
         fp = (c.get("file") or "?").replace("\\", "/")
         parts = fp.split("/")
         dir_name = parts[0] if len(parts) > 1 else "."
-        if dir_name not in dirs:
-            dirs[dir_name] = []
-        dirs[dir_name].append((parts[-1] if parts else "?", c, comp_status.get(c.get("id") or "", "planned")))
+        fname = parts[-1] if parts else "?"
+        cid = c.get("id") or "?"
+        cname = (c.get("name") or cid or "?")[:24]
+        st = comp_status.get(cid, "planned")
+        key = (dir_name, fp)
+        if key not in by_file:
+            by_file[key] = []
+        by_file[key].append((cid, cname, st))
     S = "■"
     lines = [
         "[dim]Source Tree[/]",
@@ -34,18 +40,19 @@ def build_files_view_content(
         "",
         f"[white]{root_label}/[/]",
     ]
-    dir_list = sorted(dirs.items())
-    for i, (d, items) in enumerate(dir_list):
-        prefix = "└── " if i == len(dir_list) - 1 else "├── "
+    items_sorted = sorted(by_file.items(), key=lambda x: (x[0][0], x[0][1]))
+    for i, ((d, _fp), comps) in enumerate(items_sorted):
+        prefix = "└── " if i == len(items_sorted) - 1 else "├── "
         lines.append(f"[{ACCENT_BLUE}]{prefix}{S}[/] {d}/")
-        for j, (fname, comp, st) in enumerate(items[:12]):
-            st_tag = status_color_tag(st)
-            sub_prefix = "    " if i == len(dir_list) - 1 else "│   "
-            lines.append(f"[dim]{sub_prefix}└── {fname}[/] ..... [{st_tag}]{S}[/]")
-            for meth in (comp.get("methods") or [])[:4]:
-                m_tag = status_color_tag(st)
-                lines.append(f"[dim]{sub_prefix}    ├── [/][cyan]{meth}()[/] [{m_tag}]{S}[/]")
-    if not dirs:
+        fname = _fp.split("/")[-1] if "/" in _fp else _fp
+        # One line per file; show component(s) under it
+        st_tag = status_color_tag(comps[0][2]) if comps else status_color_tag("planned")
+        sub_prefix = "    " if i == len(items_sorted) - 1 else "│   "
+        lines.append(f"[dim]{sub_prefix}└── {fname}[/] ..... [{st_tag}]{S}[/]")
+        for _cid, cname, cst in comps[:10]:
+            m_tag = status_color_tag(cst)
+            lines.append(f"[dim]{sub_prefix}    ├── [/]{cname}[/] [{m_tag}]{S}[/]")
+    if not by_file:
         for c in components[:20]:
             if not isinstance(c, dict):
                 continue
