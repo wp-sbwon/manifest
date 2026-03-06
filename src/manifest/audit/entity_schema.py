@@ -5,70 +5,8 @@ Persisted shape: version, root_id, entities. Each entity: id, children, dependen
 narrative, blueprint, protocol, profile, governance, symbol, traits, topology_actual, preview,
 outgoing_contracts. No nulls; use "" or []/{}.
 """
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-
-@dataclass
-class ProtocolItem:
-    """Single input or output in protocol; name/type for type check."""
-    name: str = ""
-    type: str = ""
-    req: bool = False
-
-
-@dataclass
-class TopologyMapItem:
-    """One entry in topology map; area = [start_row, start_col, row_span, col_span]."""
-    id: str = ""
-    area: List[int] = field(default_factory=lambda: [0, 0, 1, 1])
-    label: str = ""
-
-
-# ---------------------------------------------------------------------------
-# Entity shape (single set of fields for design and code blueprints)
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class Entity:
-    """Entity: id, structure, narrative/blueprint/governance, protocol/profile, symbol/traits/preview, contracts."""
-    id: str = ""
-    children: List[str] = field(default_factory=list)
-    dependencies: List[str] = field(default_factory=list)
-    narrative: Dict[str, str] = field(default_factory=lambda: {"role": "", "mission": ""})
-    blueprint: Dict[str, Any] = field(default_factory=lambda: {"type": "FLOW", "topology": {}})
-    protocol: Dict[str, List[Dict[str, Any]]] = field(
-        default_factory=lambda: {"input": [], "output": []}
-    )
-    profile: Dict[str, Any] = field(
-        default_factory=lambda: {"language": [], "platform": "", "io_model": "", "state_model": ""}
-    )
-    governance: Dict[str, List[str]] = field(
-        default_factory=lambda: {"rules": [], "assertions": []}
-    )
-    symbol: str = ""
-    traits: List[str] = field(default_factory=list)
-    topology_actual: Dict[str, Any] = field(default_factory=lambda: {"type": "", "map": []})
-    preview: str = ""
-    outgoing_contracts: List[Dict[str, Any]] = field(default_factory=list)
-
-
-@dataclass
-class Contract:
-    """Edge between entities: from, to, type; optional file and symbols."""
-    from_id: str = ""
-    to_id: str = ""
-    type: str = "dependency"
-    file: str = ""
-    symbols: List[str] = field(default_factory=list)
-
-
-@dataclass
-class Validation:
-    """Per-entity validation result (status, deviations from view)."""
-    status: str = "planned"
-    deviations: List[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -83,14 +21,6 @@ def language_to_list(val: Any) -> List[str]:
     if isinstance(val, list):
         return [x for x in val if x]
     return [val] if val else []
-
-
-@dataclass
-class BlueprintRoot:
-    """Root shape for blueprint JSON."""
-    version: str = "1.0"
-    root_id: str = ""
-    entities: List[Dict[str, Any]] = field(default_factory=list)
 
 
 PROJECT_ROOT_ID = "PROJECT_ROOT"

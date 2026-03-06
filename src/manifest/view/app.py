@@ -3,7 +3,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Tuple, Set, Union
+from typing import Dict, Any, Optional, List, Tuple, Union
 from enum import Enum
 
 # Use color when we have a TTY (same terminal as OpenCode can show color).
@@ -11,7 +11,7 @@ if sys.stdout.isatty():
     os.environ.pop("NO_COLOR", None)
     os.environ.setdefault("TEXTUAL_COLOR_SYSTEM", "truecolor")
 
-from rich.console import Group, RenderableType
+from rich.console import RenderableType
 from rich.panel import Panel
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -54,28 +54,23 @@ from manifest.view.content import (
     build_tab_bar_content,
     build_timeline_view_content,
     get_sidebar_health_text,
-    get_sidebar_viz_text,
 )
-from manifest.view.views_content import status_label_markup as _status_label_markup
+
 
 logger = get_logger(__name__)
 
 
 class ViewType(Enum):
-    """View: Diagram, Files, Timeline. History = Timeline."""
+    """View: Diagram, Files, Timeline."""
     DIAGRAM = "diagram"
     FILES = "files"
     TIMELINE = "timeline"
-    HISTORY = "history"  # alias: same content as TIMELINE (Design + Git timeline)
-    INSPECTOR = "inspector"
 
 
 class InspectorMode(Enum):
-    """Right panel: Design or Differences (D). Detail = selected node."""
-    DESIGN = "design"
+    """Right panel: Differences (D). Detail = selected node."""
     DIFFERENCES = "differences"
     VISUAL = "visual"
-    DATA = "data"
     DEVIATION = "deviation"
     DETAIL = "detail"
 
@@ -136,7 +131,7 @@ class ManifestViewApp(App[None]):
         super().__init__(**kwargs)
         self.manifest_dir = default_manifest_dir(manifest_dir)
         self.current_view = ViewType.DIAGRAM
-        self.inspector_mode = InspectorMode.DESIGN
+        self.inspector_mode = InspectorMode.DEVIATION
         self._right_panel_differences = False  # D toggles Design vs Differences
         self._selected_node_index: int = 1  # 1-based; 1 = root
         self._diagram_component_list: List[Dict[str, Any]] = []
@@ -155,10 +150,6 @@ class ManifestViewApp(App[None]):
     def _get_code_blueprint(self) -> Dict[str, Any]:
         """Code blueprint from view data; empty dict if not yet loaded."""
         return (self._view_data or {}).get("code_blueprint") or {}
-
-    def _get_design_and_code_for_status(self) -> tuple:
-        """Design and code blueprints from current view data."""
-        return (self._get_design_blueprint(), self._get_code_blueprint())
 
     def _get_implementation_status(self) -> tuple:
         """Comp status and status_info from view data."""
@@ -425,41 +416,8 @@ class ManifestViewApp(App[None]):
             logger.debug("Timeline load failed: %s", e)
             return f"Timeline load failed: {e}"
 
-    def _load_inspector_view(self) -> str:
-        """Inspect: Deviation, Visual, Data, Detail."""
-        lines = []
-        try:
-            if self.inspector_mode == InspectorMode.DEVIATION:
-                deviations = self._get_deviations_from_view()
-                lines.append(f"Deviation (mismatches): {len(deviations)}")
-                for d in deviations[:20]:
-                    comp_id = d.get("node_id") or "?"
-                    msg = (d.get("message") or "?")[:70]
-                    lines.append(f"  {comp_id}: {msg}")
-                if len(deviations) > 20:
-                    lines.append(f"  ... and {len(deviations) - 20} more")
-            elif self.inspector_mode == InspectorMode.VISUAL:
-                comp_status, _ = self._get_implementation_status()
-                healthy_n = sum(1 for s in comp_status.values() if s == "healthy")
-                planned_n = sum(1 for s in comp_status.values() if s == "planned")
-                partial_n = sum(1 for s in comp_status.values() if s == "partial")
-                deviation_n = sum(1 for s in comp_status.values() if s == "deviation")
-                lines.append("Status:")
-                lines.append(f"  {_status_label_markup('healthy', f'Healthy: {healthy_n}')}")
-                lines.append(f"  {_status_label_markup('planned', f'Planned: {planned_n}')}")
-                lines.append(f"  {_status_label_markup('partial', f'Partial: {partial_n}')}")
-                lines.append(f"  {_status_label_markup('deviation', f'Deviation: {deviation_n}')}")
-            elif self.inspector_mode == InspectorMode.DETAIL:
-                return self._render_detail_content()
-            else:
-                lines.append("Execution trace when orchestrator or agents run.")
-        except Exception as e:
-            logger.debug("Inspector view load failed: %s", e)
-            lines.append("Inspector: load failed.")
-        return "\n".join(lines) if lines else "Inspector: no data."
-
     def _get_current_view_content(self) -> Union[str, RenderableType]:
-        """Content for current view. History = Timeline."""
+        """Content for current view."""
         if self.current_view == ViewType.DIAGRAM:
             raw = self._load_diagram_view()
             if isinstance(raw, str):
@@ -467,7 +425,7 @@ class ManifestViewApp(App[None]):
             return raw
         elif self.current_view == ViewType.FILES:
             return self._load_files_view()
-        elif self.current_view in (ViewType.TIMELINE, ViewType.HISTORY):
+        elif self.current_view == ViewType.TIMELINE:
             return self._load_timeline_view()
         return Panel("Unknown view", title="View", border_style="red")
 
@@ -480,17 +438,6 @@ class ManifestViewApp(App[None]):
         except Exception as e:
             logger.debug("Sidebar health failed: %s", e)
             return "[bold cyan]Project Health[/]\n[dim]─────────────────────[/]\n  (—)"
-
-    def _get_sidebar_viz(self) -> str:
-        """Name of current main view."""
-        name = {
-            ViewType.DIAGRAM: "Diagram",
-            ViewType.FILES: "Files",
-            ViewType.TIMELINE: "Timeline",
-            ViewType.HISTORY: "Timeline",
-            ViewType.INSPECTOR: "Inspector",
-        }.get(self.current_view, "—")
-        return get_sidebar_viz_text(name)
 
     def _get_diagram_label_for_node(self, kind: str, nid: str, data: Dict[str, Any]) -> str:
         """Label for right panel: match diagram (entity/node name)."""
@@ -718,8 +665,6 @@ class ManifestViewApp(App[None]):
             "Diagram": ViewType.DIAGRAM,
             "Files": ViewType.FILES,
             "Timeline": ViewType.TIMELINE,
-            "History": ViewType.HISTORY,
-            "Inspector": ViewType.INSPECTOR,
         }
         if view_name in view_map:
             self.current_view = view_map[view_name]
@@ -735,10 +680,9 @@ class ManifestViewApp(App[None]):
             logger.debug("Info hub refresh failed: %s", e)
 
     def action_switch_inspector_mode(self, mode_name: str) -> None:
-        """Set inspector mode (Visual/Data/Deviation/Detail). Right panel shows inspection."""
+        """Set inspector mode (Visual/Deviation/Detail). Right panel shows inspection."""
         mode_map = {
             "Visual": InspectorMode.VISUAL,
-            "Data": InspectorMode.DATA,
             "Deviation": InspectorMode.DEVIATION,
             "Drift": InspectorMode.DEVIATION,  # alias
             "Detail": InspectorMode.DETAIL,

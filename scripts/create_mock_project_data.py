@@ -88,6 +88,7 @@ def build_design_blueprint() -> Dict[str, Any]:
         "engine.calculator",
         preview="engine/calculator.py: add(a, b) → float",
         rules=["Pure function."],
+        assertions=["Return a + b."],
         protocol_input=[{"name": "a", "type": "float"}, {"name": "b", "type": "float"}],
         protocol_output=[{"name": "result", "type": "float"}],
         traits=["pure", "O(1)"],
@@ -99,6 +100,7 @@ def build_design_blueprint() -> Dict[str, Any]:
         "engine.calculator",
         preview="engine/calculator.py: sub(a, b) → float",
         rules=["Pure function."],
+        assertions=["Return a - b."],
         protocol_input=[{"name": "a", "type": "float"}, {"name": "b", "type": "float"}],
         protocol_output=[{"name": "result", "type": "float"}],
         traits=["pure", "O(1)"],
@@ -110,6 +112,7 @@ def build_design_blueprint() -> Dict[str, Any]:
         "engine.calculator",
         preview="Planned.",
         rules=["Pure function."],
+        assertions=["Return a * b."],
         protocol_input=[{"name": "a", "type": "float"}, {"name": "b", "type": "float"}],
         protocol_output=[{"name": "result", "type": "float"}],
         traits=["pure", "O(1)"],
@@ -130,6 +133,7 @@ def build_design_blueprint() -> Dict[str, Any]:
         protocol_input=[{"name": "op", "type": "str"}, {"name": "a", "type": "float"}, {"name": "b", "type": "float"}],
         protocol_output=[{"name": "result", "type": "float"}],
         rules=["No side effects.", "Pure functions only."],
+        assertions=["Dispatch op to correct arithmetic function."],
     )
     output = _make_entity(
         "output",
@@ -140,6 +144,7 @@ def build_design_blueprint() -> Dict[str, Any]:
         protocol_input=[{"name": "value", "type": "float"}],
         protocol_output=[{"name": "formatted", "type": "string"}],
         traits=["formatter"],
+        assertions=["Format numeric result for console."],
     )
     return normalize_for_schema({
         "version": "1.0",
@@ -238,15 +243,34 @@ def main() -> int:
         print(f"Warning: failed to generate test stubs: {e}", file=sys.stderr)
 
     # Copy test files to manifest_dir.parent/tests/ so the view's test_result_collector finds them.
+    import shutil
     runtime_tests_dir = manifest_dir.parent / "tests"
     if runtime_tests_dir.resolve() != tests_dir.resolve():
-        import shutil
         runtime_tests_dir.mkdir(parents=True, exist_ok=True)
         for tf in tests_dir.glob("*.py"):
             shutil.copy2(tf, runtime_tests_dir / tf.name)
         init_file = runtime_tests_dir / "__init__.py"
         if not init_file.exists():
             init_file.write_text("", encoding="utf-8")
+
+    # Copy source files from fixture to runtime dir for consistency.
+    fixture_root = REPO / "tests" / "fixtures" / "calculator"
+    runtime_root = manifest_dir.parent
+    for subdir in ("cli", "engine", "output"):
+        src_dir = fixture_root / subdir
+        dst_dir = runtime_root / subdir
+        if src_dir.is_dir():
+            if dst_dir.exists():
+                shutil.rmtree(dst_dir)
+            shutil.copytree(src_dir, dst_dir)
+    main_src = fixture_root / "main.py"
+    if main_src.exists():
+        shutil.copy2(main_src, runtime_root / "main.py")
+
+    # Remove stale root-level blueprint_view.json if it exists (real one is in .manifest/).
+    stale_view = runtime_root / "blueprint_view.json"
+    if stale_view.exists():
+        stale_view.unlink()
 
     print("Mock project data ready. Run View with this manifest dir to see Diagram and Health.")
     return 0

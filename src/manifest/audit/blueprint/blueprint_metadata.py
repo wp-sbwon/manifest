@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 
 from manifest.audit.blueprint.manifest_filenames import BLUEPRINT_CODE_FILE
 from manifest.core.logger import get_logger
-from manifest.io.json_io import read_json_or_default
 
 logger = get_logger(__name__)
 

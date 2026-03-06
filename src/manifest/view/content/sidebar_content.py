@@ -51,8 +51,3 @@ def get_sidebar_health_text(
         "  [bold]Assertion proof rate[/]\n"
         + proof_line
     )
-
-
-def get_sidebar_viz_text(view_name: str) -> str:
-    """Name of current main view for sidebar."""
-    return f"View: {view_name}"

@@ -17,14 +17,14 @@ def test_state_manager_loads_from_file() -> None:
             '{"version":"1.0","health_metrics":{"code_quality":"ok"},"timestamp":"2020-01-01T00:00:00"}'
         )
         mgr = StateManager(manifest_dir)
-        assert mgr.get_health_metrics() == {"code_quality": "ok"}
+        assert mgr._state.get("health_metrics") == {"code_quality": "ok"}
 
 
 @pytest.mark.unit
 def test_state_manager_default_when_missing() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         mgr = StateManager(Path(tmp))
-        assert mgr.get_health_metrics() is None
+        assert mgr._state.get("health_metrics") is None
 
 
 @pytest.mark.unit

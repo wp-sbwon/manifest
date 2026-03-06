@@ -2,7 +2,10 @@
 import pytest
 
 from manifest.audit.entity_schema import PROJECT_ROOT_ID, empty_entity
-from manifest.audit.blueprint.blueprint_status import calculate_implementation_status
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from blueprint_helpers_status import calculate_implementation_status
 
 
 def _entity(eid: str, children: list = None, role: str = "", symbol: str = "", protocol_input: list = None) -> dict:

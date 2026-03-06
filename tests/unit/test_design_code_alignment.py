@@ -77,7 +77,10 @@ def test_view_schema_includes_code_only_entity(manifest_dir: Path) -> None:
 @pytest.mark.unit
 def test_build_view_schema_produces_comparable_structure() -> None:
     """build_view_schema produces view entities with same keys as blueprints; values are plan/actual/deviates; status from view."""
-    from manifest.audit.blueprint.blueprint_status import calculate_implementation_status
+    import sys as _sys
+    from pathlib import Path as _P
+    _sys.path.insert(0, str(_P(__file__).resolve().parent.parent))
+    from blueprint_helpers_status import calculate_implementation_status
 
     design = minimal_blueprint(["a"])
     code = minimal_blueprint(["a"])

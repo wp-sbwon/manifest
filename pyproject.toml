@@ -44,10 +44,6 @@ dev = [
     "pytest-timeout>=2.1.0",
     "ruff>=0.1.0",
 ]
-opencode = [
-    "opencode-ai>=1.0.0",
-]
-
 [project.scripts]
 manifest = "manifest.__main__:main"
 

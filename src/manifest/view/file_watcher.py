@@ -16,7 +16,6 @@ from manifest.core.logger import get_logger
 logger = get_logger(__name__)
 
 WATCH_FILES = (STATE_FILE, BLUEPRINT_CODE_FILE, BLUEPRINT_DESIGN_FILE, BLUEPRINT_VIEW_FILE)
-WATCH_DIR = "conflicts"
 
 DEBOUNCE_SECONDS = 0.15
 
@@ -40,7 +39,6 @@ class ViewFileWatcher:
         out: Set[Path] = set()
         for name in WATCH_FILES:
             out.add(self.manifest_dir / name)
-        out.add(self.manifest_dir / WATCH_DIR)
         return out
 
     def _is_watched(self, path: Path) -> bool:
@@ -48,14 +46,7 @@ class ViewFileWatcher:
             path = path.resolve()
         except OSError:
             return False
-        if path in self._watched_paths():
-            return True
-        try:
-            path.relative_to(self.manifest_dir / WATCH_DIR)
-            return True
-        except ValueError:
-            pass
-        return False
+        return path in self._watched_paths()
 
     def _schedule_callback(self, paths: List[Path]) -> None:
         try:

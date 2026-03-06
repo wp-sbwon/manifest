@@ -1,7 +1,21 @@
 """Header strip and tab bar content."""
 from typing import Dict
 
-from manifest.view.views_content import ACCENT_BLUE
+from manifest.view.views_content import ACCENT_BLUE, status_label, status_color_tag
+
+
+def _overall_status(comp_status: Dict[str, str]) -> str:
+    """Derive a single overall status from per-component statuses."""
+    statuses = list(comp_status.values())
+    if any(s == "deviation" for s in statuses):
+        return "deviation"
+    if any(s == "partial" for s in statuses):
+        return "partial"
+    if all(s == "healthy" for s in statuses) and statuses:
+        return "healthy"
+    if all(s == "planned" for s in statuses):
+        return "planned"
+    return "partial"
 
 
 def build_header_strip_content(
@@ -15,21 +29,8 @@ def build_header_strip_content(
     planning = "[bold white][ Planning ][/]" if planning_active else "[dim][ Planning ][/]"
     diff = "[bold red underline][ Differences ][/]" if diff_active else "[dim][ Differences ][/]"
     if comp_status:
-        deviation_n = sum(1 for s in comp_status.values() if s == "deviation")
-        partial_n = sum(1 for s in comp_status.values() if s == "partial")
-        healthy_n = sum(1 for s in comp_status.values() if s == "healthy")
-        planned_n = sum(1 for s in comp_status.values() if s == "planned")
-        if deviation_n > 0:
-            status_label, status_tag = "Deviation", "red"
-        elif partial_n > 0:
-            status_label, status_tag = "Partial", "yellow"
-        elif healthy_n == len(comp_status) and len(comp_status) > 0:
-            status_label, status_tag = "Healthy", "green"
-        elif planned_n == len(comp_status):
-            status_label, status_tag = "Planned", "grey70"
-        else:
-            status_label, status_tag = "Partial", "yellow"
-        status_markup = f"[{status_tag}]{status_label}[/]"
+        overall = _overall_status(comp_status)
+        status_markup = f"[{status_color_tag(overall)}]{status_label(overall)}[/]"
     else:
         status_markup = "[dim]—[/]"
     return (
@@ -47,7 +48,7 @@ def build_tab_bar_content(current_view_value: str) -> str:
     ]
     parts = []
     for label, key in tabs:
-        if current_view_value == key or (key == "timeline" and current_view_value == "history"):
+        if current_view_value == key:
             parts.append(f"[bold {ACCENT_BLUE}]{label}[/]")
         else:
             parts.append(f"[dim]{label}[/]")

@@ -94,7 +94,3 @@ def get_logger(name: str, manifest_dir: Optional[Path] = None) -> logging.Logger
         log_file = manifest_dir / "logs" / f"{name.replace('.', '_')}.log"
 
     return setup_logger(name, log_file=log_file)
-
-
-# Module-level logger for core operations
-_core_logger = get_logger(__name__)

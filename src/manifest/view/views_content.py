@@ -5,9 +5,6 @@ from typing import Dict, Any, Optional, List
 
 from manifest.audit.blueprint.status_enums import ImplementationStatus
 from manifest.audit.entity_schema import PROJECT_ROOT_ID, entity_display_name
-from manifest.core.logger import get_logger
-
-logger = get_logger(__name__)
 
 ACCENT_BLUE = "bright_blue"
 

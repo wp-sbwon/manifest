@@ -39,9 +39,6 @@ class StateManager:
             "timestamp": datetime.now().isoformat(),
         }
 
-    def get_health_metrics(self) -> Optional[Dict[str, Any]]:
-        return self._state.get("health_metrics")
-
     def set_health_metrics(self, metrics: Optional[Dict[str, Any]]) -> None:
         self._state["health_metrics"] = metrics
         self._state["timestamp"] = datetime.now().isoformat()

@@ -3,5 +3,5 @@ import pytest
 
 @pytest.mark.manifest_assertion("arithmetic_engine", 0)
 def test_arithmetic_engine_assertion_0():
-    """Assertion 0"""
+    """Dispatch op to correct arithmetic function."""
     raise NotImplementedError
